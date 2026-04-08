@@ -17,9 +17,7 @@
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "@neondatabase/serverless": "^1.0.2",
-    "drizzle-orm": "^0.45.2",
-    "next-auth": "5.0.0-beta.30",
-    "@auth/drizzle-adapter": "^1.11.1"
+    "drizzle-orm": "^0.45.2"
   },
   "devDependencies": {
     "typescript": "^5.6.2",

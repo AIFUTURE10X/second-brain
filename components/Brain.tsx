@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { signOut } from "next-auth/react";
 
 type ItemType = "note" | "link" | "clip" | "thought";
 
@@ -38,7 +37,7 @@ function timeAgo(dateStr: string) {
   return new Date(dateStr).toLocaleDateString();
 }
 
-export default function Brain({ userName }: { userName?: string }) {
+export default function Brain() {
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<"all" | ItemType>("all");
@@ -151,22 +150,14 @@ export default function Brain({ userName }: { userName?: string }) {
               ◆ Second Brain
             </h1>
             <p className="text-[11px] text-gray-600 font-mono mt-0.5">
-              {items.length} items · {userName || "synced"}
+              {items.length} items · synced
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => signOut()}
-              className="text-[11px] text-gray-600 font-mono hover:text-gray-400 transition"
-            >
-              Sign out
-            </button>
-            <button
-              onClick={() => { resetForm(); setShowAdd(true); }}
-              className="w-9 h-9 rounded-xl text-white text-xl flex items-center justify-center font-light transition-transform hover:scale-105"
-              style={{ background: "linear-gradient(135deg, #E8A838, #EB5757)", boxShadow: "0 4px 16px rgba(232,168,56,0.3)" }}
-            >+</button>
-          </div>
+          <button
+            onClick={() => { resetForm(); setShowAdd(true); }}
+            className="w-9 h-9 rounded-xl text-white text-xl flex items-center justify-center font-light transition-transform hover:scale-105"
+            style={{ background: "linear-gradient(135deg, #E8A838, #EB5757)", boxShadow: "0 4px 16px rgba(232,168,56,0.3)" }}
+          >+</button>
         </div>
 
         {/* Search */}

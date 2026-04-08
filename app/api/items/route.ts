@@ -1,38 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
 import { db } from "@/db";
 import { items } from "@/db/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 
-async function getUserId() {
-  const session = await auth();
-  return (session?.user as { id?: string } | undefined)?.id;
-}
-
-// GET all items for user
+// GET all items
 export async function GET() {
-  const userId = await getUserId();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const rows = await db
-    .select()
-    .from(items)
-    .where(eq(items.userId, userId))
-    .orderBy(desc(items.createdAt));
-
+  const rows = await db.select().from(items).orderBy(desc(items.createdAt));
   return NextResponse.json(rows);
 }
 
 // POST create new item
 export async function POST(req: NextRequest) {
-  const userId = await getUserId();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
   const body = await req.json();
   const [row] = await db
     .insert(items)
     .values({
-      userId,
       type: body.type || "note",
       title: body.title || "",
       content: body.content || "",
@@ -47,9 +29,6 @@ export async function POST(req: NextRequest) {
 
 // PUT update item
 export async function PUT(req: NextRequest) {
-  const userId = await getUserId();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
   const body = await req.json();
   const { id, ...updates } = body;
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
@@ -57,7 +36,7 @@ export async function PUT(req: NextRequest) {
   const [row] = await db
     .update(items)
     .set({ ...updates, updatedAt: new Date() })
-    .where(and(eq(items.id, id), eq(items.userId, userId)))
+    .where(eq(items.id, id))
     .returning();
 
   return NextResponse.json(row);
@@ -65,13 +44,10 @@ export async function PUT(req: NextRequest) {
 
 // DELETE item
 export async function DELETE(req: NextRequest) {
-  const userId = await getUserId();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
 
-  await db.delete(items).where(and(eq(items.id, id), eq(items.userId, userId)));
+  await db.delete(items).where(eq(items.id, id));
   return NextResponse.json({ ok: true });
 }

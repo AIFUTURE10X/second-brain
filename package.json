@@ -13,7 +13,7 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
-    "next": "14.2.13",
+    "next": "14.2.35",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "@neondatabase/serverless": "^0.9.5",
@@ -31,6 +31,6 @@
     "postcss": "^8.4.47",
     "drizzle-kit": "^0.24.0",
     "eslint": "^8.57.1",
-    "eslint-config-next": "14.2.13"
+    "eslint-config-next": "14.2.35"
   }
 }

@@ -13,24 +13,24 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
-    "next": "14.2.35",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "@neondatabase/serverless": "^0.9.5",
-    "drizzle-orm": "^0.33.0",
-    "next-auth": "^4.24.7",
-    "@auth/drizzle-adapter": "^1.4.2"
+    "next": "16.2.2",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "@neondatabase/serverless": "^1.0.2",
+    "drizzle-orm": "^0.45.2",
+    "next-auth": "5.0.0-beta.30",
+    "@auth/drizzle-adapter": "^1.11.1"
   },
   "devDependencies": {
     "typescript": "^5.6.2",
     "@types/node": "^22.7.4",
-    "@types/react": "^18.3.10",
-    "@types/react-dom": "^18.3.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
     "tailwindcss": "^3.4.13",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.47",
-    "drizzle-kit": "^0.24.0",
-    "eslint": "^8.57.1",
-    "eslint-config-next": "14.2.35"
+    "drizzle-kit": "^0.31.10",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.2"
   }
 }

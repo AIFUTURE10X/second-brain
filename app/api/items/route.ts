@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { auth } from "@/lib/auth";
 import { db } from "@/db";
 import { items } from "@/db/schema";
 import { eq, and, desc } from "drizzle-orm";
 
 async function getUserId() {
-  const session = await getServerSession(authOptions);
-  return (session?.user as any)?.id as string | undefined;
+  const session = await auth();
+  return (session?.user as { id?: string } | undefined)?.id;
 }
 
 // GET all items for user

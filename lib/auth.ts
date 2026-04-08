@@ -1,22 +1,18 @@
-import { type NextAuthOptions } from "next-auth";
-import GitHubProvider from "next-auth/providers/github";
+import NextAuth from "next-auth";
+import GitHub from "next-auth/providers/github";
 import { DrizzleAdapter } from "@auth/drizzle-adapter";
 import { db } from "@/db";
 import * as schema from "@/db/schema";
 
-export const authOptions: NextAuthOptions = {
+export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: DrizzleAdapter(db, {
     usersTable: schema.users,
     accountsTable: schema.accounts,
     sessionsTable: schema.sessions,
     verificationTokensTable: schema.verificationTokens,
-  }) as NextAuthOptions["adapter"],
-  providers: [
-    GitHubProvider({
-      clientId: process.env.GITHUB_CLIENT_ID!,
-      clientSecret: process.env.GITHUB_CLIENT_SECRET!,
-    }),
-  ],
+  }),
+  providers: [GitHub],
+  session: { strategy: "database" },
   callbacks: {
     session: ({ session, user }) => ({
       ...session,
@@ -26,4 +22,4 @@ export const authOptions: NextAuthOptions = {
   pages: {
     signIn: "/login",
   },
-};
+});

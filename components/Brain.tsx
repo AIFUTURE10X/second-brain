@@ -104,7 +104,17 @@ export default function Brain() {
     return () => clearTimeout(timer);
   }, [search, fetchItems]);
 
-  const resetForm = () => {
+  const resetForm = (keepOpen = false) => {
+    const lastCategory = form.category;
+    const lastType = form.type;
+    setForm({ type: lastType, title: "", content: "", url: "", notes: "", tags: "", category: lastCategory });
+    if (!keepOpen) {
+      setShowAdd(false);
+    }
+    setEditingId(null);
+  };
+
+  const closeForm = () => {
     setForm({ type: "note", title: "", content: "", url: "", notes: "", tags: "", category: "" });
     setShowAdd(false);
     setEditingId(null);
@@ -121,15 +131,18 @@ export default function Brain() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ id: editingId, ...form, tags }),
         });
+        await fetchItems();
+        closeForm();
       } else {
         await fetch("/api/items", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ...form, tags }),
         });
+        await fetchItems();
+        // Keep modal open with same category + type for rapid-adding
+        resetForm(true);
       }
-      await fetchItems();
-      resetForm();
     } catch {}
     setSaving(false);
   };
@@ -244,7 +257,7 @@ export default function Brain() {
               title="Manage categories"
             >⊞</button>
             <button
-              onClick={() => { resetForm(); setShowAdd(true); }}
+              onClick={() => { closeForm(); setShowAdd(true); }}
               className="w-9 h-9 rounded-xl text-white text-xl flex items-center justify-center font-light transition-transform hover:scale-105"
               style={{ background: "linear-gradient(135deg, #E8A838, #EB5757)", boxShadow: "0 4px 16px rgba(232,168,56,0.3)" }}
             >+</button>
@@ -488,7 +501,7 @@ export default function Brain() {
       {/* Add/Edit Modal */}
       {showAdd && (
         <div className="fixed inset-0 z-[200] flex flex-col justify-end" style={{ background: "#0D0F12EE" }}>
-          <div className="flex-1 cursor-pointer" onClick={resetForm} />
+          <div className="flex-1 cursor-pointer" onClick={closeForm} />
           <div className="bg-brand-card border-t border-brand-border rounded-t-2xl px-5 pt-5 pb-8 max-h-[85vh] overflow-y-auto">
             <div className="w-9 h-1 bg-gray-700 rounded-full mx-auto mb-4" />
             <h2 className="text-base font-semibold mb-4" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
@@ -577,7 +590,7 @@ export default function Brain() {
             />
 
             <div className="flex gap-2.5">
-              <button onClick={resetForm} className="flex-1 py-3 rounded-xl bg-brand-muted border border-brand-border text-gray-500 text-sm font-medium">
+              <button onClick={closeForm} className="flex-1 py-3 rounded-xl bg-brand-muted border border-brand-border text-gray-500 text-sm font-medium">
                 Cancel
               </button>
               <button

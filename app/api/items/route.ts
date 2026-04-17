@@ -3,15 +3,22 @@ import { db } from "@/db";
 import { items } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { enrichUrl } from "@/lib/enrich";
+import { checkApiKey } from "@/lib/api-key";
 
 // GET all items
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const denied = checkApiKey(req);
+  if (denied) return denied;
+
   const rows = await db.select().from(items).orderBy(desc(items.createdAt));
   return NextResponse.json(rows);
 }
 
 // POST create new item
 export async function POST(req: NextRequest) {
+  const denied = checkApiKey(req);
+  if (denied) return denied;
+
   const body = await req.json();
   const url = body.url?.trim() || "";
 
@@ -45,11 +52,13 @@ export async function POST(req: NextRequest) {
 
 // PUT update item
 export async function PUT(req: NextRequest) {
+  const denied = checkApiKey(req);
+  if (denied) return denied;
+
   const body = await req.json();
   const { id, ...updates } = body;
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
 
-  // If URL changed and no og data provided, re-enrich
   if (updates.url && !updates.ogTitle) {
     const og = await enrichUrl(updates.url);
     updates.ogTitle = og.ogTitle;
@@ -70,6 +79,9 @@ export async function PUT(req: NextRequest) {
 
 // DELETE item
 export async function DELETE(req: NextRequest) {
+  const denied = checkApiKey(req);
+  if (denied) return denied;
+
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });

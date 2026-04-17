@@ -2,13 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { categories } from "@/db/schema";
 import { eq, asc } from "drizzle-orm";
+import { checkApiKey } from "@/lib/api-key";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const denied = checkApiKey(req);
+  if (denied) return denied;
+
   const rows = await db.select().from(categories).orderBy(asc(categories.name));
   return NextResponse.json(rows);
 }
 
 export async function POST(req: NextRequest) {
+  const denied = checkApiKey(req);
+  if (denied) return denied;
+
   const body = await req.json();
   if (!body.name?.trim()) return NextResponse.json({ error: "Name required" }, { status: 400 });
 
@@ -21,6 +28,9 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  const denied = checkApiKey(req);
+  if (denied) return denied;
+
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });

@@ -649,6 +649,54 @@ export default function Brain() {
               >Add</button>
             </div>
 
+            {/* Export / Import */}
+            <div className="mt-6 pt-4 border-t border-brand-border">
+              <p className="text-[11px] text-gray-600 font-mono mb-2">Data</p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    window.open("/api/export?format=json", "_blank");
+                  }}
+                  className="flex-1 py-2 rounded-lg text-[11px] font-mono border border-brand-border text-gray-400 hover:text-white transition"
+                >Export JSON</button>
+                <button
+                  onClick={() => {
+                    window.open("/api/export?format=markdown", "_blank");
+                  }}
+                  className="flex-1 py-2 rounded-lg text-[11px] font-mono border border-brand-border text-gray-400 hover:text-white transition"
+                >Export MD</button>
+                <label className="flex-1 py-2 rounded-lg text-[11px] font-mono border border-brand-border text-gray-400 hover:text-white transition text-center cursor-pointer">
+                  Import
+                  <input
+                    type="file"
+                    accept=".json"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const text = await file.text();
+                      try {
+                        const data = JSON.parse(text);
+                        const res = await fetch("/api/import", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify(data),
+                        });
+                        if (res.ok) {
+                          const result = await res.json();
+                          alert(`Imported ${result.importedItems} items, ${result.importedCategories} categories`);
+                          fetchItems();
+                          fetchCategories();
+                        }
+                      } catch {
+                        alert("Invalid JSON file");
+                      }
+                    }}
+                  />
+                </label>
+              </div>
+            </div>
+
             <button
               onClick={() => setShowCatManager(false)}
               className="w-full mt-4 py-3 rounded-xl bg-brand-muted border border-brand-border text-gray-500 text-sm font-medium"

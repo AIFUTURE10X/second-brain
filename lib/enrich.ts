@@ -65,9 +65,11 @@ export async function enrichUrl(url: string): Promise<EnrichResult> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8000);
 
+    // Use a social-media-crawler UA — sites allow these so their og:image
+    // renders in Facebook/Twitter/Slack embeds. A generic bot UA gets 403'd.
     const res = await fetch(url, {
       headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; SecondBrain/1.0)",
+        "User-Agent": "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)",
         Accept: "text/html",
       },
       signal: controller.signal,

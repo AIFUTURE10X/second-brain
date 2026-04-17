@@ -77,7 +77,6 @@ export default function Brain() {
   const [summarizing, setSummarizing] = useState<string | null>(null);
   const [newCat, setNewCat] = useState({ name: "", color: CAT_COLORS[0], parentId: "" });
   const [editingCat, setEditingCat] = useState<Category | null>(null);
-  const [addAnotherAfterSave, setAddAnotherAfterSave] = useState(false);
 
   const fetchItems = useCallback(async (query?: string) => {
     try {
@@ -123,7 +122,7 @@ export default function Brain() {
     setEditingId(null);
   };
 
-  const handleSave = async () => {
+  const handleSave = async (andAddAnother = false) => {
     if (!form.title.trim() && !form.content.trim() && !form.url.trim()) return;
     setSaving(true);
     const tags = form.tags.split(",").map(t => t.trim()).filter(Boolean);
@@ -136,9 +135,8 @@ export default function Brain() {
         });
         await fetchItems();
         await fetchCategories();
-        if (addAnotherAfterSave) {
+        if (andAddAnother) {
           resetForm(true);
-          setAddAnotherAfterSave(false);
         } else {
           closeForm();
         }
@@ -670,10 +668,7 @@ export default function Brain() {
                 {saving ? "Saving..." : editingId ? "Update" : "Save"}
               </button>
               <button
-                  onClick={async () => {
-                    setAddAnotherAfterSave(true);
-                    await handleSave();
-                  }}
+                  onClick={() => handleSave(true)}
                   disabled={saving}
                   className="py-3 px-4 rounded-xl text-sm font-medium border border-brand-border text-gray-400 hover:text-white transition disabled:opacity-50"
                 >

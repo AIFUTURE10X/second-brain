@@ -99,8 +99,9 @@ async function saveItem() {
     content: (selectedType === "note" || selectedType === "thought") ? notes : undefined,
   };
 
+  const endpoint = `${config.host}/api/save?key=${encodeURIComponent(config.key)}`;
   try {
-    const res = await fetch(`${config.host}/api/save?key=${encodeURIComponent(config.key)}`, {
+    const res = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -112,14 +113,17 @@ async function saveItem() {
       btn.textContent = "Saved!";
       setTimeout(() => window.close(), 1500);
     } else {
-      const err = await res.json().catch(() => ({}));
-      status.textContent = `✗ ${err.error || res.statusText}`;
+      const text = await res.text();
+      let errMsg = `${res.status} ${res.statusText}`;
+      try { errMsg = JSON.parse(text).error || errMsg; } catch {}
+      status.textContent = `✗ ${errMsg}`;
       status.className = "status err";
       btn.disabled = false;
       btn.textContent = "Save to Brain";
     }
   } catch (e) {
-    status.textContent = `✗ ${e.message}`;
+    // Show the URL we tried so user can verify it's correct
+    status.textContent = `✗ ${e.message || "Network error"} → ${endpoint.slice(0, 50)}...`;
     status.className = "status err";
     btn.disabled = false;
     btn.textContent = "Save to Brain";

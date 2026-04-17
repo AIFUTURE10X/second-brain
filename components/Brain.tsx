@@ -660,7 +660,7 @@ export default function Brain() {
                 Cancel
               </button>
               <button
-                onClick={handleSave}
+                onClick={() => handleSave()}
                 disabled={saving}
                 className="flex-1 py-3 rounded-xl text-white text-sm font-semibold transition-transform hover:scale-[1.01] disabled:opacity-50"
                 style={{ background: "linear-gradient(135deg, #E8A838, #EB5757)", boxShadow: "0 4px 16px rgba(232,168,56,0.25)" }}

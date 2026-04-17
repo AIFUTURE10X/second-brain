@@ -275,16 +275,28 @@ export default function Brain() {
               }}
             >All</button>
             {categories.map(cat => (
-              <button
-                key={cat.id}
-                onClick={() => setCatFilter(catFilter === cat.name ? "all" : cat.name)}
-                className="px-2.5 py-1 rounded-md text-[11px] font-mono transition whitespace-nowrap"
-                style={{
-                  border: catFilter === cat.name ? `1px solid ${cat.color}50` : "1px solid transparent",
-                  background: catFilter === cat.name ? `${cat.color}15` : "transparent",
-                  color: catFilter === cat.name ? cat.color : "#555",
-                }}
-              >{cat.name}</button>
+              <div key={cat.id} className="flex items-center gap-0 shrink-0">
+                <button
+                  onClick={() => setCatFilter(catFilter === cat.name ? "all" : cat.name)}
+                  className="px-2.5 py-1 rounded-l-md text-[11px] font-mono transition whitespace-nowrap"
+                  style={{
+                    border: catFilter === cat.name ? `1px solid ${cat.color}50` : "1px solid transparent",
+                    borderRight: "none",
+                    background: catFilter === cat.name ? `${cat.color}15` : "transparent",
+                    color: catFilter === cat.name ? cat.color : "#555",
+                  }}
+                >{cat.name}</button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleDeleteCategory(cat.id); }}
+                  className="px-1 py-1 rounded-r-md text-[10px] text-gray-700 hover:text-red-400 transition"
+                  style={{
+                    border: catFilter === cat.name ? `1px solid ${cat.color}50` : "1px solid transparent",
+                    borderLeft: "none",
+                    background: catFilter === cat.name ? `${cat.color}15` : "transparent",
+                  }}
+                  title={`Delete ${cat.name}`}
+                >✕</button>
+              </div>
             ))}
           </div>
         )}
@@ -430,22 +442,21 @@ export default function Brain() {
                       <span className="text-[10px] text-gray-700 ml-auto font-mono">{timeAgo(item.createdAt)}</span>
                     </div>
 
-                    {expanded && (
-                      <div className="flex gap-2 mt-3 pt-2.5 border-t border-brand-border">
-                        {[
-                          { label: item.pinned ? "Unpin" : "Pin", action: () => handlePin(item.id), color: "#E8A838" },
-                          { label: "Edit", action: () => handleEdit(item), color: "#5B8DEF" },
-                          { label: "Delete", action: () => handleDelete(item.id), color: "#EB5757" },
-                        ].map(btn => (
-                          <button
-                            key={btn.label}
-                            onClick={e => { e.stopPropagation(); btn.action(); }}
-                            className="px-3.5 py-1 rounded-md text-[11px] font-mono transition hover:brightness-125"
-                            style={{ border: `1px solid ${btn.color}30`, background: `${btn.color}10`, color: btn.color }}
-                          >{btn.label}</button>
-                        ))}
-                      </div>
-                    )}
+                    {/* Action buttons — always visible */}
+                    <div className="flex gap-2 mt-3 pt-2.5 border-t border-brand-border">
+                      {[
+                        { label: item.pinned ? "Unpin" : "Pin", action: () => handlePin(item.id), color: "#E8A838" },
+                        { label: "Edit", action: () => handleEdit(item), color: "#5B8DEF" },
+                        { label: "Delete", action: () => handleDelete(item.id), color: "#EB5757" },
+                      ].map(btn => (
+                        <button
+                          key={btn.label}
+                          onClick={e => { e.stopPropagation(); btn.action(); }}
+                          className="px-3.5 py-1 rounded-md text-[11px] font-mono transition hover:brightness-125"
+                          style={{ border: `1px solid ${btn.color}30`, background: `${btn.color}10`, color: btn.color }}
+                        >{btn.label}</button>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>

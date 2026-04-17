@@ -9,4 +9,6 @@ const url =
   process.env.DATABASE_URL ||
   "postgresql://placeholder:placeholder@placeholder.neon.tech/neondb?sslmode=require";
 
-export const db = drizzle(neon(url), { schema });
+const sql = neon(url);
+export const db = drizzle(sql, { schema });
+export { sql };

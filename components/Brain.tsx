@@ -73,11 +73,13 @@ export default function Brain() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<"newest" | "oldest">("newest");
   const [saving, setSaving] = useState(false);
+  const [summarizing, setSummarizing] = useState<string | null>(null);
   const [newCat, setNewCat] = useState({ name: "", color: CAT_COLORS[0] });
 
-  const fetchItems = useCallback(async () => {
+  const fetchItems = useCallback(async (query?: string) => {
     try {
-      const res = await fetch("/api/items");
+      const url = query ? `/api/items?q=${encodeURIComponent(query)}` : "/api/items";
+      const res = await fetch(url);
       if (res.ok) setItems(await res.json());
     } catch {}
     setLoading(false);
@@ -91,6 +93,16 @@ export default function Brain() {
   }, []);
 
   useEffect(() => { fetchItems(); fetchCategories(); }, [fetchItems, fetchCategories]);
+
+  // Debounced server-side search
+  useEffect(() => {
+    if (!search.trim()) {
+      fetchItems();
+      return;
+    }
+    const timer = setTimeout(() => fetchItems(search.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [search, fetchItems]);
 
   const resetForm = () => {
     setForm({ type: "note", title: "", content: "", url: "", notes: "", tags: "", category: "" });
@@ -139,6 +151,22 @@ export default function Brain() {
     setItems(prev => prev.map(i => i.id === id ? { ...i, pinned: !i.pinned } : i));
   };
 
+  const handleSummarize = async (id: string) => {
+    setSummarizing(id);
+    try {
+      const res = await fetch("/api/summarize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setItems(prev => prev.map(i => i.id === id ? { ...i, ...updated } : i));
+      }
+    } catch {}
+    setSummarizing(null);
+  };
+
   const handleEdit = (item: Item) => {
     setForm({
       type: item.type,
@@ -169,20 +197,10 @@ export default function Brain() {
     await fetchCategories();
   };
 
+  // Text search is now server-side; client filters only type + category
   const filtered = items
     .filter(i => view === "all" || i.type === view)
     .filter(i => catFilter === "all" || i.category === catFilter)
-    .filter(i => {
-      if (!search) return true;
-      const s = search.toLowerCase();
-      return (
-        i.title?.toLowerCase().includes(s) ||
-        i.content?.toLowerCase().includes(s) ||
-        i.notes?.toLowerCase().includes(s) ||
-        i.ogTitle?.toLowerCase().includes(s) ||
-        (i.tags || []).some(t => t.toLowerCase().includes(s))
-      );
-    })
     .sort((a, b) => {
       if (a.pinned !== b.pinned) return b.pinned ? 1 : -1;
       const da = new Date(a.createdAt).getTime();
@@ -447,12 +465,14 @@ export default function Brain() {
                       {[
                         { label: item.pinned ? "Unpin" : "Pin", action: () => handlePin(item.id), color: "#E8A838" },
                         { label: "Edit", action: () => handleEdit(item), color: "#5B8DEF" },
+                        { label: summarizing === item.id ? "Summarizing..." : "Summarize", action: () => handleSummarize(item.id), color: "#56CCF2", disabled: summarizing === item.id },
                         { label: "Delete", action: () => handleDelete(item.id), color: "#EB5757" },
                       ].map(btn => (
                         <button
                           key={btn.label}
+                          disabled={"disabled" in btn && !!btn.disabled}
                           onClick={e => { e.stopPropagation(); btn.action(); }}
-                          className="px-3.5 py-1 rounded-md text-[11px] font-mono transition hover:brightness-125"
+                          className="px-3.5 py-1 rounded-md text-[11px] font-mono transition hover:brightness-125 disabled:opacity-50"
                           style={{ border: `1px solid ${btn.color}30`, background: `${btn.color}10`, color: btn.color }}
                         >{btn.label}</button>
                       ))}

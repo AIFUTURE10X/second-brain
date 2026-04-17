@@ -1,14 +1,34 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/db";
+import { db, sql } from "@/db";
 import { items } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { enrichUrl } from "@/lib/enrich";
 import { checkApiKey } from "@/lib/api-key";
 
-// GET all items
+// GET all items — supports ?q= for full-text search
 export async function GET(req: NextRequest) {
   const denied = checkApiKey(req);
   if (denied) return denied;
+
+  const q = new URL(req.url).searchParams.get("q")?.trim();
+
+  if (q) {
+    // Full-text search across title, content, notes, og_title, og_description
+    // Convert query to tsquery format: "react hooks" → "react & hooks"
+    const tsquery = q.split(/\s+/).filter(Boolean).join(" & ");
+    const rows = await sql`
+      SELECT * FROM items
+      WHERE to_tsvector('english',
+        coalesce(title,'') || ' ' ||
+        coalesce(content,'') || ' ' ||
+        coalesce(notes,'') || ' ' ||
+        coalesce(og_title,'') || ' ' ||
+        coalesce(og_description,'')
+      ) @@ to_tsquery('english', ${tsquery + ':*'})
+      ORDER BY created_at DESC
+    `;
+    return NextResponse.json(rows);
+  }
 
   const rows = await db.select().from(items).orderBy(desc(items.createdAt));
   return NextResponse.json(rows);

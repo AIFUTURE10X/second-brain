@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { items } from "@/db/schema";
+import { items, categories } from "@/db/schema";
 import { enrichUrl } from "@/lib/enrich";
 import { checkApiKey } from "@/lib/api-key";
+import { aiTagAndCategorize } from "@/lib/ai-tagger";
+import { asc } from "drizzle-orm";
 
 /**
  * POST /api/save?key=API_SECRET
@@ -18,6 +20,9 @@ import { checkApiKey } from "@/lib/api-key";
  *
  * All fields are optional except at least one of url/text/title/content.
  * Optional: type, tags (string[] or comma-string), category, notes
+ *
+ * AI auto-tagging: If ANTHROPIC_API_KEY is set and no tags/category provided,
+ * Claude suggests tags + category automatically.
  */
 export async function POST(req: NextRequest) {
   const denied = checkApiKey(req);
@@ -35,7 +40,7 @@ export async function POST(req: NextRequest) {
   const title = ((body.title as string) || "").trim();
   const content = ((body.content as string) || text).trim();
   const notes = ((body.notes as string) || "").trim();
-  const category = ((body.category as string) || "").trim();
+  let category = ((body.category as string) || "").trim();
 
   if (!url && !title && !content) {
     return NextResponse.json({ error: "Provide at least url, text, title, or content" }, { status: 400 });
@@ -61,6 +66,22 @@ export async function POST(req: NextRequest) {
   let og = { ogTitle: "", ogDescription: "", ogImage: "", siteName: "", favicon: "" };
   if (url) {
     og = await enrichUrl(url);
+  }
+
+  // AI auto-tag + auto-categorize when no tags/category provided
+  if (tags.length === 0 && !category && process.env.ANTHROPIC_API_KEY) {
+    const existingCats = await db.select({ name: categories.name }).from(categories).orderBy(asc(categories.name));
+    const ai = await aiTagAndCategorize({
+      title: title || og.ogTitle,
+      content,
+      url,
+      ogTitle: og.ogTitle,
+      ogDescription: og.ogDescription,
+      siteName: og.siteName,
+      existingCategories: existingCats.map(c => c.name),
+    });
+    if (ai.tags.length > 0) tags = ai.tags;
+    if (ai.category) category = ai.category;
   }
 
   const [row] = await db

@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      width: 320px;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0D0F12;
+      color: #E0E0E0;
+      padding: 16px;
+    }
+    h1 {
+      font-size: 16px;
+      font-weight: 700;
+      background: linear-gradient(135deg, #E8A838, #EB5757);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 12px;
+    }
+    .setup { display: none; }
+    .setup.show { display: block; }
+    .main { display: none; }
+    .main.show { display: block; }
+    label {
+      display: block;
+      font-size: 11px;
+      color: #888;
+      margin-bottom: 4px;
+      font-family: monospace;
+    }
+    input, textarea, select {
+      width: 100%;
+      padding: 8px 10px;
+      background: #181B21;
+      border: 1px solid #252830;
+      border-radius: 8px;
+      color: #ccc;
+      font-size: 13px;
+      margin-bottom: 10px;
+      outline: none;
+    }
+    input:focus, textarea:focus { border-color: #E8A83860; }
+    textarea { resize: vertical; min-height: 50px; font-family: inherit; }
+    .row { display: flex; gap: 8px; }
+    .row > * { flex: 1; }
+    .types { display: flex; gap: 4px; margin-bottom: 10px; }
+    .types button {
+      flex: 1;
+      padding: 6px;
+      border-radius: 6px;
+      border: 1px solid #252830;
+      background: #181B21;
+      color: #666;
+      font-size: 11px;
+      font-family: monospace;
+      cursor: pointer;
+    }
+    .types button.active {
+      border-color: #E8A83860;
+      background: #E8A83815;
+      color: #E8A838;
+    }
+    .btn {
+      width: 100%;
+      padding: 10px;
+      border: none;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      color: white;
+      background: linear-gradient(135deg, #E8A838, #EB5757);
+    }
+    .btn:disabled { opacity: 0.5; }
+    .btn-secondary {
+      background: #181B21;
+      border: 1px solid #252830;
+      color: #888;
+      margin-top: 6px;
+    }
+    .status {
+      text-align: center;
+      font-size: 12px;
+      margin-top: 10px;
+      font-family: monospace;
+    }
+    .status.ok { color: #6FCF97; }
+    .status.err { color: #EB5757; }
+    .url-preview {
+      font-size: 11px;
+      color: #5B8DEF;
+      font-family: monospace;
+      margin-bottom: 10px;
+      word-break: break-all;
+    }
+  </style>
+</head>
+<body>
+  <h1>◆ Second Brain</h1>
+
+  <!-- Setup screen -->
+  <div class="setup" id="setup">
+    <label>Your Second Brain URL</label>
+    <input id="hostInput" placeholder="https://second-brain-xxx.vercel.app" />
+    <label>API Key</label>
+    <input id="keyInput" placeholder="Your API_SECRET" type="password" />
+    <button class="btn" onclick="saveConfig()">Connect</button>
+  </div>
+
+  <!-- Main screen -->
+  <div class="main" id="main">
+    <div class="url-preview" id="urlPreview"></div>
+
+    <div class="types" id="typeButtons">
+      <button data-type="link" class="active">◈ Link</button>
+      <button data-type="clip">✂ Clip</button>
+      <button data-type="note">✎ Note</button>
+      <button data-type="thought">◉ Thought</button>
+    </div>
+
+    <input id="titleInput" placeholder="Title (auto-filled from page)" />
+    <textarea id="notesInput" placeholder="My notes on this..." rows="2"></textarea>
+    <div class="row">
+      <input id="tagsInput" placeholder="Tags (comma separated)" />
+      <input id="categoryInput" placeholder="Category" />
+    </div>
+
+    <button class="btn" id="saveBtn" onclick="saveItem()">Save to Brain</button>
+    <button class="btn btn-secondary" onclick="showSetup()">Settings</button>
+
+    <div class="status" id="status"></div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

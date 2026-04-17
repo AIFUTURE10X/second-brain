@@ -27,6 +27,7 @@ interface Category {
   id: string;
   name: string;
   color: string;
+  parentId: string | null;
 }
 
 const TYPES: Record<ItemType, { icon: string; label: string; color: string }> = {
@@ -74,7 +75,8 @@ export default function Brain() {
   const [sortBy, setSortBy] = useState<"newest" | "oldest">("newest");
   const [saving, setSaving] = useState(false);
   const [summarizing, setSummarizing] = useState<string | null>(null);
-  const [newCat, setNewCat] = useState({ name: "", color: CAT_COLORS[0] });
+  const [newCat, setNewCat] = useState({ name: "", color: CAT_COLORS[0], parentId: "" });
+  const [editingCat, setEditingCat] = useState<Category | null>(null);
 
   const fetchItems = useCallback(async (query?: string) => {
     try {
@@ -199,21 +201,48 @@ export default function Brain() {
     await fetch("/api/categories", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(newCat),
+      body: JSON.stringify({ name: newCat.name, color: newCat.color, parentId: newCat.parentId || null }),
     });
-    setNewCat({ name: "", color: CAT_COLORS[0] });
+    setNewCat({ name: "", color: CAT_COLORS[0], parentId: "" });
     await fetchCategories();
+  };
+
+  const handleEditCategory = async () => {
+    if (!editingCat) return;
+    await fetch("/api/categories", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: editingCat.id, name: editingCat.name, color: editingCat.color, parentId: editingCat.parentId }),
+    });
+    setEditingCat(null);
+    await fetchCategories();
+    await fetchItems();
   };
 
   const handleDeleteCategory = async (id: string) => {
     await fetch(`/api/categories?id=${id}`, { method: "DELETE" });
+    if (editingCat?.id === id) setEditingCat(null);
     await fetchCategories();
+  };
+
+  // Helper: get parent categories (no parent)
+  const parentCats = categories.filter(c => !c.parentId);
+  const getChildren = (parentId: string) => categories.filter(c => c.parentId === parentId);
+  // Get all category names under a parent (for filtering)
+  const getCatNamesUnderParent = (name: string) => {
+    const parent = categories.find(c => c.name === name && !c.parentId);
+    if (!parent) return [name];
+    return [name, ...getChildren(parent.id).map(c => c.name)];
   };
 
   // Text search is now server-side; client filters only type + category
   const filtered = items
     .filter(i => view === "all" || i.type === view)
-    .filter(i => catFilter === "all" || i.category === catFilter)
+    .filter(i => {
+      if (catFilter === "all") return true;
+      const matchNames = getCatNamesUnderParent(catFilter);
+      return matchNames.includes(i.category);
+    })
     .sort((a, b) => {
       if (a.pinned !== b.pinned) return b.pinned ? 1 : -1;
       const da = new Date(a.createdAt).getTime();
@@ -293,46 +322,57 @@ export default function Brain() {
           ))}
         </div>
 
-        {/* Category filters */}
+        {/* Category filters — hierarchical */}
         {categories.length > 0 && (
-          <div className="flex gap-1 items-center overflow-x-auto pb-3 pt-1.5">
-            {catFilter !== "all" ? (
-              <button
-                onClick={() => { setCatFilter("all"); setView("all"); }}
-                className="px-2.5 py-1 rounded-md text-[11px] font-mono transition flex items-center gap-1 shrink-0"
-                style={{ border: "1px solid #E8A83850", background: "#E8A83815", color: "#E8A838" }}
-              >← All</button>
-            ) : (
-              <button
-                onClick={() => setCatFilter("all")}
-                className="px-2.5 py-1 rounded-md text-[11px] font-mono transition shrink-0"
-                style={{ border: "1px solid #ffffff30", background: "#ffffff10", color: "#fff" }}
-              >All</button>
-            )}
-            {categories.map(cat => (
-              <div key={cat.id} className="flex items-center gap-0 shrink-0">
+          <div className="flex flex-col gap-1 pb-3 pt-1.5">
+            <div className="flex gap-1 items-center overflow-x-auto">
+              {catFilter !== "all" ? (
                 <button
+                  onClick={() => { setCatFilter("all"); setView("all"); }}
+                  className="px-2.5 py-1 rounded-md text-[11px] font-mono transition flex items-center gap-1 shrink-0"
+                  style={{ border: "1px solid #E8A83850", background: "#E8A83815", color: "#E8A838" }}
+                >← All</button>
+              ) : (
+                <button
+                  onClick={() => setCatFilter("all")}
+                  className="px-2.5 py-1 rounded-md text-[11px] font-mono transition shrink-0"
+                  style={{ border: "1px solid #ffffff30", background: "#ffffff10", color: "#fff" }}
+                >All</button>
+              )}
+              {parentCats.map(cat => (
+                <button
+                  key={cat.id}
                   onClick={() => setCatFilter(catFilter === cat.name ? "all" : cat.name)}
-                  className="px-2.5 py-1 rounded-l-md text-[11px] font-mono transition whitespace-nowrap"
+                  className="px-2.5 py-1 rounded-md text-[11px] font-mono transition whitespace-nowrap shrink-0"
                   style={{
                     border: catFilter === cat.name ? `1px solid ${cat.color}50` : "1px solid transparent",
-                    borderRight: "none",
                     background: catFilter === cat.name ? `${cat.color}15` : "transparent",
                     color: catFilter === cat.name ? cat.color : "#555",
                   }}
                 >{cat.name}</button>
-                <button
-                  onClick={(e) => { e.stopPropagation(); handleDeleteCategory(cat.id); }}
-                  className="px-1 py-1 rounded-r-md text-[10px] text-gray-700 hover:text-red-400 transition"
-                  style={{
-                    border: catFilter === cat.name ? `1px solid ${cat.color}50` : "1px solid transparent",
-                    borderLeft: "none",
-                    background: catFilter === cat.name ? `${cat.color}15` : "transparent",
-                  }}
-                  title={`Delete ${cat.name}`}
-                >✕</button>
-              </div>
-            ))}
+              ))}
+            </div>
+            {/* Subcategories row — shows when parent is selected */}
+            {catFilter !== "all" && (() => {
+              const parent = categories.find(c => c.name === catFilter && !c.parentId);
+              const subs = parent ? getChildren(parent.id) : [];
+              return subs.length > 0 ? (
+                <div className="flex gap-1 items-center overflow-x-auto pl-4">
+                  {subs.map(sub => (
+                    <button
+                      key={sub.id}
+                      onClick={() => setCatFilter(sub.name)}
+                      className="px-2 py-0.5 rounded text-[10px] font-mono transition whitespace-nowrap shrink-0"
+                      style={{
+                        border: catFilter === sub.name ? `1px solid ${sub.color}50` : `1px solid ${sub.color}20`,
+                        background: catFilter === sub.name ? `${sub.color}15` : "transparent",
+                        color: catFilter === sub.name ? sub.color : "#555",
+                      }}
+                    >↳ {sub.name}</button>
+                  ))}
+                </div>
+              ) : null;
+            })()}
           </div>
         )}
       </div>
@@ -528,21 +568,20 @@ export default function Brain() {
               ))}
             </div>
 
-            {/* Category selector */}
-            {categories.length > 0 && (
-              <div className="flex gap-1.5 mb-4 flex-wrap">
-                <button
-                  onClick={() => setForm(f => ({ ...f, category: "" }))}
-                  className="px-2.5 py-1 rounded-md text-[11px] font-mono transition"
-                  style={{
-                    border: !form.category ? "1px solid #ffffff30" : "1px solid #252830",
-                    background: !form.category ? "#ffffff10" : "#181B21",
-                    color: !form.category ? "#fff" : "#666",
-                  }}
-                >None</button>
-                {categories.map(cat => (
+            {/* Category selector — hierarchical, or auto if left empty */}
+            <div className="flex gap-1.5 mb-4 flex-wrap">
+              <button
+                onClick={() => setForm(f => ({ ...f, category: "" }))}
+                className="px-2.5 py-1 rounded-md text-[11px] font-mono transition"
+                style={{
+                  border: !form.category ? "1px solid #ffffff30" : "1px solid #252830",
+                  background: !form.category ? "#ffffff10" : "#181B21",
+                  color: !form.category ? "#fff" : "#666",
+                }}
+              >Auto</button>
+              {parentCats.map(cat => (
+                <span key={cat.id} className="contents">
                   <button
-                    key={cat.id}
                     onClick={() => setForm(f => ({ ...f, category: cat.name }))}
                     className="px-2.5 py-1 rounded-md text-[11px] font-mono transition"
                     style={{
@@ -551,9 +590,21 @@ export default function Brain() {
                       color: form.category === cat.name ? cat.color : "#666",
                     }}
                   >{cat.name}</button>
-                ))}
-              </div>
-            )}
+                  {getChildren(cat.id).map(sub => (
+                    <button
+                      key={sub.id}
+                      onClick={() => setForm(f => ({ ...f, category: sub.name }))}
+                      className="px-2 py-1 rounded-md text-[10px] font-mono transition"
+                      style={{
+                        border: form.category === sub.name ? `1px solid ${sub.color}60` : "1px solid #252830",
+                        background: form.category === sub.name ? `${sub.color}15` : "#181B21",
+                        color: form.category === sub.name ? sub.color : "#555",
+                      }}
+                    >↳ {sub.name}</button>
+                  ))}
+                </span>
+              ))}
+            </div>
 
             {/* Fields */}
             {(form.type === "link" || form.type === "clip") && (
@@ -620,50 +671,118 @@ export default function Brain() {
               Categories
             </h2>
 
-            {/* Existing categories */}
+            {/* Existing categories — hierarchical */}
             {categories.length === 0 && (
-              <p className="text-xs text-gray-600 font-mono mb-4">No categories yet. Create one below.</p>
+              <p className="text-xs text-gray-600 font-mono mb-4">No categories yet. Add one below, or just save items — AI will auto-categorize.</p>
             )}
-            {categories.map(cat => (
-              <div key={cat.id} className="flex items-center justify-between py-2 border-b border-brand-border">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full" style={{ background: cat.color }} />
-                  <span className="text-sm text-gray-300">{cat.name}</span>
-                  <span className="text-[10px] text-gray-700 font-mono">
-                    {items.filter(i => i.category === cat.name).length} items
-                  </span>
+            {parentCats.map(cat => (
+              <div key={cat.id}>
+                <div className="flex items-center justify-between py-2 border-b border-brand-border">
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <div className="w-3 h-3 rounded-full shrink-0" style={{ background: cat.color }} />
+                    <span className="text-sm text-gray-300 truncate">{cat.name}</span>
+                    <span className="text-[10px] text-gray-700 font-mono shrink-0">
+                      {items.filter(i => getCatNamesUnderParent(cat.name).includes(i.category)).length}
+                    </span>
+                  </div>
+                  <div className="flex gap-1 shrink-0">
+                    <button onClick={() => setEditingCat({ ...cat })} className="text-[11px] text-gray-600 hover:text-blue-400 font-mono transition">✎</button>
+                    <button onClick={() => handleDeleteCategory(cat.id)} className="text-[11px] text-gray-600 hover:text-red-400 font-mono transition">✕</button>
+                  </div>
                 </div>
-                <button
-                  onClick={() => handleDeleteCategory(cat.id)}
-                  className="text-[11px] text-gray-600 hover:text-red-400 font-mono transition"
-                >✕</button>
+                {/* Subcategories */}
+                {getChildren(cat.id).map(sub => (
+                  <div key={sub.id} className="flex items-center justify-between py-1.5 pl-6 border-b border-brand-border/50">
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <div className="w-2 h-2 rounded-full shrink-0" style={{ background: sub.color }} />
+                      <span className="text-xs text-gray-400 truncate">↳ {sub.name}</span>
+                      <span className="text-[10px] text-gray-700 font-mono shrink-0">
+                        {items.filter(i => i.category === sub.name).length}
+                      </span>
+                    </div>
+                    <div className="flex gap-1 shrink-0">
+                      <button onClick={() => setEditingCat({ ...sub })} className="text-[10px] text-gray-600 hover:text-blue-400 font-mono transition">✎</button>
+                      <button onClick={() => handleDeleteCategory(sub.id)} className="text-[10px] text-gray-600 hover:text-red-400 font-mono transition">✕</button>
+                    </div>
+                  </div>
+                ))}
               </div>
             ))}
 
-            {/* Add new category */}
-            <div className="mt-4 flex gap-2">
-              <input
-                value={newCat.name}
-                onChange={e => setNewCat(n => ({ ...n, name: e.target.value }))}
-                placeholder="New category name"
-                className="flex-1 px-3 py-2 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none placeholder:text-gray-600"
-                onKeyDown={e => e.key === "Enter" && handleAddCategory()}
-              />
-              <div className="flex gap-1 items-center">
-                {CAT_COLORS.slice(0, 5).map(c => (
-                  <button
-                    key={c}
-                    onClick={() => setNewCat(n => ({ ...n, color: c }))}
-                    className="w-5 h-5 rounded-full transition-transform"
-                    style={{ background: c, border: newCat.color === c ? "2px solid white" : "2px solid transparent", transform: newCat.color === c ? "scale(1.2)" : "scale(1)" }}
-                  />
-                ))}
+            {/* Edit category inline */}
+            {editingCat && (
+              <div className="mt-3 p-3 rounded-lg border border-type-link/30 bg-type-link/5">
+                <p className="text-[11px] text-type-link font-mono mb-2">Editing: {editingCat.name}</p>
+                <input
+                  value={editingCat.name}
+                  onChange={e => setEditingCat(c => c ? { ...c, name: e.target.value } : null)}
+                  className="w-full px-3 py-1.5 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none mb-2 placeholder:text-gray-600"
+                />
+                <div className="flex gap-2 items-center mb-2">
+                  <span className="text-[10px] text-gray-600 font-mono">Color:</span>
+                  {CAT_COLORS.slice(0, 8).map(c => (
+                    <button key={c} onClick={() => setEditingCat(cat => cat ? { ...cat, color: c } : null)}
+                      className="w-4 h-4 rounded-full transition-transform"
+                      style={{ background: c, border: editingCat.color === c ? "2px solid white" : "2px solid transparent", transform: editingCat.color === c ? "scale(1.2)" : "scale(1)" }}
+                    />
+                  ))}
+                </div>
+                <div className="flex gap-2 items-center mb-2">
+                  <span className="text-[10px] text-gray-600 font-mono">Parent:</span>
+                  <select
+                    value={editingCat.parentId || ""}
+                    onChange={e => setEditingCat(c => c ? { ...c, parentId: e.target.value || null } : null)}
+                    className="px-2 py-1 bg-brand-muted border border-brand-border rounded text-xs text-gray-300 outline-none"
+                  >
+                    <option value="">None (top-level)</option>
+                    {parentCats.filter(c => c.id !== editingCat.id).map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={handleEditCategory} className="px-3 py-1.5 rounded-lg text-[11px] font-mono text-white" style={{ background: "linear-gradient(135deg, #E8A838, #EB5757)" }}>Save</button>
+                  <button onClick={() => setEditingCat(null)} className="px-3 py-1.5 rounded-lg text-[11px] font-mono text-gray-500 border border-brand-border">Cancel</button>
+                </div>
               </div>
-              <button
-                onClick={handleAddCategory}
-                className="px-3 py-2 rounded-lg text-sm font-medium text-white"
-                style={{ background: "linear-gradient(135deg, #E8A838, #EB5757)" }}
-              >Add</button>
+            )}
+
+            {/* Add new category */}
+            <div className="mt-4">
+              <div className="flex gap-2">
+                <input
+                  value={newCat.name}
+                  onChange={e => setNewCat(n => ({ ...n, name: e.target.value }))}
+                  placeholder="New category name"
+                  className="flex-1 px-3 py-2 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none placeholder:text-gray-600"
+                  onKeyDown={e => e.key === "Enter" && handleAddCategory()}
+                />
+                <button
+                  onClick={handleAddCategory}
+                  className="px-3 py-2 rounded-lg text-sm font-medium text-white shrink-0"
+                  style={{ background: "linear-gradient(135deg, #E8A838, #EB5757)" }}
+                >Add</button>
+              </div>
+              <div className="flex gap-2 items-center mt-2">
+                <div className="flex gap-1 items-center">
+                  {CAT_COLORS.slice(0, 6).map(c => (
+                    <button key={c} onClick={() => setNewCat(n => ({ ...n, color: c }))}
+                      className="w-4 h-4 rounded-full transition-transform"
+                      style={{ background: c, border: newCat.color === c ? "2px solid white" : "2px solid transparent", transform: newCat.color === c ? "scale(1.2)" : "scale(1)" }}
+                    />
+                  ))}
+                </div>
+                <select
+                  value={newCat.parentId}
+                  onChange={e => setNewCat(n => ({ ...n, parentId: e.target.value }))}
+                  className="px-2 py-1 bg-brand-muted border border-brand-border rounded text-[11px] text-gray-400 outline-none"
+                >
+                  <option value="">Top-level</option>
+                  {parentCats.map(c => (
+                    <option key={c.id} value={c.id}>Sub of {c.name}</option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             {/* Export / Import */}

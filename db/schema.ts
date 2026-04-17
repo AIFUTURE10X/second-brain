@@ -2,8 +2,9 @@ import { pgTable, text, boolean, uuid, timestamp, jsonb } from "drizzle-orm/pg-c
 
 export const categories = pgTable("categories", {
   id: uuid("id").primaryKey().defaultRandom(),
-  name: text("name").notNull().unique(),
+  name: text("name").notNull(),
   color: text("color").notNull().default("#E8A838"),
+  parentId: uuid("parent_id"),
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
 });
 

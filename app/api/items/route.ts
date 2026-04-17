@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db, sql } from "@/db";
-import { items } from "@/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { items, categories } from "@/db/schema";
+import { eq, desc, asc } from "drizzle-orm";
 import { enrichUrl } from "@/lib/enrich";
 import { checkApiKey } from "@/lib/api-key";
+import { aiTagAndCategorize } from "@/lib/ai-tagger";
 
 // GET all items — supports ?q= for full-text search
 export async function GET(req: NextRequest) {
@@ -48,6 +49,32 @@ export async function POST(req: NextRequest) {
     og = await enrichUrl(url);
   }
 
+  let itemTags: string[] = body.tags || [];
+  let itemCategory: string = body.category || "";
+
+  // AI auto-tag + auto-categorize when no tags/category provided
+  if (itemTags.length === 0 && !itemCategory && process.env.ANTHROPIC_API_KEY) {
+    const existingCats = await db.select({ name: categories.name }).from(categories).orderBy(asc(categories.name));
+    const ai = await aiTagAndCategorize({
+      title: body.title || og.ogTitle || "",
+      content: body.content || "",
+      url,
+      ogTitle: og.ogTitle,
+      ogDescription: og.ogDescription,
+      siteName: og.siteName,
+      existingCategories: existingCats.map(c => c.name),
+    });
+    if (ai.tags.length > 0) itemTags = ai.tags;
+    if (ai.category) {
+      itemCategory = ai.category;
+      // Auto-create category if it doesn't exist
+      const exists = existingCats.some(c => c.name.toLowerCase() === ai.category.toLowerCase());
+      if (!exists) {
+        await db.insert(categories).values({ name: ai.category }).onConflictDoNothing();
+      }
+    }
+  }
+
   const [row] = await db
     .insert(items)
     .values({
@@ -56,8 +83,8 @@ export async function POST(req: NextRequest) {
       content: body.content || "",
       url,
       notes: body.notes || "",
-      tags: body.tags || [],
-      category: body.category || "",
+      tags: itemTags,
+      category: itemCategory,
       pinned: body.pinned || false,
       ogTitle: body.ogTitle || og.ogTitle || "",
       ogDescription: body.ogDescription || og.ogDescription || "",

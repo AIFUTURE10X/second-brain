@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "description": "One-click save any page or selected text to your Second Brain",
   "permissions": ["activeTab", "storage", "scripting"],
+  "host_permissions": ["https://*.vercel.app/*"],
   "action": {
     "default_popup": "popup.html"
   }

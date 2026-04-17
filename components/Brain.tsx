@@ -280,7 +280,7 @@ export default function Brain() {
           {[{ key: "all" as const, label: "All", icon: "◇" }, ...Object.entries(TYPES).map(([k, v]) => ({ key: k as "all" | ItemType, label: v.label, icon: v.icon }))].map(tab => (
             <button
               key={tab.key}
-              onClick={() => setView(tab.key)}
+              onClick={() => { setView(tab.key); if (tab.key === "all") setCatFilter("all"); }}
               className="px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-mono font-medium transition-all"
               style={{
                 border: view === tab.key ? "1px solid #E8A83850" : "1px solid transparent",
@@ -295,16 +295,20 @@ export default function Brain() {
 
         {/* Category filters */}
         {categories.length > 0 && (
-          <div className="flex gap-1 overflow-x-auto pb-3 pt-1.5">
-            <button
-              onClick={() => setCatFilter("all")}
-              className="px-2.5 py-1 rounded-md text-[11px] font-mono transition"
-              style={{
-                border: catFilter === "all" ? "1px solid #ffffff30" : "1px solid transparent",
-                background: catFilter === "all" ? "#ffffff10" : "transparent",
-                color: catFilter === "all" ? "#fff" : "#555",
-              }}
-            >All</button>
+          <div className="flex gap-1 items-center overflow-x-auto pb-3 pt-1.5">
+            {catFilter !== "all" ? (
+              <button
+                onClick={() => { setCatFilter("all"); setView("all"); }}
+                className="px-2.5 py-1 rounded-md text-[11px] font-mono transition flex items-center gap-1 shrink-0"
+                style={{ border: "1px solid #E8A83850", background: "#E8A83815", color: "#E8A838" }}
+              >← All</button>
+            ) : (
+              <button
+                onClick={() => setCatFilter("all")}
+                className="px-2.5 py-1 rounded-md text-[11px] font-mono transition shrink-0"
+                style={{ border: "1px solid #ffffff30", background: "#ffffff10", color: "#fff" }}
+              >All</button>
+            )}
             {categories.map(cat => (
               <div key={cat.id} className="flex items-center gap-0 shrink-0">
                 <button

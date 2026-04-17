@@ -568,8 +568,8 @@ export default function Brain() {
               ))}
             </div>
 
-            {/* Category selector — hierarchical, or auto if left empty */}
-            <div className="flex gap-1.5 mb-4 flex-wrap">
+            {/* Category selector — pick existing, type new, or auto */}
+            <div className="flex gap-1.5 mb-2 flex-wrap items-center">
               <button
                 onClick={() => setForm(f => ({ ...f, category: "" }))}
                 className="px-2.5 py-1 rounded-md text-[11px] font-mono transition"
@@ -605,6 +605,12 @@ export default function Brain() {
                 </span>
               ))}
             </div>
+            <input
+              value={form.category}
+              onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
+              placeholder="Type a category name (new or existing)"
+              className="w-full px-3 py-2 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none mb-4 placeholder:text-gray-600"
+            />
 
             {/* Fields */}
             {(form.type === "link" || form.type === "clip") && (
@@ -644,18 +650,29 @@ export default function Brain() {
               className="w-full px-3 py-2.5 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none mb-4 placeholder:text-gray-600"
             />
 
-            <div className="flex gap-2.5">
-              <button onClick={closeForm} className="flex-1 py-3 rounded-xl bg-brand-muted border border-brand-border text-gray-500 text-sm font-medium">
+            <div className="flex gap-2">
+              <button onClick={closeForm} className="py-3 px-4 rounded-xl bg-brand-muted border border-brand-border text-gray-500 text-sm font-medium">
                 Cancel
               </button>
               <button
                 onClick={handleSave}
                 disabled={saving}
-                className="flex-[2] py-3 rounded-xl text-white text-sm font-semibold transition-transform hover:scale-[1.01] disabled:opacity-50"
+                className="flex-1 py-3 rounded-xl text-white text-sm font-semibold transition-transform hover:scale-[1.01] disabled:opacity-50"
                 style={{ background: "linear-gradient(135deg, #E8A838, #EB5757)", boxShadow: "0 4px 16px rgba(232,168,56,0.25)" }}
               >
                 {saving ? "Saving..." : editingId ? "Update" : "Save"}
               </button>
+              {!editingId && (
+                <button
+                  onClick={async () => {
+                    await handleSave();
+                  }}
+                  disabled={saving}
+                  className="py-3 px-4 rounded-xl text-sm font-medium border border-brand-border text-gray-400 hover:text-white transition disabled:opacity-50"
+                >
+                  + Add Another
+                </button>
+              )}
             </div>
           </div>
         </div>

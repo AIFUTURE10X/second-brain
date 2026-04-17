@@ -75,6 +75,15 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Auto-create category if user typed a new name
+  if (itemCategory) {
+    const existingCats2 = await db.select({ name: categories.name }).from(categories);
+    const exists = existingCats2.some(c => c.name.toLowerCase() === itemCategory.toLowerCase());
+    if (!exists) {
+      await db.insert(categories).values({ name: itemCategory }).onConflictDoNothing();
+    }
+  }
+
   const [row] = await db
     .insert(items)
     .values({

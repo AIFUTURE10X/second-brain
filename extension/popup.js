@@ -18,25 +18,32 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   // Get current tab info
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (tab) {
-    currentUrl = tab.url || "";
-    currentTitle = tab.title || "";
-    document.getElementById("urlPreview").textContent = currentUrl.replace(/^https?:\/\/(www\.)?/, "").slice(0, 60);
-    document.getElementById("titleInput").placeholder = currentTitle || "Title";
-  }
-
-  // Try to get selected text
   try {
-    const [result] = await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      func: () => window.getSelection()?.toString() || "",
-    });
-    selectedText = result?.result || "";
-    if (selectedText) {
-      document.getElementById("notesInput").value = selectedText;
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab) {
+      currentUrl = tab.url || "";
+      currentTitle = tab.title || "";
+      document.getElementById("urlPreview").textContent = currentUrl.replace(/^https?:\/\/(www\.)?/, "").slice(0, 60);
+      document.getElementById("titleInput").placeholder = currentTitle || "Title";
+    }
+
+    // Try to get selected text
+    if (tab?.id) {
+      const [result] = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: () => window.getSelection()?.toString() || "",
+      });
+      selectedText = result?.result || "";
+      if (selectedText) {
+        document.getElementById("notesInput").value = selectedText;
+      }
     }
   } catch {}
+
+  // Wire up all buttons (no inline onclick — Chrome MV3 CSP blocks them)
+  document.getElementById("connectBtn").addEventListener("click", saveConfig);
+  document.getElementById("saveBtn").addEventListener("click", saveItem);
+  document.getElementById("settingsBtn").addEventListener("click", showSetup);
 
   // Type buttons
   document.querySelectorAll("#typeButtons button").forEach(btn => {
@@ -100,11 +107,9 @@ async function saveItem() {
     });
 
     if (res.ok) {
-      const data = await res.json();
       status.textContent = "✓ Saved!";
       status.className = "status ok";
       btn.textContent = "Saved!";
-      // Auto-close after 1.5s
       setTimeout(() => window.close(), 1500);
     } else {
       const err = await res.json().catch(() => ({}));

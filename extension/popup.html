@@ -106,7 +106,7 @@
     <input id="hostInput" placeholder="https://second-brain-xxx.vercel.app" />
     <label>API Key</label>
     <input id="keyInput" placeholder="Your API_SECRET" type="password" />
-    <button class="btn" onclick="saveConfig()">Connect</button>
+    <button class="btn" id="connectBtn">Connect</button>
   </div>
 
   <!-- Main screen -->
@@ -127,8 +127,8 @@
       <input id="categoryInput" placeholder="Category" />
     </div>
 
-    <button class="btn" id="saveBtn" onclick="saveItem()">Save to Brain</button>
-    <button class="btn btn-secondary" onclick="showSetup()">Settings</button>
+    <button class="btn" id="saveBtn">Save to Brain</button>
+    <button class="btn btn-secondary" id="settingsBtn">Settings</button>
 
     <div class="status" id="status"></div>
   </div>

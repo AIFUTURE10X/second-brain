@@ -66,21 +66,19 @@ export async function POST(req: NextRequest) {
     });
     if (ai.tags.length > 0) itemTags = ai.tags;
     if (ai.category) {
-      itemCategory = ai.category;
-      // Auto-create category if it doesn't exist
-      const exists = existingCats.some(c => c.name.toLowerCase() === ai.category.toLowerCase());
-      if (!exists) {
-        await db.insert(categories).values({ name: ai.category }).onConflictDoNothing();
-      }
+      itemCategory = ai.category.trim();
     }
   }
 
-  // Auto-create category if user typed a new name
+  // Auto-create category if it doesn't exist (from AI or user input)
   if (itemCategory) {
+    itemCategory = itemCategory.trim();
     const existingCats2 = await db.select({ name: categories.name }).from(categories);
     const exists = existingCats2.some(c => c.name.toLowerCase() === itemCategory.toLowerCase());
     if (!exists) {
-      await db.insert(categories).values({ name: itemCategory }).onConflictDoNothing();
+      try {
+        await db.insert(categories).values({ name: itemCategory });
+      } catch {}
     }
   }
 

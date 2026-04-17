@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
         await db.insert(categories).values({
           name: cat.name,
           color: cat.color || "#E8A838",
-        }).onConflictDoNothing();
+        });
         importedCats++;
       } catch {}
     }

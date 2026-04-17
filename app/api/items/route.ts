@@ -122,6 +122,18 @@ export async function PUT(req: NextRequest) {
     updates.favicon = og.favicon;
   }
 
+  // Auto-create category if it doesn't exist
+  if (updates.category) {
+    updates.category = updates.category.trim();
+    const existingCats = await db.select({ name: categories.name }).from(categories);
+    const exists = existingCats.some(c => c.name.toLowerCase() === updates.category.toLowerCase());
+    if (!exists) {
+      try {
+        await db.insert(categories).values({ name: updates.category });
+      } catch {}
+    }
+  }
+
   const [row] = await db
     .update(items)
     .set({ ...updates, updatedAt: new Date() })

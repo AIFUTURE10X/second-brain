@@ -352,9 +352,9 @@ export default function Brain() {
                   onClick={() => setCatFilter(catFilter === cat.name ? "all" : cat.name)}
                   className="px-2.5 py-1 rounded-md text-[11px] font-mono transition whitespace-nowrap shrink-0"
                   style={{
-                    border: catFilter === cat.name ? `1px solid ${cat.color}50` : "1px solid transparent",
-                    background: catFilter === cat.name ? `${cat.color}15` : "transparent",
-                    color: catFilter === cat.name ? cat.color : "#555",
+                    border: `1px solid ${cat.color}${catFilter === cat.name ? "60" : "40"}`,
+                    background: catFilter === cat.name ? `${cat.color}20` : `${cat.color}10`,
+                    color: cat.color,
                   }}
                 >{cat.name}</button>
               ))}

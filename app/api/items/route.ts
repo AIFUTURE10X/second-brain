@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { items } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
+import { enrichUrl } from "@/lib/enrich";
 
 // GET all items
 export async function GET() {
@@ -12,15 +13,30 @@ export async function GET() {
 // POST create new item
 export async function POST(req: NextRequest) {
   const body = await req.json();
+  const url = body.url?.trim() || "";
+
+  // Auto-enrich if URL is provided and no og data was passed
+  let og = { ogTitle: "", ogDescription: "", ogImage: "", siteName: "", favicon: "" };
+  if (url && !body.ogTitle) {
+    og = await enrichUrl(url);
+  }
+
   const [row] = await db
     .insert(items)
     .values({
       type: body.type || "note",
-      title: body.title || "",
+      title: body.title || og.ogTitle || "",
       content: body.content || "",
-      url: body.url || "",
+      url,
+      notes: body.notes || "",
       tags: body.tags || [],
+      category: body.category || "",
       pinned: body.pinned || false,
+      ogTitle: body.ogTitle || og.ogTitle || "",
+      ogDescription: body.ogDescription || og.ogDescription || "",
+      ogImage: body.ogImage || og.ogImage || "",
+      siteName: body.siteName || og.siteName || "",
+      favicon: body.favicon || og.favicon || "",
     })
     .returning();
 
@@ -32,6 +48,16 @@ export async function PUT(req: NextRequest) {
   const body = await req.json();
   const { id, ...updates } = body;
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
+
+  // If URL changed and no og data provided, re-enrich
+  if (updates.url && !updates.ogTitle) {
+    const og = await enrichUrl(updates.url);
+    updates.ogTitle = og.ogTitle;
+    updates.ogDescription = og.ogDescription;
+    updates.ogImage = og.ogImage;
+    updates.siteName = og.siteName;
+    updates.favicon = og.favicon;
+  }
 
   const [row] = await db
     .update(items)

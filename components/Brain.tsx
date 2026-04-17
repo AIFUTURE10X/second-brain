@@ -10,10 +10,23 @@ interface Item {
   title: string;
   content: string;
   url: string;
+  notes: string;
   tags: string[];
+  category: string;
   pinned: boolean;
+  ogTitle: string;
+  ogDescription: string;
+  ogImage: string;
+  siteName: string;
+  favicon: string;
   createdAt: string;
   updatedAt: string;
+}
+
+interface Category {
+  id: string;
+  name: string;
+  color: string;
 }
 
 const TYPES: Record<ItemType, { icon: string; label: string; color: string }> = {
@@ -24,6 +37,7 @@ const TYPES: Record<ItemType, { icon: string; label: string; color: string }> = 
 };
 
 const TAG_COLORS = ["#E8A838", "#5B8DEF", "#6FCF97", "#BB6BD9", "#EB5757", "#56CCF2", "#F2994A", "#9B51E0"];
+const CAT_COLORS = ["#E8A838", "#5B8DEF", "#6FCF97", "#BB6BD9", "#EB5757", "#56CCF2", "#F2994A", "#9B51E0", "#27AE60", "#F2C94C"];
 
 function timeAgo(dateStr: string) {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -39,15 +53,27 @@ function timeAgo(dateStr: string) {
 
 export default function Brain() {
   const [items, setItems] = useState<Item[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<"all" | ItemType>("all");
+  const [catFilter, setCatFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [showAdd, setShowAdd] = useState(false);
+  const [showCatManager, setShowCatManager] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState({ type: "note" as ItemType, title: "", content: "", url: "", tags: "" });
+  const [form, setForm] = useState({
+    type: "note" as ItemType,
+    title: "",
+    content: "",
+    url: "",
+    notes: "",
+    tags: "",
+    category: "",
+  });
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<"newest" | "oldest">("newest");
   const [saving, setSaving] = useState(false);
+  const [newCat, setNewCat] = useState({ name: "", color: CAT_COLORS[0] });
 
   const fetchItems = useCallback(async () => {
     try {
@@ -57,16 +83,23 @@ export default function Brain() {
     setLoading(false);
   }, []);
 
-  useEffect(() => { fetchItems(); }, [fetchItems]);
+  const fetchCategories = useCallback(async () => {
+    try {
+      const res = await fetch("/api/categories");
+      if (res.ok) setCategories(await res.json());
+    } catch {}
+  }, []);
+
+  useEffect(() => { fetchItems(); fetchCategories(); }, [fetchItems, fetchCategories]);
 
   const resetForm = () => {
-    setForm({ type: "note", title: "", content: "", url: "", tags: "" });
+    setForm({ type: "note", title: "", content: "", url: "", notes: "", tags: "", category: "" });
     setShowAdd(false);
     setEditingId(null);
   };
 
   const handleSave = async () => {
-    if (!form.title.trim() && !form.content.trim()) return;
+    if (!form.title.trim() && !form.content.trim() && !form.url.trim()) return;
     setSaving(true);
     const tags = form.tags.split(",").map(t => t.trim()).filter(Boolean);
     try {
@@ -107,17 +140,48 @@ export default function Brain() {
   };
 
   const handleEdit = (item: Item) => {
-    setForm({ type: item.type, title: item.title, content: item.content || "", url: item.url || "", tags: (item.tags || []).join(", ") });
+    setForm({
+      type: item.type,
+      title: item.title,
+      content: item.content || "",
+      url: item.url || "",
+      notes: item.notes || "",
+      tags: (item.tags || []).join(", "),
+      category: item.category || "",
+    });
     setEditingId(item.id);
     setShowAdd(true);
   };
 
+  const handleAddCategory = async () => {
+    if (!newCat.name.trim()) return;
+    await fetch("/api/categories", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(newCat),
+    });
+    setNewCat({ name: "", color: CAT_COLORS[0] });
+    await fetchCategories();
+  };
+
+  const handleDeleteCategory = async (id: string) => {
+    await fetch(`/api/categories?id=${id}`, { method: "DELETE" });
+    await fetchCategories();
+  };
+
   const filtered = items
     .filter(i => view === "all" || i.type === view)
+    .filter(i => catFilter === "all" || i.category === catFilter)
     .filter(i => {
       if (!search) return true;
       const s = search.toLowerCase();
-      return i.title?.toLowerCase().includes(s) || i.content?.toLowerCase().includes(s) || (i.tags || []).some(t => t.toLowerCase().includes(s));
+      return (
+        i.title?.toLowerCase().includes(s) ||
+        i.content?.toLowerCase().includes(s) ||
+        i.notes?.toLowerCase().includes(s) ||
+        i.ogTitle?.toLowerCase().includes(s) ||
+        (i.tags || []).some(t => t.toLowerCase().includes(s))
+      );
     })
     .sort((a, b) => {
       if (a.pinned !== b.pinned) return b.pinned ? 1 : -1;
@@ -131,6 +195,8 @@ export default function Brain() {
     all: items.length,
     ...Object.fromEntries(Object.keys(TYPES).map(k => [k, items.filter(i => i.type === k).length])),
   };
+
+  const getCatColor = (name: string) => categories.find(c => c.name === name)?.color || "#666";
 
   if (loading) {
     return (
@@ -153,11 +219,18 @@ export default function Brain() {
               {items.length} items · synced
             </p>
           </div>
-          <button
-            onClick={() => { resetForm(); setShowAdd(true); }}
-            className="w-9 h-9 rounded-xl text-white text-xl flex items-center justify-center font-light transition-transform hover:scale-105"
-            style={{ background: "linear-gradient(135deg, #E8A838, #EB5757)", boxShadow: "0 4px 16px rgba(232,168,56,0.3)" }}
-          >+</button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowCatManager(true)}
+              className="w-9 h-9 rounded-xl text-gray-500 text-sm flex items-center justify-center border border-brand-border hover:text-gray-300 transition"
+              title="Manage categories"
+            >⊞</button>
+            <button
+              onClick={() => { resetForm(); setShowAdd(true); }}
+              className="w-9 h-9 rounded-xl text-white text-xl flex items-center justify-center font-light transition-transform hover:scale-105"
+              style={{ background: "linear-gradient(135deg, #E8A838, #EB5757)", boxShadow: "0 4px 16px rgba(232,168,56,0.3)" }}
+            >+</button>
+          </div>
         </div>
 
         {/* Search */}
@@ -171,8 +244,8 @@ export default function Brain() {
           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600 text-sm">⌕</span>
         </div>
 
-        {/* Filters */}
-        <div className="flex gap-1 overflow-x-auto pb-3">
+        {/* Type filters */}
+        <div className="flex gap-1 overflow-x-auto pb-1.5">
           {[{ key: "all" as const, label: "All", icon: "◇" }, ...Object.entries(TYPES).map(([k, v]) => ({ key: k as "all" | ItemType, label: v.label, icon: v.icon }))].map(tab => (
             <button
               key={tab.key}
@@ -188,6 +261,33 @@ export default function Brain() {
             </button>
           ))}
         </div>
+
+        {/* Category filters */}
+        {categories.length > 0 && (
+          <div className="flex gap-1 overflow-x-auto pb-3 pt-1.5">
+            <button
+              onClick={() => setCatFilter("all")}
+              className="px-2.5 py-1 rounded-md text-[11px] font-mono transition"
+              style={{
+                border: catFilter === "all" ? "1px solid #ffffff30" : "1px solid transparent",
+                background: catFilter === "all" ? "#ffffff10" : "transparent",
+                color: catFilter === "all" ? "#fff" : "#555",
+              }}
+            >All</button>
+            {categories.map(cat => (
+              <button
+                key={cat.id}
+                onClick={() => setCatFilter(catFilter === cat.name ? "all" : cat.name)}
+                className="px-2.5 py-1 rounded-md text-[11px] font-mono transition whitespace-nowrap"
+                style={{
+                  border: catFilter === cat.name ? `1px solid ${cat.color}50` : "1px solid transparent",
+                  background: catFilter === cat.name ? `${cat.color}15` : "transparent",
+                  color: catFilter === cat.name ? cat.color : "#555",
+                }}
+              >{cat.name}</button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Tags */}
@@ -228,67 +328,125 @@ export default function Brain() {
         {filtered.map((item, idx) => {
           const t = TYPES[item.type] || TYPES.note;
           const expanded = expandedId === item.id;
+          const hasPreview = item.ogImage && (item.type === "link" || item.type === "clip");
+          const isYouTube = item.siteName === "YouTube";
+
           return (
             <div
               key={item.id}
               onClick={() => setExpandedId(expanded ? null : item.id)}
-              className="bg-brand-card rounded-xl p-4 mb-2.5 cursor-pointer transition-all"
+              className="bg-brand-card rounded-xl mb-2.5 cursor-pointer transition-all overflow-hidden"
               style={{
                 border: `1px solid ${item.pinned ? "#E8A83840" : "#1E2128"}`,
                 animation: `fadeSlide 0.3s ease ${idx * 0.03}s both`,
               }}
             >
-              <div className="flex gap-3">
-                <div
-                  className="w-8 h-8 rounded-lg flex items-center justify-center text-base shrink-0"
-                  style={{ background: `${t.color}15`, border: `1px solid ${t.color}30` }}
-                >{t.icon}</div>
-
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    {item.pinned && <span className="text-[10px]">📌</span>}
-                    <p className={`text-sm font-medium text-gray-200 ${expanded ? "" : "truncate"}`}>{item.title || "Untitled"}</p>
-                  </div>
-
-                  {item.url && (
-                    <a
-                      href={item.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      onClick={e => e.stopPropagation()}
-                      className="text-[11px] text-type-link font-mono block mt-1 truncate hover:underline"
-                    >↗ {item.url.replace(/^https?:\/\/(www\.)?/, "").slice(0, 40)}</a>
-                  )}
-
-                  {item.content && (
-                    <p className={`text-xs text-gray-500 mt-1.5 leading-relaxed ${expanded ? "whitespace-pre-wrap" : "line-clamp-2"}`}>
-                      {item.content}
-                    </p>
-                  )}
-
-                  <div className="flex items-center gap-2 mt-2 flex-wrap">
-                    {(item.tags || []).map((tag, ti) => (
-                      <span key={ti} className="text-[10px] font-mono opacity-70" style={{ color: TAG_COLORS[ti % TAG_COLORS.length] }}>#{tag}</span>
-                    ))}
-                    <span className="text-[10px] text-gray-700 ml-auto font-mono">{timeAgo(item.createdAt)}</span>
-                  </div>
-
-                  {expanded && (
-                    <div className="flex gap-2 mt-3 pt-2.5 border-t border-brand-border">
-                      {[
-                        { label: item.pinned ? "Unpin" : "Pin", action: () => handlePin(item.id), color: "#E8A838" },
-                        { label: "Edit", action: () => handleEdit(item), color: "#5B8DEF" },
-                        { label: "Delete", action: () => handleDelete(item.id), color: "#EB5757" },
-                      ].map(btn => (
-                        <button
-                          key={btn.label}
-                          onClick={e => { e.stopPropagation(); btn.action(); }}
-                          className="px-3.5 py-1 rounded-md text-[11px] font-mono transition hover:brightness-125"
-                          style={{ border: `1px solid ${btn.color}30`, background: `${btn.color}10`, color: btn.color }}
-                        >{btn.label}</button>
-                      ))}
+              {/* Thumbnail preview for links */}
+              {hasPreview && (
+                <div className="relative w-full h-40 bg-brand-muted overflow-hidden">
+                  <img
+                    src={item.ogImage}
+                    alt=""
+                    className="w-full h-full object-cover"
+                    loading="lazy"
+                  />
+                  {isYouTube && (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="w-12 h-12 rounded-full bg-red-600 flex items-center justify-center shadow-lg">
+                        <span className="text-white text-lg ml-0.5">▶</span>
+                      </div>
                     </div>
                   )}
+                  {item.siteName && (
+                    <div className="absolute bottom-2 left-2 flex items-center gap-1.5 bg-black/70 rounded-md px-2 py-1">
+                      {item.favicon && <img src={item.favicon} alt="" className="w-3.5 h-3.5 rounded-sm" loading="lazy" />}
+                      <span className="text-[10px] text-gray-300 font-mono">{item.siteName}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="p-4">
+                <div className="flex gap-3">
+                  {!hasPreview && (
+                    <div
+                      className="w-8 h-8 rounded-lg flex items-center justify-center text-base shrink-0"
+                      style={{ background: `${t.color}15`, border: `1px solid ${t.color}30` }}
+                    >{t.icon}</div>
+                  )}
+
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      {item.pinned && <span className="text-[10px]">📌</span>}
+                      {hasPreview && (
+                        <div
+                          className="w-5 h-5 rounded flex items-center justify-center text-[10px] shrink-0"
+                          style={{ background: `${t.color}15`, border: `1px solid ${t.color}30` }}
+                        >{t.icon}</div>
+                      )}
+                      <p className={`text-sm font-medium text-gray-200 ${expanded ? "" : "truncate"}`}>
+                        {item.title || item.ogTitle || "Untitled"}
+                      </p>
+                    </div>
+
+                    {/* OG description for links (when no user content) */}
+                    {item.ogDescription && !item.content && (
+                      <p className="text-xs text-gray-500 mt-1 line-clamp-2">{item.ogDescription}</p>
+                    )}
+
+                    {item.url && (
+                      <a
+                        href={item.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={e => e.stopPropagation()}
+                        className="text-[11px] text-type-link font-mono block mt-1 truncate hover:underline"
+                      >↗ {item.url.replace(/^https?:\/\/(www\.)?/, "").slice(0, 50)}</a>
+                    )}
+
+                    {item.content && (
+                      <p className={`text-xs text-gray-500 mt-1.5 leading-relaxed ${expanded ? "whitespace-pre-wrap" : "line-clamp-2"}`}>
+                        {item.content}
+                      </p>
+                    )}
+
+                    {/* Notes section (separate from content) */}
+                    {item.notes && (
+                      <div className={`mt-2 pl-2.5 border-l-2 ${expanded ? "" : "line-clamp-2"}`} style={{ borderColor: t.color + "40" }}>
+                        <p className="text-[11px] text-gray-400 italic leading-relaxed">{item.notes}</p>
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-2 mt-2 flex-wrap">
+                      {item.category && (
+                        <span
+                          className="text-[10px] font-mono px-1.5 py-0.5 rounded"
+                          style={{ background: getCatColor(item.category) + "15", color: getCatColor(item.category), border: `1px solid ${getCatColor(item.category)}30` }}
+                        >{item.category}</span>
+                      )}
+                      {(item.tags || []).map((tag, ti) => (
+                        <span key={ti} className="text-[10px] font-mono opacity-70" style={{ color: TAG_COLORS[ti % TAG_COLORS.length] }}>#{tag}</span>
+                      ))}
+                      <span className="text-[10px] text-gray-700 ml-auto font-mono">{timeAgo(item.createdAt)}</span>
+                    </div>
+
+                    {expanded && (
+                      <div className="flex gap-2 mt-3 pt-2.5 border-t border-brand-border">
+                        {[
+                          { label: item.pinned ? "Unpin" : "Pin", action: () => handlePin(item.id), color: "#E8A838" },
+                          { label: "Edit", action: () => handleEdit(item), color: "#5B8DEF" },
+                          { label: "Delete", action: () => handleDelete(item.id), color: "#EB5757" },
+                        ].map(btn => (
+                          <button
+                            key={btn.label}
+                            onClick={e => { e.stopPropagation(); btn.action(); }}
+                            className="px-3.5 py-1 rounded-md text-[11px] font-mono transition hover:brightness-125"
+                            style={{ border: `1px solid ${btn.color}30`, background: `${btn.color}10`, color: btn.color }}
+                          >{btn.label}</button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -322,28 +480,64 @@ export default function Brain() {
               ))}
             </div>
 
+            {/* Category selector */}
+            {categories.length > 0 && (
+              <div className="flex gap-1.5 mb-4 flex-wrap">
+                <button
+                  onClick={() => setForm(f => ({ ...f, category: "" }))}
+                  className="px-2.5 py-1 rounded-md text-[11px] font-mono transition"
+                  style={{
+                    border: !form.category ? "1px solid #ffffff30" : "1px solid #252830",
+                    background: !form.category ? "#ffffff10" : "#181B21",
+                    color: !form.category ? "#fff" : "#666",
+                  }}
+                >None</button>
+                {categories.map(cat => (
+                  <button
+                    key={cat.id}
+                    onClick={() => setForm(f => ({ ...f, category: cat.name }))}
+                    className="px-2.5 py-1 rounded-md text-[11px] font-mono transition"
+                    style={{
+                      border: form.category === cat.name ? `1px solid ${cat.color}60` : "1px solid #252830",
+                      background: form.category === cat.name ? `${cat.color}15` : "#181B21",
+                      color: form.category === cat.name ? cat.color : "#666",
+                    }}
+                  >{cat.name}</button>
+                ))}
+              </div>
+            )}
+
             {/* Fields */}
-            <input
-              value={form.title}
-              onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-              placeholder="Title"
-              className="w-full px-3 py-2.5 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none mb-2.5 placeholder:text-gray-600"
-            />
             {(form.type === "link" || form.type === "clip") && (
               <input
                 value={form.url}
                 onChange={e => setForm(f => ({ ...f, url: e.target.value }))}
-                placeholder="https://..."
+                placeholder="https://... (auto-fetches title & thumbnail)"
                 className="w-full px-3 py-2.5 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none mb-2.5 placeholder:text-gray-600"
               />
             )}
+            <input
+              value={form.title}
+              onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+              placeholder={form.url ? "Title (auto-filled from URL if empty)" : "Title"}
+              className="w-full px-3 py-2.5 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none mb-2.5 placeholder:text-gray-600"
+            />
             <textarea
               value={form.content}
               onChange={e => setForm(f => ({ ...f, content: e.target.value }))}
-              placeholder={form.type === "thought" ? "What's on your mind..." : "Content / notes..."}
-              rows={4}
+              placeholder={form.type === "thought" ? "What's on your mind..." : "Content / description..."}
+              rows={3}
               className="w-full px-3 py-2.5 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none mb-2.5 resize-y leading-relaxed placeholder:text-gray-600"
             />
+            {(form.type === "link" || form.type === "clip") && (
+              <textarea
+                value={form.notes}
+                onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+                placeholder="My notes / annotations on this link..."
+                rows={2}
+                className="w-full px-3 py-2.5 bg-brand-muted border border-type-link/20 rounded-lg text-sm text-gray-400 italic outline-none mb-2.5 resize-y leading-relaxed placeholder:text-gray-600"
+              />
+            )}
             <input
               value={form.tags}
               onChange={e => setForm(f => ({ ...f, tags: e.target.value }))}
@@ -364,6 +558,70 @@ export default function Brain() {
                 {saving ? "Saving..." : editingId ? "Update" : "Save"}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Category Manager Modal */}
+      {showCatManager && (
+        <div className="fixed inset-0 z-[200] flex flex-col justify-end" style={{ background: "#0D0F12EE" }}>
+          <div className="flex-1 cursor-pointer" onClick={() => setShowCatManager(false)} />
+          <div className="bg-brand-card border-t border-brand-border rounded-t-2xl px-5 pt-5 pb-8 max-h-[70vh] overflow-y-auto">
+            <div className="w-9 h-1 bg-gray-700 rounded-full mx-auto mb-4" />
+            <h2 className="text-base font-semibold mb-4" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+              Categories
+            </h2>
+
+            {/* Existing categories */}
+            {categories.length === 0 && (
+              <p className="text-xs text-gray-600 font-mono mb-4">No categories yet. Create one below.</p>
+            )}
+            {categories.map(cat => (
+              <div key={cat.id} className="flex items-center justify-between py-2 border-b border-brand-border">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full" style={{ background: cat.color }} />
+                  <span className="text-sm text-gray-300">{cat.name}</span>
+                  <span className="text-[10px] text-gray-700 font-mono">
+                    {items.filter(i => i.category === cat.name).length} items
+                  </span>
+                </div>
+                <button
+                  onClick={() => handleDeleteCategory(cat.id)}
+                  className="text-[11px] text-gray-600 hover:text-red-400 font-mono transition"
+                >✕</button>
+              </div>
+            ))}
+
+            {/* Add new category */}
+            <div className="mt-4 flex gap-2">
+              <input
+                value={newCat.name}
+                onChange={e => setNewCat(n => ({ ...n, name: e.target.value }))}
+                placeholder="New category name"
+                className="flex-1 px-3 py-2 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none placeholder:text-gray-600"
+                onKeyDown={e => e.key === "Enter" && handleAddCategory()}
+              />
+              <div className="flex gap-1 items-center">
+                {CAT_COLORS.slice(0, 5).map(c => (
+                  <button
+                    key={c}
+                    onClick={() => setNewCat(n => ({ ...n, color: c }))}
+                    className="w-5 h-5 rounded-full transition-transform"
+                    style={{ background: c, border: newCat.color === c ? "2px solid white" : "2px solid transparent", transform: newCat.color === c ? "scale(1.2)" : "scale(1)" }}
+                  />
+                ))}
+              </div>
+              <button
+                onClick={handleAddCategory}
+                className="px-3 py-2 rounded-lg text-sm font-medium text-white"
+                style={{ background: "linear-gradient(135deg, #E8A838, #EB5757)" }}
+              >Add</button>
+            </div>
+
+            <button
+              onClick={() => setShowCatManager(false)}
+              className="w-full mt-4 py-3 rounded-xl bg-brand-muted border border-brand-border text-gray-500 text-sm font-medium"
+            >Done</button>
           </div>
         </div>
       )}

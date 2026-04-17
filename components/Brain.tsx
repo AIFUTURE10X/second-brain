@@ -77,6 +77,7 @@ export default function Brain() {
   const [summarizing, setSummarizing] = useState<string | null>(null);
   const [newCat, setNewCat] = useState({ name: "", color: CAT_COLORS[0], parentId: "" });
   const [editingCat, setEditingCat] = useState<Category | null>(null);
+  const [addAnotherAfterSave, setAddAnotherAfterSave] = useState(false);
 
   const fetchItems = useCallback(async (query?: string) => {
     try {
@@ -134,7 +135,13 @@ export default function Brain() {
           body: JSON.stringify({ id: editingId, ...form, tags }),
         });
         await fetchItems();
-        closeForm();
+        await fetchCategories();
+        if (addAnotherAfterSave) {
+          resetForm(true);
+          setAddAnotherAfterSave(false);
+        } else {
+          closeForm();
+        }
       } else {
         await fetch("/api/items", {
           method: "POST",
@@ -662,9 +669,9 @@ export default function Brain() {
               >
                 {saving ? "Saving..." : editingId ? "Update" : "Save"}
               </button>
-              {!editingId && (
-                <button
+              <button
                   onClick={async () => {
+                    setAddAnotherAfterSave(true);
                     await handleSave();
                   }}
                   disabled={saving}
@@ -672,7 +679,6 @@ export default function Brain() {
                 >
                   + Add Another
                 </button>
-              )}
             </div>
           </div>
         </div>

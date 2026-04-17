@@ -81,7 +81,20 @@ export async function POST(req: NextRequest) {
       existingCategories: existingCats.map(c => c.name),
     });
     if (ai.tags.length > 0) tags = ai.tags;
-    if (ai.category) category = ai.category;
+    if (ai.category) category = ai.category.trim();
+  }
+
+  // Auto-create category if it doesn't exist
+  if (category) {
+    const existingCats2 = await db.select({ name: categories.name }).from(categories);
+    const match = existingCats2.find(c => c.name.toLowerCase() === category.toLowerCase());
+    if (match) {
+      category = match.name; // preserve existing casing
+    } else {
+      try {
+        await db.insert(categories).values({ name: category });
+      } catch {}
+    }
   }
 
   const [row] = await db

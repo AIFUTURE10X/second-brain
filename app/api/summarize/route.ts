@@ -4,6 +4,7 @@ import { items } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { checkApiKey } from "@/lib/api-key";
 import Anthropic from "@anthropic-ai/sdk";
+import { rateLimit } from "@/lib/rate-limit";
 
 /**
  * POST /api/summarize
@@ -15,6 +16,13 @@ import Anthropic from "@anthropic-ai/sdk";
 export async function POST(req: NextRequest) {
   const denied = checkApiKey(req);
   if (denied) return denied;
+
+  // Rate limit by IP
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  const { allowed } = rateLimit(ip);
+  if (!allowed) {
+    return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+  }
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
@@ -32,6 +40,11 @@ export async function POST(req: NextRequest) {
   let pageContent = "";
 
   if (item.url) {
+    // Block private/internal URLs
+    const { isPrivateUrl } = await import("@/lib/enrich");
+    if (isPrivateUrl(item.url)) {
+      return NextResponse.json({ error: "URL not allowed" }, { status: 400 });
+    }
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 10000);
@@ -98,6 +111,7 @@ Reply with ONLY the bullet-point summary, no introduction or conclusion.`,
       .where(eq(items.id, id))
       .returning();
 
+    if (!updated) return NextResponse.json({ error: "Item not found" }, { status: 404 });
     return NextResponse.json(updated);
   } catch (e) {
     return NextResponse.json({ error: "AI summarization failed" }, { status: 500 });

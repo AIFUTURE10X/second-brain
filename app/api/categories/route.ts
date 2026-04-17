@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { categories } from "@/db/schema";
-import { eq, asc, isNull } from "drizzle-orm";
+import { eq, asc, isNull, inArray } from "drizzle-orm";
 import { checkApiKey } from "@/lib/api-key";
 
 export async function GET(req: NextRequest) {
@@ -72,12 +72,22 @@ export async function DELETE(req: NextRequest) {
   const id = searchParams.get("id");
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
 
-  // Also delete child categories
-  const children = await db.select().from(categories).where(eq(categories.parentId, id));
-  for (const child of children) {
-    await db.delete(categories).where(eq(categories.id, child.id));
-  }
+  // Fetch the target category and its children to collect all names
+  const [target] = await db.select().from(categories).where(eq(categories.id, id));
+  if (!target) return NextResponse.json({ error: "Category not found" }, { status: 404 });
 
+  const children = await db.select().from(categories).where(eq(categories.parentId, id));
+  const allNames = [target.name, ...children.map(c => c.name)];
+
+  // Batch delete children + target
+  if (children.length > 0) {
+    await db.delete(categories).where(eq(categories.parentId, id));
+  }
   await db.delete(categories).where(eq(categories.id, id));
+
+  // Clear category on orphaned items
+  const { items: itemsTable } = await import("@/db/schema");
+  await db.update(itemsTable).set({ category: "" }).where(inArray(itemsTable.category, allNames));
+
   return NextResponse.json({ ok: true });
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { showToast } from "./Toast";
 
 type ItemType = "note" | "link" | "clip" | "thought";
 
@@ -77,13 +78,18 @@ export default function Brain() {
   const [summarizing, setSummarizing] = useState<string | null>(null);
   const [newCat, setNewCat] = useState({ name: "", color: CAT_COLORS[0], parentId: "" });
   const [editingCat, setEditingCat] = useState<Category | null>(null);
+  const [catLoading, setCatLoading] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(50);
 
   const fetchItems = useCallback(async (query?: string) => {
     try {
       const url = query ? `/api/items?q=${encodeURIComponent(query)}` : "/api/items";
       const res = await fetch(url);
       if (res.ok) setItems(await res.json());
-    } catch {}
+      else showToast("Failed to load items", "error");
+    } catch {
+      showToast("Failed to load items", "error");
+    }
     setLoading(false);
   }, []);
 
@@ -91,10 +97,28 @@ export default function Brain() {
     try {
       const res = await fetch("/api/categories");
       if (res.ok) setCategories(await res.json());
-    } catch {}
+      else showToast("Failed to load categories", "error");
+    } catch {
+      showToast("Failed to load categories", "error");
+    }
   }, []);
 
   useEffect(() => { fetchItems(); fetchCategories(); }, [fetchItems, fetchCategories]);
+
+  // Reset pagination when filters change
+  useEffect(() => { setVisibleCount(50); }, [view, catFilter, search, sortBy]);
+
+  // Close modals on Escape
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (showAdd) closeForm();
+        else if (showCatManager) setShowCatManager(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [showAdd, showCatManager]);
 
   // Debounced server-side search
   useEffect(() => {
@@ -127,48 +151,63 @@ export default function Brain() {
     setSaving(true);
     const tags = form.tags.split(",").map(t => t.trim()).filter(Boolean);
     try {
+      const res = await fetch(editingId ? "/api/items" : "/api/items", {
+        method: editingId ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editingId ? { id: editingId, ...form, tags } : { ...form, tags }),
+      });
+      if (!res.ok) {
+        showToast("Failed to save item", "error");
+        setSaving(false);
+        return;
+      }
+      await fetchItems();
       if (editingId) {
-        await fetch("/api/items", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: editingId, ...form, tags }),
-        });
-        await fetchItems();
         await fetchCategories();
-        if (andAddAnother) {
-          resetForm(true);
-        } else {
-          closeForm();
-        }
+        if (andAddAnother) resetForm(true);
+        else closeForm();
       } else {
-        await fetch("/api/items", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...form, tags }),
-        });
-        await fetchItems();
-        // Keep modal open with same category + type for rapid-adding
+        await fetchCategories();
         resetForm(true);
       }
-    } catch {}
+    } catch {
+      showToast("Failed to save item", "error");
+    }
     setSaving(false);
   };
 
   const handleDelete = async (id: string) => {
-    await fetch(`/api/items?id=${id}`, { method: "DELETE" });
-    setItems(prev => prev.filter(i => i.id !== id));
-    if (expandedId === id) setExpandedId(null);
+    if (!confirm("Delete this item?")) return;
+    try {
+      const res = await fetch(`/api/items?id=${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        showToast("Failed to delete item", "error");
+        return;
+      }
+      setItems(prev => prev.filter(i => i.id !== id));
+      if (expandedId === id) setExpandedId(null);
+    } catch {
+      showToast("Failed to delete item", "error");
+    }
   };
 
   const handlePin = async (id: string) => {
     const item = items.find(i => i.id === id);
     if (!item) return;
-    await fetch("/api/items", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, pinned: !item.pinned }),
-    });
-    setItems(prev => prev.map(i => i.id === id ? { ...i, pinned: !i.pinned } : i));
+    try {
+      const res = await fetch("/api/items", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, pinned: !item.pinned }),
+      });
+      if (!res.ok) {
+        showToast("Failed to update pin", "error");
+        return;
+      }
+      setItems(prev => prev.map(i => i.id === id ? { ...i, pinned: !i.pinned } : i));
+    } catch {
+      showToast("Failed to update pin", "error");
+    }
   };
 
   const handleSummarize = async (id: string) => {
@@ -182,8 +221,14 @@ export default function Brain() {
       if (res.ok) {
         const updated = await res.json();
         setItems(prev => prev.map(i => i.id === id ? { ...i, ...updated } : i));
+        showToast("Summary added", "success");
+      } else {
+        const data = await res.json().catch(() => ({}));
+        showToast(data.error || "Summarization failed", "error");
       }
-    } catch {}
+    } catch {
+      showToast("Summarization failed", "error");
+    }
     setSummarizing(null);
   };
 
@@ -203,31 +248,64 @@ export default function Brain() {
 
   const handleAddCategory = async () => {
     if (!newCat.name.trim()) return;
-    await fetch("/api/categories", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newCat.name, color: newCat.color, parentId: newCat.parentId || null }),
-    });
-    setNewCat({ name: "", color: CAT_COLORS[0], parentId: "" });
-    await fetchCategories();
+    setCatLoading(true);
+    try {
+      const res = await fetch("/api/categories", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newCat.name, color: newCat.color, parentId: newCat.parentId || null }),
+      });
+      if (!res.ok) {
+        showToast("Failed to add category", "error");
+      } else {
+        setNewCat({ name: "", color: CAT_COLORS[0], parentId: "" });
+        showToast("Category created", "success");
+        await fetchCategories();
+      }
+    } catch {
+      showToast("Failed to add category", "error");
+    }
+    setCatLoading(false);
   };
 
   const handleEditCategory = async () => {
     if (!editingCat) return;
-    await fetch("/api/categories", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: editingCat.id, name: editingCat.name, color: editingCat.color, parentId: editingCat.parentId }),
-    });
-    setEditingCat(null);
-    await fetchCategories();
-    await fetchItems();
+    setCatLoading(true);
+    try {
+      const res = await fetch("/api/categories", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: editingCat.id, name: editingCat.name, color: editingCat.color, parentId: editingCat.parentId }),
+      });
+      if (!res.ok) {
+        showToast("Failed to update category", "error");
+      } else {
+        setEditingCat(null);
+        await fetchCategories();
+        await fetchItems();
+      }
+    } catch {
+      showToast("Failed to update category", "error");
+    }
+    setCatLoading(false);
   };
 
   const handleDeleteCategory = async (id: string) => {
-    await fetch(`/api/categories?id=${id}`, { method: "DELETE" });
-    if (editingCat?.id === id) setEditingCat(null);
-    await fetchCategories();
+    if (!confirm("Delete this category? Items in this category will be uncategorized.")) return;
+    setCatLoading(true);
+    try {
+      const res = await fetch(`/api/categories?id=${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        showToast("Failed to delete category", "error");
+      } else {
+        if (editingCat?.id === id) setEditingCat(null);
+        await fetchCategories();
+        await fetchItems();
+      }
+    } catch {
+      showToast("Failed to delete category", "error");
+    }
+    setCatLoading(false);
   };
 
   // Helper: get parent categories (no parent)
@@ -255,6 +333,10 @@ export default function Brain() {
       return sortBy === "newest" ? db2 - da : da - db2;
     });
 
+  // Reset pagination when filters change
+  const visibleItems = filtered.slice(0, visibleCount);
+  const hasMore = filtered.length > visibleCount;
+
   const allTags = [...new Set(items.flatMap(i => i.tags || []))];
   const counts: Record<string, number> = {
     all: items.length,
@@ -265,14 +347,35 @@ export default function Brain() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-gray-600 font-mono text-sm">Loading your brain...</p>
+      <div className="min-h-screen">
+        <div className="px-5 pt-5 pb-4">
+          <div className="skeleton h-7 w-40 mb-2" />
+          <div className="skeleton h-3 w-24 mb-5" />
+          <div className="skeleton h-10 w-full mb-3" />
+          <div className="flex gap-1.5 mb-4">
+            {[1, 2, 3, 4, 5].map(i => <div key={i} className="skeleton h-8 w-16 rounded-lg" />)}
+          </div>
+        </div>
+        <div className="px-4 space-y-2.5">
+          {[1, 2, 3, 4, 5].map(i => (
+            <div key={i} className="skeleton rounded-xl p-4" style={{ animationDelay: `${i * 0.1}s` }}>
+              <div className="flex gap-3">
+                <div className="skeleton w-8 h-8 rounded-lg shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <div className="skeleton h-4 w-3/4" />
+                  <div className="skeleton h-3 w-full" />
+                  <div className="skeleton h-3 w-1/2" />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen relative pb-24">
+    <div className="min-h-screen relative pb-8">
       {/* Header */}
       <div className="sticky top-0 z-50 px-5 pt-5 pb-0 border-b border-brand-border" style={{ background: "linear-gradient(180deg, #13161B 0%, #0D0F12 100%)" }}>
         <div className="flex items-center justify-between mb-4">
@@ -287,13 +390,14 @@ export default function Brain() {
           <div className="flex items-center gap-2">
             <button
               onClick={() => setShowCatManager(true)}
-              className="w-9 h-9 rounded-xl text-gray-500 text-sm flex items-center justify-center border border-brand-border hover:text-gray-300 transition"
-              title="Manage categories"
+              className="w-10 h-10 rounded-xl text-gray-500 text-sm flex items-center justify-center border border-brand-border hover:text-gray-300 hover:border-gray-600 active:scale-95 transition"
+              aria-label="Manage categories"
             >⊞</button>
             <button
               onClick={() => { closeForm(); setShowAdd(true); }}
-              className="w-9 h-9 rounded-xl text-white text-xl flex items-center justify-center font-light transition-transform hover:scale-105"
+              className="w-10 h-10 rounded-xl text-white text-xl flex items-center justify-center font-light transition-transform hover:scale-105 active:scale-95"
               style={{ background: "linear-gradient(135deg, #E8A838, #EB5757)", boxShadow: "0 4px 16px rgba(232,168,56,0.3)" }}
+              aria-label="Add new item"
             >+</button>
           </div>
         </div>
@@ -304,13 +408,14 @@ export default function Brain() {
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Search notes, clips, thoughts..."
-            className="w-full py-2.5 pl-9 pr-3 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none placeholder:text-gray-600"
+            aria-label="Search items"
+            className="w-full py-2.5 pl-9 pr-3 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none placeholder:text-gray-500"
           />
           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600 text-sm">⌕</span>
         </div>
 
         {/* Type filters */}
-        <div className="flex gap-1 overflow-x-auto pb-1.5">
+        <div className="flex gap-1 overflow-x-auto pb-1.5 scroll-fade">
           {[{ key: "all" as const, label: "All", icon: "◇" }, ...Object.entries(TYPES).map(([k, v]) => ({ key: k as "all" | ItemType, label: v.label, icon: v.icon }))].map(tab => (
             <button
               key={tab.key}
@@ -412,12 +517,31 @@ export default function Brain() {
         {filtered.length === 0 && (
           <div className="text-center py-16 text-gray-700">
             <div className="text-4xl mb-3">◇</div>
-            <p className="text-sm font-mono">{items.length === 0 ? "Your second brain is empty" : "No matches"}</p>
-            <p className="text-xs mt-1.5 text-gray-800">{items.length === 0 ? "Tap + to add your first item" : "Try a different search"}</p>
+            {items.length === 0 ? (
+              <>
+                <p className="text-sm font-mono text-gray-500">Your second brain is empty</p>
+                <p className="text-xs mt-1.5 text-gray-600">Save notes, links, clips & thoughts</p>
+                <button
+                  onClick={() => { closeForm(); setShowAdd(true); }}
+                  className="mt-4 px-5 py-2 rounded-xl text-white text-sm font-medium"
+                  style={{ background: "linear-gradient(135deg, #E8A838, #EB5757)" }}
+                >+ Add your first item</button>
+              </>
+            ) : catFilter !== "all" ? (
+              <>
+                <p className="text-sm font-mono text-gray-500">No items in this category</p>
+                <p className="text-xs mt-1.5 text-gray-600">Try a different category or add an item</p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-mono text-gray-500">No matches</p>
+                <p className="text-xs mt-1.5 text-gray-600">Try a different search term</p>
+              </>
+            )}
           </div>
         )}
 
-        {filtered.map((item, idx) => {
+        {visibleItems.map((item, idx) => {
           const t = TYPES[item.type] || TYPES.note;
           const expanded = expandedId === item.id;
           const hasPreview = item.ogImage && (item.type === "link" || item.type === "clip");
@@ -426,16 +550,20 @@ export default function Brain() {
           return (
             <div
               key={item.id}
+              role="button"
+              tabIndex={0}
               onClick={() => setExpandedId(expanded ? null : item.id)}
+              onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setExpandedId(expanded ? null : item.id); } }}
               className="bg-brand-card rounded-xl mb-2.5 cursor-pointer transition-all overflow-hidden"
               style={{
-                border: `1px solid ${item.pinned ? "#E8A83840" : "#1E2128"}`,
+                border: `1px solid ${item.pinned ? "#E8A83850" : "#1E2128"}`,
+                background: item.pinned ? "#E8A83808" : undefined,
                 animation: `fadeSlide 0.3s ease ${idx * 0.03}s both`,
               }}
             >
               {/* Thumbnail preview for links */}
               {hasPreview && (
-                <div className="relative w-full h-40 bg-brand-muted overflow-hidden">
+                <div className="relative w-full h-32 sm:h-40 bg-brand-muted overflow-hidden">
                   <img
                     src={item.ogImage}
                     alt=""
@@ -469,14 +597,14 @@ export default function Brain() {
 
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
-                      {item.pinned && <span className="text-[10px]">📌</span>}
+                      {item.pinned && <span className="text-[10px]" title="Pinned">📌</span>}
                       {hasPreview && (
                         <div
                           className="w-5 h-5 rounded flex items-center justify-center text-[10px] shrink-0"
                           style={{ background: `${t.color}15`, border: `1px solid ${t.color}30` }}
                         >{t.icon}</div>
                       )}
-                      <p className={`text-sm font-medium text-gray-200 ${expanded ? "" : "truncate"}`}>
+                      <p className={`text-sm font-semibold text-gray-100 ${expanded ? "" : "truncate"}`} style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
                         {item.title || item.ogTitle || "Untitled"}
                       </p>
                     </div>
@@ -517,27 +645,37 @@ export default function Brain() {
                         >{item.category}</span>
                       )}
                       {(item.tags || []).map((tag, ti) => (
-                        <span key={ti} className="text-[10px] font-mono opacity-70" style={{ color: TAG_COLORS[ti % TAG_COLORS.length] }}>#{tag}</span>
+                        <span key={ti} className="text-[10px] font-mono px-1 py-0.5 rounded" style={{ color: TAG_COLORS[ti % TAG_COLORS.length], background: TAG_COLORS[ti % TAG_COLORS.length] + "10" }}>#{tag}</span>
                       ))}
                       <span className="text-[10px] text-gray-700 ml-auto font-mono">{timeAgo(item.createdAt)}</span>
                     </div>
 
                     {/* Action buttons — always visible */}
                     <div className="flex gap-2 mt-3 pt-2.5 border-t border-brand-border">
-                      {[
-                        { label: item.pinned ? "Unpin" : "Pin", action: () => handlePin(item.id), color: "#E8A838" },
-                        { label: "Edit", action: () => handleEdit(item), color: "#5B8DEF" },
-                        { label: summarizing === item.id ? "Summarizing..." : "Summarize", action: () => handleSummarize(item.id), color: "#56CCF2", disabled: summarizing === item.id },
-                        { label: "Delete", action: () => handleDelete(item.id), color: "#EB5757" },
-                      ].map(btn => (
-                        <button
-                          key={btn.label}
-                          disabled={"disabled" in btn && !!btn.disabled}
-                          onClick={e => { e.stopPropagation(); btn.action(); }}
-                          className="px-3.5 py-1 rounded-md text-[11px] font-mono transition hover:brightness-125 disabled:opacity-50"
-                          style={{ border: `1px solid ${btn.color}30`, background: `${btn.color}10`, color: btn.color }}
-                        >{btn.label}</button>
-                      ))}
+                      <button
+                        onClick={e => { e.stopPropagation(); handlePin(item.id); }}
+                        className="px-3 py-1.5 rounded-md text-[11px] font-mono transition hover:brightness-125 active:scale-95"
+                        style={{ border: "1px solid #E8A83830", background: "#E8A83810", color: "#E8A838" }}
+                      >{item.pinned ? "Unpin" : "Pin"}</button>
+                      <button
+                        onClick={e => { e.stopPropagation(); handleEdit(item); }}
+                        className="px-3 py-1.5 rounded-md text-[11px] font-mono transition hover:brightness-125 active:scale-95"
+                        style={{ border: "1px solid #5B8DEF30", background: "#5B8DEF10", color: "#5B8DEF" }}
+                      >Edit</button>
+                      <button
+                        disabled={summarizing === item.id}
+                        onClick={e => { e.stopPropagation(); handleSummarize(item.id); }}
+                        className="px-3 py-1.5 rounded-md text-[11px] font-mono transition hover:brightness-125 active:scale-95 disabled:opacity-50 flex items-center gap-1"
+                        style={{ border: "1px solid #56CCF230", background: "#56CCF210", color: "#56CCF2" }}
+                      >
+                        {summarizing === item.id && <span className="inline-block w-3 h-3 border border-current border-t-transparent rounded-full" style={{ animation: "spin 0.6s linear infinite" }} />}
+                        {summarizing === item.id ? "Summarizing" : "Summarize"}
+                      </button>
+                      <button
+                        onClick={e => { e.stopPropagation(); handleDelete(item.id); }}
+                        className="px-3 py-1.5 rounded-md text-[11px] font-mono transition hover:brightness-125 active:scale-95 ml-auto"
+                        style={{ border: "1px solid #EB575730", background: "#EB575715", color: "#EB5757" }}
+                      >Delete</button>
                     </div>
                   </div>
                 </div>
@@ -545,13 +683,22 @@ export default function Brain() {
             </div>
           );
         })}
+
+        {hasMore && (
+          <button
+            onClick={() => setVisibleCount(c => c + 50)}
+            className="w-full py-3 mb-4 rounded-xl text-xs font-mono border border-brand-border text-gray-500 hover:text-gray-300 transition"
+          >
+            Load more ({filtered.length - visibleCount} remaining)
+          </button>
+        )}
       </div>
 
       {/* Add/Edit Modal */}
       {showAdd && (
         <div className="fixed inset-0 z-[200] flex flex-col justify-end" style={{ background: "#0D0F12EE" }}>
           <div className="flex-1 cursor-pointer" onClick={closeForm} />
-          <div className="bg-brand-card border-t border-brand-border rounded-t-2xl px-5 pt-5 pb-8 max-h-[85vh] overflow-y-auto">
+          <div className="bg-brand-card border-t border-brand-border rounded-t-2xl px-5 pt-4 pb-6 max-h-[90vh] overflow-y-auto">
             <div className="w-9 h-1 bg-gray-700 rounded-full mx-auto mb-4" />
             <h2 className="text-base font-semibold mb-4" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
               {editingId ? "Edit Item" : "Add to Brain"}
@@ -614,7 +761,8 @@ export default function Brain() {
               value={form.category}
               onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
               placeholder="Type a category name (new or existing)"
-              className="w-full px-3 py-2 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none mb-4 placeholder:text-gray-600"
+              aria-label="Category"
+              className="w-full px-3 py-2 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none mb-4 placeholder:text-gray-500"
             />
 
             {/* Fields */}
@@ -623,57 +771,66 @@ export default function Brain() {
                 value={form.url}
                 onChange={e => setForm(f => ({ ...f, url: e.target.value }))}
                 placeholder="https://... (auto-fetches title & thumbnail)"
-                className="w-full px-3 py-2.5 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none mb-2.5 placeholder:text-gray-600"
+                aria-label="URL"
+                className="w-full px-3 py-2.5 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none mb-2.5 placeholder:text-gray-500"
               />
             )}
             <input
               value={form.title}
               onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
               placeholder={form.url ? "Title (auto-filled from URL if empty)" : "Title"}
-              className="w-full px-3 py-2.5 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none mb-2.5 placeholder:text-gray-600"
+              aria-label="Title"
+              className="w-full px-3 py-2.5 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none mb-2.5 placeholder:text-gray-500"
             />
             <textarea
               value={form.content}
               onChange={e => setForm(f => ({ ...f, content: e.target.value }))}
               placeholder={form.type === "thought" ? "What's on your mind..." : "Content / description..."}
+              aria-label="Content"
               rows={3}
-              className="w-full px-3 py-2.5 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none mb-2.5 resize-y leading-relaxed placeholder:text-gray-600"
+              className="w-full px-3 py-2.5 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none mb-2.5 resize-y leading-relaxed placeholder:text-gray-500"
             />
             {(form.type === "link" || form.type === "clip") && (
               <textarea
                 value={form.notes}
                 onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-                placeholder="My notes / annotations on this link..."
+                placeholder="My annotations on this link..."
+                aria-label="Annotations"
                 rows={2}
-                className="w-full px-3 py-2.5 bg-brand-muted border border-type-link/20 rounded-lg text-sm text-gray-400 italic outline-none mb-2.5 resize-y leading-relaxed placeholder:text-gray-600"
+                className="w-full px-3 py-2.5 bg-brand-muted border border-type-link/20 rounded-lg text-sm text-gray-400 italic outline-none mb-2.5 resize-y leading-relaxed placeholder:text-gray-500"
               />
             )}
             <input
               value={form.tags}
               onChange={e => setForm(f => ({ ...f, tags: e.target.value }))}
-              placeholder="Tags (comma separated)"
-              className="w-full px-3 py-2.5 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none mb-4 placeholder:text-gray-600"
+              placeholder="e.g. python, tutorial, important"
+              aria-label="Tags, comma separated"
+              className="w-full px-3 py-2.5 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none mb-4 placeholder:text-gray-500"
             />
 
-            <div className="flex gap-2">
-              <button onClick={closeForm} className="py-3 px-4 rounded-xl bg-brand-muted border border-brand-border text-gray-500 text-sm font-medium">
-                Cancel
-              </button>
-              <button
-                onClick={() => handleSave()}
-                disabled={saving}
-                className="flex-1 py-3 rounded-xl text-white text-sm font-semibold transition-transform hover:scale-[1.01] disabled:opacity-50"
-                style={{ background: "linear-gradient(135deg, #E8A838, #EB5757)", boxShadow: "0 4px 16px rgba(232,168,56,0.25)" }}
-              >
-                {saving ? "Saving..." : editingId ? "Update" : "Save"}
-              </button>
-              <button
+            <div className="flex flex-col gap-2">
+              <div className="flex gap-2">
+                <button onClick={closeForm} className="py-3 px-4 rounded-xl bg-brand-muted border border-brand-border text-gray-500 text-sm font-medium active:scale-95 transition">
+                  Cancel
+                </button>
+                <button
+                  onClick={() => handleSave()}
+                  disabled={saving}
+                  className="flex-1 py-3 rounded-xl text-white text-sm font-semibold transition-transform hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50"
+                  style={{ background: "linear-gradient(135deg, #E8A838, #EB5757)", boxShadow: "0 4px 16px rgba(232,168,56,0.25)" }}
+                >
+                  {saving ? "Saving..." : editingId ? "Update" : "Save"}
+                </button>
+              </div>
+              {!editingId && (
+                <button
                   onClick={() => handleSave(true)}
                   disabled={saving}
-                  className="py-3 px-4 rounded-xl text-sm font-medium border border-brand-border text-gray-400 hover:text-white transition disabled:opacity-50"
+                  className="w-full py-2.5 rounded-xl text-xs font-mono border border-brand-border text-gray-400 hover:text-white transition disabled:opacity-50 active:scale-[0.99]"
                 >
-                  + Add Another
+                  Save & Add Another
                 </button>
+              )}
             </div>
           </div>
         </div>
@@ -683,7 +840,7 @@ export default function Brain() {
       {showCatManager && (
         <div className="fixed inset-0 z-[200] flex flex-col justify-end" style={{ background: "#0D0F12EE" }}>
           <div className="flex-1 cursor-pointer" onClick={() => setShowCatManager(false)} />
-          <div className="bg-brand-card border-t border-brand-border rounded-t-2xl px-5 pt-5 pb-8 max-h-[70vh] overflow-y-auto">
+          <div className="bg-brand-card border-t border-brand-border rounded-t-2xl px-5 pt-4 pb-6 max-h-[85vh] overflow-y-auto">
             <div className="w-9 h-1 bg-gray-700 rounded-full mx-auto mb-4" />
             <h2 className="text-base font-semibold mb-4" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
               Categories
@@ -704,8 +861,8 @@ export default function Brain() {
                     </span>
                   </div>
                   <div className="flex gap-1 shrink-0">
-                    <button onClick={() => setEditingCat({ ...cat })} className="text-[11px] text-gray-600 hover:text-blue-400 font-mono transition">✎</button>
-                    <button onClick={() => handleDeleteCategory(cat.id)} className="text-[11px] text-gray-600 hover:text-red-400 font-mono transition">✕</button>
+                    <button onClick={() => setEditingCat({ ...cat })} disabled={catLoading} aria-label={`Edit ${cat.name}`} className="text-[11px] text-gray-600 hover:text-blue-400 font-mono transition disabled:opacity-50">✎</button>
+                    <button onClick={() => handleDeleteCategory(cat.id)} disabled={catLoading} aria-label={`Delete ${cat.name}`} className="text-[11px] text-gray-600 hover:text-red-400 font-mono transition disabled:opacity-50">✕</button>
                   </div>
                 </div>
                 {/* Subcategories */}
@@ -719,8 +876,8 @@ export default function Brain() {
                       </span>
                     </div>
                     <div className="flex gap-1 shrink-0">
-                      <button onClick={() => setEditingCat({ ...sub })} className="text-[10px] text-gray-600 hover:text-blue-400 font-mono transition">✎</button>
-                      <button onClick={() => handleDeleteCategory(sub.id)} className="text-[10px] text-gray-600 hover:text-red-400 font-mono transition">✕</button>
+                      <button onClick={() => setEditingCat({ ...sub })} disabled={catLoading} aria-label={`Edit ${sub.name}`} className="text-[10px] text-gray-600 hover:text-blue-400 font-mono transition disabled:opacity-50">✎</button>
+                      <button onClick={() => handleDeleteCategory(sub.id)} disabled={catLoading} aria-label={`Delete ${sub.name}`} className="text-[10px] text-gray-600 hover:text-red-400 font-mono transition disabled:opacity-50">✕</button>
                     </div>
                   </div>
                 ))}
@@ -734,7 +891,7 @@ export default function Brain() {
                 <input
                   value={editingCat.name}
                   onChange={e => setEditingCat(c => c ? { ...c, name: e.target.value } : null)}
-                  className="w-full px-3 py-1.5 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none mb-2 placeholder:text-gray-600"
+                  className="w-full px-3 py-1.5 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none mb-2 placeholder:text-gray-500"
                 />
                 <div className="flex gap-2 items-center mb-2">
                   <span className="text-[10px] text-gray-600 font-mono">Color:</span>
@@ -759,7 +916,7 @@ export default function Brain() {
                   </select>
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={handleEditCategory} className="px-3 py-1.5 rounded-lg text-[11px] font-mono text-white" style={{ background: "linear-gradient(135deg, #E8A838, #EB5757)" }}>Save</button>
+                  <button onClick={handleEditCategory} disabled={catLoading} className="px-3 py-1.5 rounded-lg text-[11px] font-mono text-white disabled:opacity-50" style={{ background: "linear-gradient(135deg, #E8A838, #EB5757)" }}>{catLoading ? "Saving..." : "Save"}</button>
                   <button onClick={() => setEditingCat(null)} className="px-3 py-1.5 rounded-lg text-[11px] font-mono text-gray-500 border border-brand-border">Cancel</button>
                 </div>
               </div>
@@ -772,14 +929,16 @@ export default function Brain() {
                   value={newCat.name}
                   onChange={e => setNewCat(n => ({ ...n, name: e.target.value }))}
                   placeholder="New category name"
-                  className="flex-1 px-3 py-2 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none placeholder:text-gray-600"
+                  aria-label="New category name"
+                  className="flex-1 px-3 py-2 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none placeholder:text-gray-500"
                   onKeyDown={e => e.key === "Enter" && handleAddCategory()}
                 />
                 <button
                   onClick={handleAddCategory}
-                  className="px-3 py-2 rounded-lg text-sm font-medium text-white shrink-0"
+                  disabled={catLoading}
+                  className="px-3 py-2 rounded-lg text-sm font-medium text-white shrink-0 disabled:opacity-50"
                   style={{ background: "linear-gradient(135deg, #E8A838, #EB5757)" }}
-                >Add</button>
+                >{catLoading ? "..." : "Add"}</button>
               </div>
               <div className="flex gap-2 items-center mt-2">
                 <div className="flex gap-1 items-center">
@@ -838,12 +997,14 @@ export default function Brain() {
                         });
                         if (res.ok) {
                           const result = await res.json();
-                          alert(`Imported ${result.importedItems} items, ${result.importedCategories} categories`);
+                          showToast(`Imported ${result.importedItems} items, ${result.importedCategories} categories`, "success");
                           fetchItems();
                           fetchCategories();
+                        } else {
+                          showToast("Import failed", "error");
                         }
                       } catch {
-                        alert("Invalid JSON file");
+                        showToast("Invalid JSON file", "error");
                       }
                     }}
                   />

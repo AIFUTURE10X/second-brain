@@ -17,40 +17,63 @@ export async function POST(req: NextRequest) {
   let importedItems = 0;
   let importedCats = 0;
 
-  // Import categories
+  // Import categories in batches
   if (Array.isArray(body.categories)) {
-    for (const cat of body.categories) {
+    const catValues = body.categories
+      .filter((cat: Record<string, unknown>) => cat.name)
+      .map((cat: Record<string, unknown>) => ({
+        name: String(cat.name),
+        color: String(cat.color || "#E8A838"),
+        parentId: (cat.parentId || cat.parent_id || null) as string | null,
+      }));
+    for (let i = 0; i < catValues.length; i += 50) {
+      const chunk = catValues.slice(i, i + 50);
       try {
-        await db.insert(categories).values({
-          name: cat.name,
-          color: cat.color || "#E8A838",
-        });
-        importedCats++;
-      } catch {}
+        await db.insert(categories).values(chunk);
+        importedCats += chunk.length;
+      } catch {
+        // Fallback to one-by-one for duplicate handling
+        for (const cat of chunk) {
+          try {
+            await db.insert(categories).values(cat);
+            importedCats++;
+          } catch {}
+        }
+      }
     }
   }
 
-  // Import items
+  // Import items in batches
   if (Array.isArray(body.items)) {
-    for (const item of body.items) {
+    const itemValues = body.items.map((item: Record<string, unknown>) => ({
+      type: String(item.type || "note"),
+      title: String(item.title || ""),
+      content: String(item.content || ""),
+      url: String(item.url || ""),
+      notes: String(item.notes || ""),
+      tags: (Array.isArray(item.tags) ? item.tags : []) as string[],
+      category: String(item.category || ""),
+      pinned: Boolean(item.pinned),
+      ogTitle: String(item.ogTitle || item.og_title || ""),
+      ogDescription: String(item.ogDescription || item.og_description || ""),
+      ogImage: String(item.ogImage || item.og_image || ""),
+      siteName: String(item.siteName || item.site_name || ""),
+      favicon: String(item.favicon || ""),
+    }));
+    for (let i = 0; i < itemValues.length; i += 50) {
+      const chunk = itemValues.slice(i, i + 50);
       try {
-        await db.insert(items).values({
-          type: item.type || "note",
-          title: item.title || "",
-          content: item.content || "",
-          url: item.url || "",
-          notes: item.notes || "",
-          tags: item.tags || [],
-          category: item.category || "",
-          pinned: item.pinned || false,
-          ogTitle: item.ogTitle || item.og_title || "",
-          ogDescription: item.ogDescription || item.og_description || "",
-          ogImage: item.ogImage || item.og_image || "",
-          siteName: item.siteName || item.site_name || "",
-          favicon: item.favicon || "",
-        });
-        importedItems++;
-      } catch {}
+        await db.insert(items).values(chunk);
+        importedItems += chunk.length;
+      } catch {
+        // Fallback to one-by-one for error handling
+        for (const item of chunk) {
+          try {
+            await db.insert(items).values(item);
+            importedItems++;
+          } catch {}
+        }
+      }
     }
   }
 

@@ -1,3 +1,28 @@
+export function isPrivateUrl(urlStr: string): boolean {
+  try {
+    const u = new URL(urlStr);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return true;
+    const host = u.hostname.toLowerCase();
+    // Block localhost variants
+    if (host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "0.0.0.0") return true;
+    // Block .local and .internal hostnames
+    if (host.endsWith(".local") || host.endsWith(".internal")) return true;
+    // Block private IP ranges
+    const ipMatch = host.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+    if (ipMatch) {
+      const [, a, b] = ipMatch.map(Number);
+      if (a === 10) return true;                         // 10.0.0.0/8
+      if (a === 172 && b >= 16 && b <= 31) return true;  // 172.16.0.0/12
+      if (a === 192 && b === 168) return true;            // 192.168.0.0/16
+      if (a === 169 && b === 254) return true;            // 169.254.0.0/16
+      if (a === 0) return true;                           // 0.0.0.0/8
+    }
+    return false;
+  } catch {
+    return true;
+  }
+}
+
 export interface EnrichResult {
   ogTitle: string;
   ogDescription: string;
@@ -57,6 +82,9 @@ export async function enrichUrl(url: string): Promise<EnrichResult> {
   if (!url) return EMPTY;
 
   try {
+    // Block private/internal URLs
+    if (isPrivateUrl(url)) return EMPTY;
+
     // YouTube shortcut — use oEmbed (no HTML fetch needed)
     const ytId = extractYouTubeId(url);
     if (ytId) return enrichYouTube(url, ytId);

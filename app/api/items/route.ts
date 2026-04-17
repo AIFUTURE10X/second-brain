@@ -15,8 +15,10 @@ export async function GET(req: NextRequest) {
 
   if (q) {
     // Full-text search across title, content, notes, og_title, og_description
-    // Convert query to tsquery format: "react hooks" → "react & hooks"
-    const tsquery = q.split(/\s+/).filter(Boolean).join(" & ");
+    // Sanitize special PostgreSQL tsquery characters to prevent injection
+    const sanitized = q.replace(/[!|&():*<>'\\]/g, " ").trim();
+    if (!sanitized) return NextResponse.json([]);
+    const tsquery = sanitized.split(/\s+/).filter(Boolean).join(" & ");
     const rows = await sql`
       SELECT * FROM items
       WHERE to_tsvector('english',
@@ -74,8 +76,10 @@ export async function POST(req: NextRequest) {
   if (itemCategory) {
     itemCategory = itemCategory.trim();
     const existingCats2 = await db.select({ name: categories.name }).from(categories);
-    const exists = existingCats2.some(c => c.name.toLowerCase() === itemCategory.toLowerCase());
-    if (!exists) {
+    const match = existingCats2.find(c => c.name.toLowerCase() === itemCategory.toLowerCase());
+    if (match) {
+      itemCategory = match.name; // preserve existing casing
+    } else {
       try {
         await db.insert(categories).values({ name: itemCategory });
       } catch {}
@@ -126,8 +130,10 @@ export async function PUT(req: NextRequest) {
   if (updates.category) {
     updates.category = updates.category.trim();
     const existingCats = await db.select({ name: categories.name }).from(categories);
-    const exists = existingCats.some(c => c.name.toLowerCase() === updates.category.toLowerCase());
-    if (!exists) {
+    const match = existingCats.find(c => c.name.toLowerCase() === updates.category.toLowerCase());
+    if (match) {
+      updates.category = match.name; // preserve existing casing
+    } else {
       try {
         await db.insert(categories).values({ name: updates.category });
       } catch {}

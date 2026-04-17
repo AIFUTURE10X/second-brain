@@ -24,6 +24,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "TELEGRAM_BOT_TOKEN not set" });
   }
 
+  // Verify webhook signature if secret is configured
+  const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
+  if (webhookSecret) {
+    const token = req.headers.get("x-telegram-bot-api-secret-token");
+    if (token !== webhookSecret) {
+      return NextResponse.json({ ok: false }, { status: 403 });
+    }
+  }
+
   const update = await req.json();
   const message = update.message || update.channel_post;
   if (!message) return NextResponse.json({ ok: true });
@@ -69,7 +78,20 @@ export async function POST(req: NextRequest) {
         existingCategories: existingCats.map(c => c.name),
       });
       tags = ai.tags;
-      category = ai.category;
+      if (ai.category) category = ai.category.trim();
+    }
+
+    // Auto-create category if it doesn't exist
+    if (category) {
+      const existingCats2 = await db.select({ name: categories.name }).from(categories);
+      const match = existingCats2.find(c => c.name.toLowerCase() === category.toLowerCase());
+      if (match) {
+        category = match.name;
+      } else {
+        try {
+          await db.insert(categories).values({ name: category });
+        } catch {}
+      }
     }
 
     // Save to DB

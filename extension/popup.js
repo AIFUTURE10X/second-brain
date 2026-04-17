@@ -23,7 +23,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (tab) {
       currentUrl = tab.url || "";
       currentTitle = tab.title || "";
-      document.getElementById("urlPreview").textContent = currentUrl.replace(/^https?:\/\/(www\.)?/, "").slice(0, 60);
+      const display = currentUrl.replace(/^https?:\/\/(www\.)?/, "").slice(0, 80);
+      document.getElementById("urlPreview").textContent = display;
       document.getElementById("titleInput").placeholder = currentTitle || "Title";
     }
 
@@ -60,6 +61,7 @@ function showSetup() {
   document.getElementById("main").classList.remove("show");
   document.getElementById("hostInput").value = config.host;
   document.getElementById("keyInput").value = config.key;
+  document.getElementById("setupError").classList.remove("show");
 }
 
 function showMain() {
@@ -67,13 +69,69 @@ function showMain() {
   document.getElementById("main").classList.add("show");
 }
 
+function showSetupError(msg) {
+  const el = document.getElementById("setupError");
+  el.textContent = msg;
+  el.classList.add("show");
+}
+
 async function saveConfig() {
   const host = document.getElementById("hostInput").value.trim().replace(/\/+$/, "");
   const key = document.getElementById("keyInput").value.trim();
-  if (!host || !key) return;
-  config = { host, key };
-  await chrome.storage.local.set({ host, key });
-  showMain();
+
+  // Validate URL format
+  if (!host) {
+    showSetupError("Please enter your Second Brain URL");
+    return;
+  }
+  try {
+    const u = new URL(host);
+    if (u.protocol !== "https:" && u.protocol !== "http:") {
+      showSetupError("URL must start with https:// or http://");
+      return;
+    }
+  } catch {
+    showSetupError("Invalid URL format. Example: https://your-app.vercel.app");
+    return;
+  }
+  if (!key) {
+    showSetupError("Please enter your API key");
+    return;
+  }
+
+  // Test connection
+  const btn = document.getElementById("connectBtn");
+  btn.disabled = true;
+  btn.textContent = "Testing connection...";
+  document.getElementById("setupError").classList.remove("show");
+
+  try {
+    const res = await fetch(`${host}/api/categories?key=${encodeURIComponent(key)}`, {
+      headers: { "x-api-key": key },
+    });
+    if (res.ok) {
+      config = { host, key };
+      await chrome.storage.local.set({ host, key });
+      btn.textContent = "Connected!";
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.textContent = "Connect";
+        showMain();
+      }, 800);
+    } else if (res.status === 401) {
+      showSetupError("Invalid API key. Check your API_SECRET value.");
+      btn.disabled = false;
+      btn.textContent = "Connect";
+    } else {
+      showSetupError(`Server returned ${res.status}. Check your URL.`);
+      btn.disabled = false;
+      btn.textContent = "Connect";
+    }
+  } catch {
+    showSetupError("Can't reach server. Check the URL and try again.");
+    btn.disabled = false;
+    btn.textContent = "Connect";
+  }
 }
 
 async function saveItem() {
@@ -99,19 +157,27 @@ async function saveItem() {
     content: (selectedType === "note" || selectedType === "thought") ? notes : undefined,
   };
 
-  const endpoint = `${config.host}/api/save?key=${encodeURIComponent(config.key)}`;
   try {
-    const res = await fetch(endpoint, {
+    const res = await fetch(`${config.host}/api/save`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": config.key,
+      },
       body: JSON.stringify(payload),
     });
 
     if (res.ok) {
-      status.textContent = "✓ Saved!";
-      status.className = "status ok";
+      const result = await res.json();
+      if (!result.id) {
+        status.textContent = "Saved, but response was unexpected";
+        status.className = "status ok";
+      } else {
+        status.textContent = "✓ Saved to Brain!";
+        status.className = "status ok";
+      }
       btn.textContent = "Saved!";
-      setTimeout(() => window.close(), 1500);
+      setTimeout(() => window.close(), 2500);
     } else {
       const text = await res.text();
       let errMsg = `${res.status} ${res.statusText}`;
@@ -121,9 +187,8 @@ async function saveItem() {
       btn.disabled = false;
       btn.textContent = "Save to Brain";
     }
-  } catch (e) {
-    // Show the URL we tried so user can verify it's correct
-    status.textContent = `✗ ${e.message || "Network error"} → ${endpoint.slice(0, 50)}...`;
+  } catch {
+    status.textContent = "✗ Can't reach Second Brain. Check Settings.";
     status.className = "status err";
     btn.disabled = false;
     btn.textContent = "Save to Brain";

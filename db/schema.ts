@@ -1,4 +1,4 @@
-import { pgTable, text, boolean, uuid, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, boolean, uuid, timestamp, jsonb, uniqueIndex, index } from "drizzle-orm/pg-core";
 
 export const categories = pgTable("categories", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -6,7 +6,9 @@ export const categories = pgTable("categories", {
   color: text("color").notNull().default("#E8A838"),
   parentId: uuid("parent_id"),
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
-});
+}, (table) => [
+  uniqueIndex("categories_name_idx").on(table.name),
+]);
 
 export const items = pgTable("items", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -26,4 +28,6 @@ export const items = pgTable("items", {
   favicon: text("favicon").default(""),
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
-});
+}, (table) => [
+  index("items_category_idx").on(table.category),
+]);

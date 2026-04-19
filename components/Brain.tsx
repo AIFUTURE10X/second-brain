@@ -1,9 +1,17 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { upload } from "@vercel/blob/client";
 import { showToast } from "./Toast";
 
 type ItemType = "note" | "link" | "clip" | "thought";
+
+interface Attachment {
+  url: string;
+  name: string;
+  contentType: string;
+  size: number;
+}
 
 interface Item {
   id: string;
@@ -15,6 +23,7 @@ interface Item {
   tags: string[];
   category: string;
   pinned: boolean;
+  attachments?: Attachment[];
   ogTitle: string;
   ogDescription: string;
   ogImage: string;
@@ -22,6 +31,21 @@ interface Item {
   favicon: string;
   createdAt: string;
   updatedAt: string;
+}
+
+function fileIcon(contentType: string): string {
+  if (contentType.startsWith("image/")) return "🖼";
+  if (contentType === "application/pdf") return "📄";
+  if (contentType.includes("spreadsheet") || contentType.includes("excel") || contentType === "text/csv") return "📊";
+  if (contentType.includes("word") || contentType.includes("document")) return "📝";
+  if (contentType === "text/plain") return "📃";
+  return "📎";
+}
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 interface Category {
@@ -71,7 +95,10 @@ export default function Brain() {
     notes: "",
     tags: "",
     category: "",
+    attachments: [] as Attachment[],
   });
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<"newest" | "oldest">("newest");
   const [saving, setSaving] = useState(false);
@@ -149,7 +176,7 @@ export default function Brain() {
   const resetForm = (keepOpen = false) => {
     const lastCategory = form.category;
     const lastType = form.type;
-    setForm({ type: lastType, title: "", content: "", url: "", notes: "", tags: "", category: lastCategory });
+    setForm({ type: lastType, title: "", content: "", url: "", notes: "", tags: "", category: lastCategory, attachments: [] });
     if (!keepOpen) {
       setShowAdd(false);
     }
@@ -157,9 +184,45 @@ export default function Brain() {
   };
 
   const closeForm = () => {
-    setForm({ type: "note", title: "", content: "", url: "", notes: "", tags: "", category: "" });
+    setForm({ type: "note", title: "", content: "", url: "", notes: "", tags: "", category: "", attachments: [] });
     setShowAdd(false);
     setEditingId(null);
+  };
+
+  const handleFileUpload = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setUploading(true);
+    const uploaded: Attachment[] = [];
+    try {
+      for (const file of Array.from(files)) {
+        if (file.size > 10 * 1024 * 1024) {
+          showToast(`${file.name} exceeds 10 MB`, "error");
+          continue;
+        }
+        const blob = await upload(file.name, file, {
+          access: "public",
+          handleUploadUrl: "/api/upload",
+        });
+        uploaded.push({
+          url: blob.url,
+          name: file.name,
+          contentType: file.type || "application/octet-stream",
+          size: file.size,
+        });
+      }
+      if (uploaded.length > 0) {
+        setForm(f => ({ ...f, attachments: [...f.attachments, ...uploaded] }));
+        showToast(`Uploaded ${uploaded.length} file${uploaded.length > 1 ? "s" : ""}`, "success");
+      }
+    } catch (err) {
+      showToast((err as Error).message || "Upload failed", "error");
+    }
+    setUploading(false);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const removeAttachment = (url: string) => {
+    setForm(f => ({ ...f, attachments: f.attachments.filter(a => a.url !== url) }));
   };
 
   const handleSave = async (andAddAnother = false) => {
@@ -258,6 +321,7 @@ export default function Brain() {
       notes: item.notes || "",
       tags: (item.tags || []).join(", "),
       category: item.category || "",
+      attachments: item.attachments || [],
     });
     setEditingId(item.id);
     setShowAdd(true);
@@ -676,6 +740,27 @@ export default function Brain() {
                       <span className="text-[10px] text-gray-700 ml-auto font-mono">{timeAgo(item.createdAt)}</span>
                     </div>
 
+                    {/* Attachments */}
+                    {(item.attachments || []).length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        {(item.attachments || []).map(att => (
+                          <a
+                            key={att.url}
+                            href={att.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={e => e.stopPropagation()}
+                            className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-mono bg-brand-muted border border-brand-border text-gray-300 hover:border-gray-600 hover:text-white transition"
+                            title={`${att.name} · ${formatSize(att.size)}`}
+                          >
+                            <span>{fileIcon(att.contentType)}</span>
+                            <span className="max-w-[160px] truncate">{att.name}</span>
+                            <span className="text-gray-600 text-[9px]">{formatSize(att.size)}</span>
+                          </a>
+                        ))}
+                      </div>
+                    )}
+
                     {/* Action buttons — always visible */}
                     <div className="flex gap-2 mt-3 pt-2.5 border-t border-brand-border">
                       <button
@@ -836,6 +921,56 @@ export default function Brain() {
               aria-label="Tags, comma separated"
               className="w-full px-3 py-2.5 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none mb-4 placeholder:text-gray-500"
             />
+
+            <label className="block text-[11px] font-mono text-gray-400 mb-1.5 tracking-wide">
+              Attachments <span className="text-gray-600 font-normal">(PDF, XLS, DOC, images — max 10 MB each)</span>
+            </label>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept=".pdf,.xls,.xlsx,.doc,.docx,.csv,.txt,image/*"
+              onChange={e => handleFileUpload(e.target.files)}
+              className="hidden"
+              aria-label="Attach files"
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              className="w-full px-3 py-2.5 bg-brand-muted border border-dashed border-brand-border rounded-lg text-sm text-gray-400 outline-none mb-2 hover:border-gray-600 hover:text-gray-300 active:scale-[0.99] transition disabled:opacity-50"
+            >
+              {uploading ? "Uploading..." : "+ Attach files"}
+            </button>
+            {form.attachments.length > 0 && (
+              <div className="flex flex-col gap-1.5 mb-4">
+                {form.attachments.map(att => (
+                  <div
+                    key={att.url}
+                    className="flex items-center gap-2 px-3 py-2 bg-brand-muted border border-brand-border rounded-lg text-xs"
+                  >
+                    <span className="text-sm">{fileIcon(att.contentType)}</span>
+                    <a
+                      href={att.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex-1 truncate text-gray-300 hover:text-white"
+                      title={att.name}
+                    >
+                      {att.name}
+                    </a>
+                    <span className="text-gray-600 font-mono text-[10px]">{formatSize(att.size)}</span>
+                    <button
+                      type="button"
+                      onClick={() => removeAttachment(att.url)}
+                      className="text-gray-500 hover:text-red-400 w-5 h-5 flex items-center justify-center"
+                      aria-label={`Remove ${att.name}`}
+                      title="Remove"
+                    >×</button>
+                  </div>
+                ))}
+              </div>
+            )}
 
             <div className="flex flex-col gap-2">
               <div className="flex gap-2">

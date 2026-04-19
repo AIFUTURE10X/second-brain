@@ -97,6 +97,7 @@ export async function POST(req: NextRequest) {
       tags: itemTags,
       category: itemCategory,
       pinned: body.pinned || false,
+      attachments: Array.isArray(body.attachments) ? body.attachments : [],
       ogTitle: body.ogTitle || og.ogTitle || "",
       ogDescription: body.ogDescription || og.ogDescription || "",
       ogImage: body.ogImage || og.ogImage || "",

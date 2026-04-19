@@ -1,5 +1,12 @@
 import { pgTable, text, boolean, uuid, timestamp, jsonb, uniqueIndex, index } from "drizzle-orm/pg-core";
 
+export type Attachment = {
+  url: string;
+  name: string;
+  contentType: string;
+  size: number;
+};
+
 export const categories = pgTable("categories", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
@@ -20,6 +27,7 @@ export const items = pgTable("items", {
   tags: jsonb("tags").$type<string[]>().default([]),
   category: text("category").default(""),
   pinned: boolean("pinned").default(false),
+  attachments: jsonb("attachments").$type<Attachment[]>().default([]),
   // OpenGraph / link preview data (auto-filled on save)
   ogTitle: text("og_title").default(""),
   ogDescription: text("og_description").default(""),

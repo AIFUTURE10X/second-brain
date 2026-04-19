@@ -142,6 +142,16 @@ export default function Brain() {
 
   useEffect(() => { fetchItems(); fetchCategories(); }, [fetchItems, fetchCategories]);
 
+  // Open the add form when launched via PWA shortcut (?new=1)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("new") === "1") {
+      setShowAdd(true);
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
+
   // Auto-refresh when user returns to the tab (e.g. after clipping from extension)
   useEffect(() => {
     const onVisible = () => {

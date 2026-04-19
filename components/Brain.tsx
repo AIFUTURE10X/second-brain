@@ -161,6 +161,7 @@ export default function Brain() {
         setSaving(false);
         return;
       }
+      showToast(editingId ? "Item updated" : "Item saved", "success");
       await fetchItems();
       if (editingId) {
         await fetchCategories();

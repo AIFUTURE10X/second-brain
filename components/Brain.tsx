@@ -661,13 +661,23 @@ export default function Brain() {
               tabIndex={0}
               onClick={() => setExpandedId(expanded ? null : item.id)}
               onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setExpandedId(expanded ? null : item.id); } }}
-              className={`bg-brand-card rounded-xl ${density === "compact" ? "" : "mb-2.5"} cursor-pointer transition-all overflow-hidden`}
+              className={`bg-brand-card rounded-xl ${density === "compact" ? "" : "mb-2.5"} cursor-pointer transition-all overflow-hidden relative group`}
               style={{
                 border: `1px solid ${item.pinned ? "#E8A83850" : "#1E2128"}`,
                 background: item.pinned ? "#E8A83808" : undefined,
                 animation: `fadeSlide 0.3s ease ${idx * 0.03}s both`,
               }}
             >
+              {/* Compact-mode quick delete button (top-right overlay) */}
+              {isCompact && (
+                <button
+                  onClick={e => { e.stopPropagation(); handleDelete(item.id); }}
+                  className="absolute top-1.5 right-1.5 z-10 w-6 h-6 rounded-full bg-black/70 backdrop-blur-sm text-gray-400 hover:text-red-400 hover:bg-red-500/20 active:scale-90 transition flex items-center justify-center text-sm opacity-0 group-hover:opacity-100 focus:opacity-100"
+                  aria-label="Delete item"
+                  title="Delete"
+                >×</button>
+              )}
+
               {/* Compact-mode top thumbnail (shorter than comfortable banner) */}
               {hasPreview && isCompact && (
                 <div className="relative w-full h-20 bg-brand-muted overflow-hidden">

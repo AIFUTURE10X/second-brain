@@ -619,7 +619,7 @@ export default function Brain() {
       </div>
 
       {/* Items */}
-      <div className={`px-4 ${density === "compact" ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5" : ""}`}>
+      <div className={`px-4 ${density === "compact" ? "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2" : ""}`}>
         {filtered.length === 0 && (
           <div className={`text-center py-16 text-gray-700 ${density === "compact" ? "col-span-full" : ""}`}>
             <div className="text-4xl mb-3">◇</div>
@@ -668,6 +668,25 @@ export default function Brain() {
                 animation: `fadeSlide 0.3s ease ${idx * 0.03}s both`,
               }}
             >
+              {/* Compact-mode top thumbnail (shorter than comfortable banner) */}
+              {hasPreview && isCompact && (
+                <div className="relative w-full h-20 bg-brand-muted overflow-hidden">
+                  <img
+                    src={item.ogImage}
+                    alt=""
+                    loading="lazy"
+                    className="w-full h-full object-cover"
+                  />
+                  {isYouTube && (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="w-8 h-8 rounded-full bg-red-600 flex items-center justify-center shadow-lg">
+                        <span className="text-white text-xs ml-0.5">▶</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Thumbnail preview for links */}
               {hasPreview && !isCompact && (
                 <div className="relative w-full h-32 sm:h-40 bg-brand-muted overflow-hidden">
@@ -700,14 +719,6 @@ export default function Brain() {
                       className={`${isCompact ? "w-6 h-6 text-xs" : "w-8 h-8 text-base"} rounded-lg flex items-center justify-center shrink-0`}
                       style={{ background: `${t.color}15`, border: `1px solid ${t.color}30` }}
                     >{t.icon}</div>
-                  )}
-                  {hasPreview && isCompact && (
-                    <img
-                      src={item.ogImage}
-                      alt=""
-                      loading="lazy"
-                      className="w-8 h-8 rounded-lg object-cover shrink-0 border border-brand-border"
-                    />
                   )}
 
                   <div className="flex-1 min-w-0">

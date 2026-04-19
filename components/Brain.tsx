@@ -105,6 +105,22 @@ export default function Brain() {
 
   useEffect(() => { fetchItems(); fetchCategories(); }, [fetchItems, fetchCategories]);
 
+  // Auto-refresh when user returns to the tab (e.g. after clipping from extension)
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        fetchItems(search.trim() || undefined);
+        fetchCategories();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
+  }, [fetchItems, fetchCategories, search]);
+
   // Reset pagination when filters change
   useEffect(() => { setVisibleCount(50); }, [view, catFilter, search, sortBy]);
 
@@ -389,6 +405,15 @@ export default function Brain() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={async () => {
+                await Promise.all([fetchItems(search.trim() || undefined), fetchCategories()]);
+                showToast("Refreshed", "success");
+              }}
+              className="w-10 h-10 rounded-xl text-gray-500 text-sm flex items-center justify-center border border-brand-border hover:text-gray-300 hover:border-gray-600 active:scale-95 transition"
+              aria-label="Refresh items"
+              title="Refresh"
+            >↻</button>
             <button
               onClick={() => setShowCatManager(true)}
               className="w-10 h-10 rounded-xl text-gray-500 text-sm flex items-center justify-center border border-brand-border hover:text-gray-300 hover:border-gray-600 active:scale-95 transition"

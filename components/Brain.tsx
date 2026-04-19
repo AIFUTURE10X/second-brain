@@ -1030,15 +1030,13 @@ export default function Brain() {
                   {saving ? "Saving..." : editingId ? "Update" : "Save"}
                 </button>
               </div>
-              {!editingId && (
-                <button
-                  onClick={() => handleSave(true)}
-                  disabled={saving}
-                  className="w-full py-2.5 rounded-xl text-xs font-mono border border-brand-border text-gray-400 hover:text-white transition disabled:opacity-50 active:scale-[0.99]"
-                >
-                  Save & Add Another
-                </button>
-              )}
+              <button
+                onClick={() => handleSave(true)}
+                disabled={saving}
+                className="w-full py-2.5 rounded-xl text-xs font-mono border border-brand-border text-gray-400 hover:text-white transition disabled:opacity-50 active:scale-[0.99]"
+              >
+                {editingId ? "Update & Add Another" : "Save & Add Another"}
+              </button>
             </div>
           </div>
         </div>

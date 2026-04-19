@@ -107,6 +107,16 @@ export default function Brain() {
   const [editingCat, setEditingCat] = useState<Category | null>(null);
   const [catLoading, setCatLoading] = useState(false);
   const [visibleCount, setVisibleCount] = useState(50);
+  const [density, setDensity] = useState<"comfortable" | "compact">("comfortable");
+
+  // Persist density preference across reloads
+  useEffect(() => {
+    const saved = typeof window !== "undefined" ? window.localStorage.getItem("sb_density") : null;
+    if (saved === "compact" || saved === "comfortable") setDensity(saved);
+  }, []);
+  useEffect(() => {
+    if (typeof window !== "undefined") window.localStorage.setItem("sb_density", density);
+  }, [density]);
 
   const fetchItems = useCallback(async (query?: string) => {
     try {
@@ -470,6 +480,12 @@ export default function Brain() {
           </div>
           <div className="flex items-center gap-2">
             <button
+              onClick={() => setDensity(d => d === "compact" ? "comfortable" : "compact")}
+              className="w-10 h-10 rounded-xl text-gray-500 text-sm flex items-center justify-center border border-brand-border hover:text-gray-300 hover:border-gray-600 active:scale-95 transition"
+              aria-label={density === "compact" ? "Switch to comfortable view" : "Switch to compact view"}
+              title={density === "compact" ? "Comfortable view" : "Compact view"}
+            >{density === "compact" ? "▦" : "≡"}</button>
+            <button
               onClick={async () => {
                 await Promise.all([fetchItems(search.trim() || undefined), fetchCategories()]);
                 showToast("Refreshed", "success");
@@ -636,6 +652,7 @@ export default function Brain() {
           const expanded = expandedId === item.id;
           const hasPreview = item.ogImage && (item.type === "link" || item.type === "clip");
           const isYouTube = item.siteName === "YouTube";
+          const isCompact = density === "compact" && !expanded;
 
           return (
             <div
@@ -644,7 +661,7 @@ export default function Brain() {
               tabIndex={0}
               onClick={() => setExpandedId(expanded ? null : item.id)}
               onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setExpandedId(expanded ? null : item.id); } }}
-              className="bg-brand-card rounded-xl mb-2.5 cursor-pointer transition-all overflow-hidden"
+              className={`bg-brand-card rounded-xl ${isCompact ? "mb-1.5" : "mb-2.5"} cursor-pointer transition-all overflow-hidden`}
               style={{
                 border: `1px solid ${item.pinned ? "#E8A83850" : "#1E2128"}`,
                 background: item.pinned ? "#E8A83808" : undefined,
@@ -652,7 +669,7 @@ export default function Brain() {
               }}
             >
               {/* Thumbnail preview for links */}
-              {hasPreview && (
+              {hasPreview && !isCompact && (
                 <div className="relative w-full h-32 sm:h-40 bg-brand-muted overflow-hidden">
                   <img
                     src={item.ogImage}
@@ -676,35 +693,43 @@ export default function Brain() {
                 </div>
               )}
 
-              <div className="p-4">
-                <div className="flex gap-3">
+              <div className={isCompact ? "px-3 py-2" : "p-4"}>
+                <div className={`flex ${isCompact ? "gap-2" : "gap-3"}`}>
                   {!hasPreview && (
                     <div
-                      className="w-8 h-8 rounded-lg flex items-center justify-center text-base shrink-0"
+                      className={`${isCompact ? "w-6 h-6 text-xs" : "w-8 h-8 text-base"} rounded-lg flex items-center justify-center shrink-0`}
                       style={{ background: `${t.color}15`, border: `1px solid ${t.color}30` }}
                     >{t.icon}</div>
+                  )}
+                  {hasPreview && isCompact && (
+                    <img
+                      src={item.ogImage}
+                      alt=""
+                      loading="lazy"
+                      className="w-8 h-8 rounded-lg object-cover shrink-0 border border-brand-border"
+                    />
                   )}
 
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
                       {item.pinned && <span className="text-[10px]" title="Pinned">📌</span>}
-                      {hasPreview && (
+                      {hasPreview && !isCompact && (
                         <div
                           className="w-5 h-5 rounded flex items-center justify-center text-[10px] shrink-0"
                           style={{ background: `${t.color}15`, border: `1px solid ${t.color}30` }}
                         >{t.icon}</div>
                       )}
-                      <p className={`text-sm font-semibold text-gray-100 ${expanded ? "" : "truncate"}`} style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                      <p className={`${isCompact ? "text-[13px]" : "text-sm"} font-semibold text-gray-100 ${expanded ? "" : "truncate"}`} style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
                         {item.title || item.ogTitle || "Untitled"}
                       </p>
                     </div>
 
                     {/* OG description for links (when no user content) */}
-                    {item.ogDescription && !item.content && (
+                    {item.ogDescription && !item.content && !isCompact && (
                       <p className="text-xs text-gray-500 mt-1 line-clamp-2">{item.ogDescription}</p>
                     )}
 
-                    {item.url && (
+                    {item.url && !isCompact && (
                       <a
                         href={item.url}
                         target="_blank"
@@ -714,34 +739,40 @@ export default function Brain() {
                       >↗ {item.url.replace(/^https?:\/\/(www\.)?/, "").slice(0, 50)}</a>
                     )}
 
-                    {item.content && (
+                    {item.content && !isCompact && (
                       <p className={`text-xs text-gray-500 mt-1.5 leading-relaxed ${expanded ? "whitespace-pre-wrap" : "line-clamp-2"}`}>
                         {item.content}
                       </p>
                     )}
 
                     {/* Notes section (separate from content) */}
-                    {item.notes && (
+                    {item.notes && !isCompact && (
                       <div className={`mt-2 pl-2.5 border-l-2 ${expanded ? "" : "line-clamp-2"}`} style={{ borderColor: t.color + "40" }}>
                         <p className="text-[11px] text-gray-400 italic leading-relaxed">{item.notes}</p>
                       </div>
                     )}
 
-                    <div className="flex items-center gap-2 mt-2 flex-wrap">
+                    <div className={`flex items-center gap-2 ${isCompact ? "mt-1" : "mt-2"} flex-wrap`}>
                       {item.category && (
                         <span
                           className="text-[10px] font-mono px-1.5 py-0.5 rounded"
                           style={{ background: getCatColor(item.category) + "15", color: getCatColor(item.category), border: `1px solid ${getCatColor(item.category)}30` }}
                         >{item.category}</span>
                       )}
-                      {(item.tags || []).map((tag, ti) => (
+                      {(item.tags || []).slice(0, isCompact ? 3 : undefined).map((tag, ti) => (
                         <span key={ti} className="text-[10px] font-mono px-1 py-0.5 rounded" style={{ color: TAG_COLORS[ti % TAG_COLORS.length], background: TAG_COLORS[ti % TAG_COLORS.length] + "10" }}>#{tag}</span>
                       ))}
+                      {isCompact && (item.tags || []).length > 3 && (
+                        <span className="text-[10px] text-gray-600 font-mono">+{(item.tags || []).length - 3}</span>
+                      )}
+                      {isCompact && (item.attachments || []).length > 0 && (
+                        <span className="text-[10px] text-gray-500 font-mono" title={`${(item.attachments || []).length} attachment${(item.attachments || []).length > 1 ? "s" : ""}`}>📎 {(item.attachments || []).length}</span>
+                      )}
                       <span className="text-[10px] text-gray-700 ml-auto font-mono">{timeAgo(item.createdAt)}</span>
                     </div>
 
                     {/* Attachments */}
-                    {(item.attachments || []).length > 0 && (
+                    {(item.attachments || []).length > 0 && !isCompact && (
                       <div className="flex flex-wrap gap-1.5 mt-2">
                         {(item.attachments || []).map(att => (
                           <a
@@ -761,7 +792,8 @@ export default function Brain() {
                       </div>
                     )}
 
-                    {/* Action buttons — always visible */}
+                    {/* Action buttons — hidden in compact view unless expanded */}
+                    {!isCompact && (
                     <div className="flex gap-2 mt-3 pt-2.5 border-t border-brand-border">
                       <button
                         onClick={e => { e.stopPropagation(); handlePin(item.id); }}
@@ -788,6 +820,7 @@ export default function Brain() {
                         style={{ border: "1px solid #EB575730", background: "#EB575715", color: "#EB5757" }}
                       >Delete</button>
                     </div>
+                    )}
                   </div>
                 </div>
               </div>

@@ -619,9 +619,9 @@ export default function Brain() {
       </div>
 
       {/* Items */}
-      <div className="px-4">
+      <div className={`px-4 ${density === "compact" ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5" : ""}`}>
         {filtered.length === 0 && (
-          <div className="text-center py-16 text-gray-700">
+          <div className={`text-center py-16 text-gray-700 ${density === "compact" ? "col-span-full" : ""}`}>
             <div className="text-4xl mb-3">◇</div>
             {items.length === 0 ? (
               <>
@@ -661,7 +661,7 @@ export default function Brain() {
               tabIndex={0}
               onClick={() => setExpandedId(expanded ? null : item.id)}
               onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setExpandedId(expanded ? null : item.id); } }}
-              className={`bg-brand-card rounded-xl ${isCompact ? "mb-1.5" : "mb-2.5"} cursor-pointer transition-all overflow-hidden`}
+              className={`bg-brand-card rounded-xl ${density === "compact" ? "" : "mb-2.5"} cursor-pointer transition-all overflow-hidden`}
               style={{
                 border: `1px solid ${item.pinned ? "#E8A83850" : "#1E2128"}`,
                 background: item.pinned ? "#E8A83808" : undefined,
@@ -831,7 +831,7 @@ export default function Brain() {
         {hasMore && (
           <button
             onClick={() => setVisibleCount(c => c + 50)}
-            className="w-full py-3 mb-4 rounded-xl text-xs font-mono border border-brand-border text-gray-500 hover:text-gray-300 transition"
+            className={`w-full py-3 mb-4 rounded-xl text-xs font-mono border border-brand-border text-gray-500 hover:text-gray-300 transition ${density === "compact" ? "col-span-full" : ""}`}
           >
             Load more ({filtered.length - visibleCount} remaining)
           </button>

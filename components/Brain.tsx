@@ -826,10 +826,13 @@ export default function Brain() {
                 className="w-full px-3 py-2.5 bg-brand-muted border border-type-link/20 rounded-lg text-sm text-gray-400 italic outline-none mb-2.5 resize-y leading-relaxed placeholder:text-gray-500"
               />
             )}
+            <label className="block text-[11px] font-mono text-gray-400 mb-1.5 tracking-wide">
+              Tags <span className="text-gray-600 font-normal">(comma-separated)</span>
+            </label>
             <input
               value={form.tags}
               onChange={e => setForm(f => ({ ...f, tags: e.target.value }))}
-              placeholder="e.g. python, tutorial, important"
+              placeholder="Tags: python, tutorial, important"
               aria-label="Tags, comma separated"
               className="w-full px-3 py-2.5 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none mb-4 placeholder:text-gray-500"
             />

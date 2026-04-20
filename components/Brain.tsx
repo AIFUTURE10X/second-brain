@@ -277,8 +277,8 @@ export default function Brain() {
     const uploaded: Attachment[] = [];
     try {
       for (const file of Array.from(files)) {
-        if (file.size > 20 * 1024 * 1024) {
-          showToast(`${file.name} exceeds 20 MB`, "error");
+        if (file.size > 50 * 1024 * 1024) {
+          showToast(`${file.name} exceeds 50 MB`, "error");
           continue;
         }
         const blob = await upload(file.name, file, {

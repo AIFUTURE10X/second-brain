@@ -16,7 +16,7 @@ const ALLOWED_CONTENT_TYPES = [
   "image/webp",
 ];
 
-const MAX_SIZE = 20 * 1024 * 1024; // 20 MB
+const MAX_SIZE = 50 * 1024 * 1024; // 50 MB (Vercel Pro plan — plenty of blob storage)
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const denied = checkApiKey(request);

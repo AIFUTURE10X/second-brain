@@ -40,10 +40,18 @@ export async function POST(req: NextRequest) {
   const chatId = message.chat.id;
   const rawText = message.text || message.caption || "";
 
-  // Detect task prefix: "/t " or "/task " → save as task instead of thought/link
+  // Detect slash prefixes:
+  //   /t or /task <text>     → task
+  //   /m, /r, /remember <text> → memory
   const taskMatch = rawText.match(/^\/(task|t)\s+([\s\S]+)/i);
+  const memoryMatch = rawText.match(/^\/(remember|memory|mem|m|r)\s+([\s\S]+)/i);
   const isTaskCommand = !!taskMatch;
-  const text = isTaskCommand ? taskMatch![2].trim() : rawText;
+  const isMemoryCommand = !isTaskCommand && !!memoryMatch;
+  const text = isTaskCommand
+    ? taskMatch![2].trim()
+    : isMemoryCommand
+      ? memoryMatch![2].trim()
+      : rawText;
 
   // Lock the bot to a single user ID (allowlist) — prevents strangers who find the bot
   // username from spamming the owner's Brain. Accepts a single ID or a comma-separated list.
@@ -63,7 +71,11 @@ export async function POST(req: NextRequest) {
   const remainingText = text.replace(/https?:\/\/[^\s]+/g, "").trim();
 
   if (!url && !remainingText) {
-    await sendTelegram(botToken, chatId, "Send me a URL, text to save as a thought, or '/t buy milk' to add a task.");
+    await sendTelegram(
+      botToken,
+      chatId,
+      "Send me:\n• a URL → saved as a Link\n• plain text → saved as a Thought\n• '/t buy milk' → saved as a Task\n• '/m wifi password is abc123' → saved as a Memory"
+    );
     return NextResponse.json({ ok: true });
   }
 
@@ -75,17 +87,21 @@ export async function POST(req: NextRequest) {
     }
 
     // Determine type + content
-    const type = isTaskCommand ? "task" : url ? "link" : "thought";
-    const title = isTaskCommand
+    const type = isTaskCommand
+      ? "task"
+      : isMemoryCommand
+        ? "memory"
+        : url ? "link" : "thought";
+    const title = isTaskCommand || isMemoryCommand
       ? text.slice(0, 200)
       : og.ogTitle || remainingText.slice(0, 100) || "";
-    const content = isTaskCommand ? "" : url ? remainingText : text;
-    const notes = !isTaskCommand && url && remainingText ? remainingText : "";
+    const content = isTaskCommand || isMemoryCommand ? "" : url ? remainingText : text;
+    const notes = !isTaskCommand && !isMemoryCommand && url && remainingText ? remainingText : "";
 
-    // AI auto-tag if available — skip for tasks (they're lightweight)
+    // AI auto-tag if available — skip for lightweight types (tasks + memories)
     let tags: string[] = [];
     let category = "";
-    if (!isTaskCommand && process.env.ANTHROPIC_API_KEY) {
+    if (!isTaskCommand && !isMemoryCommand && process.env.ANTHROPIC_API_KEY) {
       const existingCats = await db.select({ name: categories.name }).from(categories).orderBy(asc(categories.name));
       const ai = await aiTagAndCategorize({
         title,
@@ -134,8 +150,8 @@ export async function POST(req: NextRequest) {
       .returning();
 
     // Reply with confirmation
-    const emoji = type === "task" ? "☐" : type === "link" ? "◈" : "◉";
-    const label = type === "task" ? "Task added!" : "Saved to Brain!";
+    const emoji = type === "task" ? "☐" : type === "memory" ? "💡" : type === "link" ? "◈" : "◉";
+    const label = type === "task" ? "Task added!" : type === "memory" ? "Memory saved!" : "Saved to Brain!";
     const tagStr = tags.length > 0 ? `\nTags: ${tags.map(t => `#${t}`).join(" ")}` : "";
     const catStr = category ? `\nCategory: ${category}` : "";
     await sendTelegram(botToken, chatId, `${emoji} ${label}\n\n${row.title || "Untitled"}${tagStr}${catStr}`);

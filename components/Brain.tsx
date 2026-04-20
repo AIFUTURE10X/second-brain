@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { upload } from "@vercel/blob/client";
 import { showToast } from "./Toast";
 
-type ItemType = "note" | "link" | "clip" | "thought" | "task";
+type ItemType = "note" | "link" | "clip" | "thought" | "task" | "memory";
 
 interface Attachment {
   url: string;
@@ -61,6 +61,7 @@ const TYPES: Record<ItemType, { icon: string; label: string; color: string }> = 
   clip: { icon: "✂", label: "Clip", color: "#6FCF97" },
   thought: { icon: "◉", label: "Thought", color: "#BB6BD9" },
   task: { icon: "☐", label: "Task", color: "#56CCF2" },
+  memory: { icon: "💡", label: "Memory", color: "#F2C94C" },
 };
 
 const TAG_COLORS = ["#E8A838", "#5B8DEF", "#6FCF97", "#BB6BD9", "#EB5757", "#56CCF2", "#F2994A", "#9B51E0"];
@@ -118,6 +119,8 @@ export default function Brain() {
   const [tagMenuSearch, setTagMenuSearch] = useState("");
   const [quickTaskText, setQuickTaskText] = useState("");
   const [quickTaskSaving, setQuickTaskSaving] = useState(false);
+  const [quickMemoryText, setQuickMemoryText] = useState("");
+  const [quickMemorySaving, setQuickMemorySaving] = useState(false);
   const [search, setSearch] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [showCatManager, setShowCatManager] = useState(false);
@@ -343,6 +346,28 @@ export default function Brain() {
       showToast("Failed to add task", "error");
     }
     setQuickTaskSaving(false);
+  };
+
+  const quickAddMemory = async () => {
+    const text = quickMemoryText.trim();
+    if (!text || quickMemorySaving) return;
+    setQuickMemorySaving(true);
+    try {
+      const res = await fetch("/api/items", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "memory", title: text, tags: [], category: "" }),
+      });
+      if (!res.ok) {
+        showToast("Failed to save memory", "error");
+      } else {
+        setQuickMemoryText("");
+        await fetchItems();
+      }
+    } catch {
+      showToast("Failed to save memory", "error");
+    }
+    setQuickMemorySaving(false);
   };
 
   const completeTask = async (id: string) => {
@@ -894,6 +919,30 @@ export default function Brain() {
         </div>
       )}
 
+      {/* Quick-add memory input (on Memory view) */}
+      {view === "memory" && (
+        <div className="px-4 pt-2 pb-1">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={quickMemoryText}
+              onChange={e => setQuickMemoryText(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter") quickAddMemory(); }}
+              placeholder="Remember something…"
+              className="flex-1 px-3 py-2 rounded-lg bg-brand-muted border border-brand-border text-sm text-gray-200 outline-none placeholder:text-gray-500 focus:border-gray-500"
+            />
+            <button
+              onClick={quickAddMemory}
+              disabled={!quickMemoryText.trim() || quickMemorySaving}
+              className="px-4 py-2 rounded-lg text-[#13161B] text-sm font-medium disabled:opacity-50 active:scale-95 transition"
+              style={{ background: "linear-gradient(135deg, #F2C94C, #F2994A)" }}
+            >
+              {quickMemorySaving ? "…" : "Save"}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Sort */}
       <div className="flex justify-end px-5 py-1">
         <button onClick={() => setSortBy(s => s === "newest" ? "oldest" : "newest")} className="text-[11px] text-gray-600 font-mono">
@@ -959,6 +1008,43 @@ export default function Brain() {
                   aria-label="Edit task"
                   title="Edit"
                 >✎</button>
+              </div>
+            );
+          }
+
+          // Memories render as persistent rows — pin + edit on hover, no completion
+          if (item.type === "memory") {
+            return (
+              <div
+                key={item.id}
+                className={`${density === "compact" ? "col-span-full" : ""} group flex items-center gap-3 px-3 py-2.5 mb-1.5 rounded-xl transition hover:border-gray-600 border`}
+                style={{
+                  background: item.pinned ? "#F2C94C10" : "var(--color-brand-card, #13161B)",
+                  borderColor: item.pinned ? "#F2C94C50" : "#1E2128",
+                  animation: `fadeSlide 0.3s ease ${idx * 0.03}s both`,
+                }}
+              >
+                <span className="text-base shrink-0" aria-hidden>💡</span>
+                <span className="text-sm text-gray-300 flex-1 min-w-0 break-words">{item.title}</span>
+                <span className="text-[10px] text-gray-600 font-mono shrink-0">{timeAgo(item.createdAt)}</span>
+                <button
+                  onClick={() => handlePin(item.id)}
+                  className={`text-xs transition shrink-0 ${item.pinned ? "text-[#F2C94C]" : "text-gray-600 hover:text-[#F2C94C] opacity-0 group-hover:opacity-100 focus:opacity-100"}`}
+                  aria-label={item.pinned ? "Unpin memory" : "Pin memory"}
+                  title={item.pinned ? "Unpin" : "Pin"}
+                >★</button>
+                <button
+                  onClick={() => handleEdit(item)}
+                  className="text-gray-600 hover:text-[#E8A838] text-xs opacity-0 group-hover:opacity-100 focus:opacity-100 transition shrink-0"
+                  aria-label="Edit memory"
+                  title="Edit"
+                >✎</button>
+                <button
+                  onClick={() => handleDelete(item.id)}
+                  className="text-gray-600 hover:text-red-400 text-xs opacity-0 group-hover:opacity-100 focus:opacity-100 transition shrink-0"
+                  aria-label="Delete memory"
+                  title="Delete"
+                >×</button>
               </div>
             );
           }

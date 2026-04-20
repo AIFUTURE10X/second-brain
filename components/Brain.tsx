@@ -168,9 +168,13 @@ export default function Brain() {
     if (typeof window !== "undefined") window.localStorage.setItem("sb_density", density);
   }, [density]);
 
-  // Persist custom category colors (per-device)
+  // Custom category colors — synced to server via /api/settings, with
+  // localStorage acting as an instant cache so the palette renders before
+  // the network responds.
+  const customColorsLoaded = useRef(false);
   useEffect(() => {
     if (typeof window === "undefined") return;
+    // 1) Hydrate from cache for instant paint
     try {
       const raw = window.localStorage.getItem("sb_custom_cat_colors");
       if (raw) {
@@ -178,6 +182,17 @@ export default function Brain() {
         if (Array.isArray(parsed)) setCustomCatColors(parsed.filter((c): c is string => typeof c === "string"));
       }
     } catch {}
+    // 2) Reconcile with server (source of truth)
+    fetch("/api/settings?key=custom_cat_colors")
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        const remote = data?.custom_cat_colors;
+        if (Array.isArray(remote)) {
+          setCustomCatColors(remote.filter((c: unknown): c is string => typeof c === "string"));
+        }
+      })
+      .catch(() => {})
+      .finally(() => { customColorsLoaded.current = true; });
   }, []);
 
   // Persist which parent categories are collapsed (per-device)
@@ -203,7 +218,16 @@ export default function Brain() {
     });
   };
   useEffect(() => {
-    if (typeof window !== "undefined") window.localStorage.setItem("sb_custom_cat_colors", JSON.stringify(customCatColors));
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("sb_custom_cat_colors", JSON.stringify(customCatColors));
+    // Don't push to server until the initial load has completed — otherwise
+    // we'd overwrite the server's list with whatever the empty/cached state was.
+    if (!customColorsLoaded.current) return;
+    fetch("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: "custom_cat_colors", value: customCatColors }),
+    }).catch(() => {});
   }, [customCatColors]);
 
   const addCustomCatColor = (hex: string): string => {

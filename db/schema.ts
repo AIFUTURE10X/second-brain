@@ -7,6 +7,14 @@ export type Attachment = {
   size: number;
 };
 
+// Synced user preferences keyed by string. Single-user app so no user_id.
+// value is a JSON blob — keep it small. Examples: "custom_cat_colors": ["#ff0", "#0ff"]
+export const settings = pgTable("settings", {
+  key: text("key").primaryKey(),
+  value: jsonb("value").notNull(),
+  updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
+});
+
 export const categories = pgTable("categories", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),

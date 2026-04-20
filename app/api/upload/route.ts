@@ -16,7 +16,7 @@ const ALLOWED_CONTENT_TYPES = [
   "image/webp",
 ];
 
-const MAX_SIZE = 10 * 1024 * 1024; // 10 MB
+const MAX_SIZE = 20 * 1024 * 1024; // 20 MB
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const denied = checkApiKey(request);

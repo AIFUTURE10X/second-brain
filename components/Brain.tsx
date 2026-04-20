@@ -690,18 +690,19 @@ export default function Brain() {
 
         {/* Type filters */}
         <div className="flex gap-1 overflow-x-auto pb-1.5 scroll-fade">
-          {[{ key: "all" as const, label: "All", icon: "◇" }, ...Object.entries(TYPES).map(([k, v]) => ({ key: k as "all" | ItemType, label: v.label, icon: v.icon }))].map(tab => {
+          {[{ key: "all" as const, label: "All", icon: "◇", color: "#E8A838" }, ...Object.entries(TYPES).map(([k, v]) => ({ key: k as "all" | ItemType, label: v.label, icon: v.icon, color: v.color }))].map(tab => {
             const isTask = tab.key === "task";
             const hasOpenTasks = isTask && counts.task > 0;
+            const active = view === tab.key;
             return (
               <button
                 key={tab.key}
                 onClick={() => { setView(tab.key); if (tab.key === "all") setCatFilter("all"); }}
                 className="px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-mono font-medium transition-all shrink-0 flex items-center gap-1.5"
                 style={{
-                  border: view === tab.key ? "1px solid #E8A83850" : "1px solid transparent",
-                  background: view === tab.key ? "#E8A83815" : "transparent",
-                  color: view === tab.key ? "#E8A838" : "#666",
+                  border: `1px solid ${tab.color}${active ? "70" : "25"}`,
+                  background: active ? `${tab.color}18` : "transparent",
+                  color: active ? tab.color : `${tab.color}A0`,
                 }}
               >
                 <span>{tab.icon} {tab.label}</span>
@@ -711,7 +712,7 @@ export default function Brain() {
                     style={{ background: "#56CCF2" }}
                   >{counts.task}</span>
                 ) : (
-                  <span className="opacity-50 text-[10px]">{counts[tab.key]}</span>
+                  <span className="opacity-60 text-[10px]">{counts[tab.key]}</span>
                 )}
               </button>
             );

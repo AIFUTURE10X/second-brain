@@ -38,4 +38,5 @@ export const items = pgTable("items", {
   updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
 }, (table) => [
   index("items_category_idx").on(table.category),
+  index("items_pinned_created_idx").on(table.pinned, table.createdAt),
 ]);

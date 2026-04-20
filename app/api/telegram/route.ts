@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { items, categories } from "@/db/schema";
 import { enrichUrl } from "@/lib/enrich";
 import { aiTagAndCategorize } from "@/lib/ai-tagger";
+import { sendTelegram, allowedTelegramIds } from "@/lib/telegram";
 import { asc } from "drizzle-orm";
 
 /**
@@ -55,10 +56,7 @@ export async function POST(req: NextRequest) {
 
   // Lock the bot to a single user ID (allowlist) — prevents strangers who find the bot
   // username from spamming the owner's Brain. Accepts a single ID or a comma-separated list.
-  const allowedIds = (process.env.TELEGRAM_ALLOWED_USER_ID || "")
-    .split(",")
-    .map(s => s.trim())
-    .filter(Boolean);
+  const allowedIds = allowedTelegramIds();
   const senderId = message.from?.id?.toString();
   if (allowedIds.length > 0 && (!senderId || !allowedIds.includes(senderId))) {
     await sendTelegram(botToken, chatId, "This bot is private.");
@@ -163,10 +161,3 @@ export async function POST(req: NextRequest) {
   }
 }
 
-async function sendTelegram(token: string, chatId: number, text: string) {
-  await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ chat_id: chatId, text }),
-  });
-}

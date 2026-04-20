@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { upload } from "@vercel/blob/client";
 import { showToast } from "./Toast";
+import { VoiceButton } from "./VoiceButton";
 
 type ItemType = "note" | "link" | "clip" | "thought" | "task" | "memory";
 
@@ -138,6 +139,7 @@ export default function Brain() {
   });
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<"newest" | "oldest">("newest");
   const [saving, setSaving] = useState(false);
@@ -147,6 +149,10 @@ export default function Brain() {
   const [catLoading, setCatLoading] = useState(false);
   const [visibleCount, setVisibleCount] = useState(50);
   const [density, setDensity] = useState<"comfortable" | "compact">("comfortable");
+  const [showTagManager, setShowTagManager] = useState(false);
+  const [mergingTag, setMergingTag] = useState<{ from: string[]; to: string } | null>(null);
+  const [tagMergeLoading, setTagMergeLoading] = useState(false);
+  const [reviewMode, setReviewMode] = useState(false);
 
   // Persist density preference across reloads
   useEffect(() => {
@@ -208,20 +214,26 @@ export default function Brain() {
   }, [fetchItems, fetchCategories, search]);
 
   // Reset pagination when filters change
-  useEffect(() => { setVisibleCount(50); }, [view, catFilter, search, sortBy, sourceFilter, withNotesOnly]);
+  useEffect(() => { setVisibleCount(50); }, [view, catFilter, search, sortBy, sourceFilter, withNotesOnly, reviewMode]);
 
-  // Close modals on Escape
+  // Close modals on Escape, focus search on Cmd/Ctrl+K
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         if (showAdd) closeForm();
         else if (showCatManager) setShowCatManager(false);
+        else if (showTagManager) { setShowTagManager(false); setMergingTag(null); }
         else if (tagMenuOpen) setTagMenuOpen(false);
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [showAdd, showCatManager, tagMenuOpen]);
+  }, [showAdd, showCatManager, showTagManager, tagMenuOpen]);
 
   // Close tag menu when clicking outside
   useEffect(() => {
@@ -380,6 +392,51 @@ export default function Brain() {
       showToast("Failed to save memory", "error");
     }
     setQuickMemorySaving(false);
+  };
+
+  const mergeTags = async (from: string[], to: string) => {
+    setTagMergeLoading(true);
+    try {
+      const res = await fetch("/api/tags/merge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ from, to }),
+      });
+      if (!res.ok) {
+        showToast("Merge failed", "error");
+        return;
+      }
+      const data = await res.json();
+      showToast(`Merged into #${to} (${data.affected} items)`, "success");
+      await fetchItems();
+      setMergingTag(null);
+    } catch {
+      showToast("Merge failed", "error");
+    }
+    setTagMergeLoading(false);
+  };
+
+  const handleExport = async () => {
+    try {
+      const res = await fetch("/api/export?format=json");
+      if (!res.ok) {
+        showToast("Export failed", "error");
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const stamp = new Date().toISOString().slice(0, 10);
+      a.download = `second-brain-${stamp}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      showToast("Backup downloaded", "success");
+    } catch {
+      showToast("Export failed", "error");
+    }
   };
 
   const completeTask = async (id: string) => {
@@ -559,6 +616,14 @@ export default function Brain() {
       return sourceFromUrl(i.url)?.key === sourceFilter;
     })
     .filter(i => !withNotesOnly || (i.notes?.trim().length ?? 0) > 0)
+    .filter(i => {
+      if (!reviewMode) return true;
+      const noCategory = !i.category?.trim();
+      const noTags = (i.tags?.length ?? 0) === 0;
+      const shortTitle = (i.title?.trim().length ?? 0) < 10;
+      const staleTask = i.type === "task" && Date.now() - new Date(i.createdAt).getTime() > 30 * 86400000;
+      return noCategory || noTags || shortTitle || staleTask;
+    })
     .sort((a, b) => {
       if (a.pinned !== b.pinned) return b.pinned ? 1 : -1;
       const da = new Date(a.createdAt).getTime();
@@ -572,6 +637,13 @@ export default function Brain() {
 
   const allTags = [...new Set(items.flatMap(i => i.tags || []))];
   const withNotesCount = items.filter(i => (i.notes?.trim().length ?? 0) > 0).length;
+  const reviewCount = items.filter(i => {
+    const noCategory = !i.category?.trim();
+    const noTags = (i.tags?.length ?? 0) === 0;
+    const shortTitle = (i.title?.trim().length ?? 0) < 10;
+    const staleTask = i.type === "task" && Date.now() - new Date(i.createdAt).getTime() > 30 * 86400000;
+    return noCategory || noTags || shortTitle || staleTask;
+  }).length;
 
   const tagCounts = (() => {
     const counts = new Map<string, number>();
@@ -583,6 +655,22 @@ export default function Brain() {
     return counts;
   })();
   const tagColor = (tag: string) => TAG_COLORS[allTags.indexOf(tag) % TAG_COLORS.length] || TAG_COLORS[0];
+
+  // Group tags by normalized form — catches #ai/#AI/#a.i. etc. Returns only groups with 2+ variants.
+  const duplicateGroups = (() => {
+    const groups = new Map<string, string[]>();
+    for (const tag of allTags) {
+      const normalized = tag.toLowerCase().replace(/[^a-z0-9]/g, "");
+      if (!normalized) continue;
+      const list = groups.get(normalized) || [];
+      list.push(tag);
+      groups.set(normalized, list);
+    }
+    return Array.from(groups.values())
+      .filter(v => v.length > 1)
+      .sort((a, b) => (tagCounts.get(b[0]) ?? 0) - (tagCounts.get(a[0]) ?? 0));
+  })();
+
   const tagsByCount = [...allTags].sort((a, b) => (tagCounts.get(b) ?? 0) - (tagCounts.get(a) ?? 0));
   const INLINE_TAG_LIMIT = 8;
   const inlineTags = (() => {
@@ -729,6 +817,12 @@ export default function Brain() {
               aria-label="Manage categories"
             >⊞</button>
             <button
+              onClick={handleExport}
+              className="w-10 h-10 rounded-xl text-gray-500 text-sm flex items-center justify-center border border-brand-border hover:text-gray-300 hover:border-gray-600 active:scale-95 transition"
+              aria-label="Download JSON backup"
+              title="Download backup (JSON)"
+            >↓</button>
+            <button
               onClick={() => { closeForm(); setShowAdd(true); }}
               className="w-10 h-10 rounded-xl text-white text-xl flex items-center justify-center font-light transition-transform hover:scale-105 active:scale-95"
               style={{ background: "linear-gradient(135deg, #E8A838, #EB5757)", boxShadow: "0 4px 16px rgba(232,168,56,0.3)" }}
@@ -740,9 +834,10 @@ export default function Brain() {
         {/* Search */}
         <div className="relative mb-3">
           <input
+            ref={searchInputRef}
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Search notes, clips, thoughts..."
+            placeholder="Search notes, clips, thoughts… (Ctrl+K)"
             aria-label="Search items"
             className="w-full py-2.5 pl-9 pr-3 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none placeholder:text-gray-500"
           />
@@ -790,6 +885,20 @@ export default function Brain() {
               title="Show only items with notes attached"
             >
               ✎ With notes <span className="opacity-50 text-[10px]">{withNotesCount}</span>
+            </button>
+          )}
+          {reviewCount > 0 && (
+            <button
+              onClick={() => setReviewMode(v => !v)}
+              className="px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-mono font-medium transition-all shrink-0 ml-1"
+              style={{
+                border: reviewMode ? "1px solid #EB575770" : "1px solid #EB575725",
+                background: reviewMode ? "#EB575720" : "transparent",
+                color: reviewMode ? "#EB5757" : "#EB575780",
+              }}
+              title="Items needing attention: no category, no tags, short title, or stale tasks"
+            >
+              ⚑ Review <span className="opacity-50 text-[10px]">{reviewCount}</span>
             </button>
           )}
         </div>
@@ -952,6 +1061,19 @@ export default function Brain() {
                   </div>
                 )}
               </div>
+              <div className="mt-2 pt-2 border-t border-brand-border flex items-center justify-between">
+                <span className="text-[10px] text-gray-600 font-mono">
+                  {duplicateGroups.length > 0
+                    ? `${duplicateGroups.length} duplicate group${duplicateGroups.length > 1 ? "s" : ""} found`
+                    : "No duplicates"}
+                </span>
+                <button
+                  onClick={() => { setTagMenuOpen(false); setShowTagManager(true); }}
+                  className="text-[11px] font-mono text-gray-400 hover:text-[#E8A838] transition"
+                >
+                  Manage tags →
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -968,6 +1090,10 @@ export default function Brain() {
               onKeyDown={e => { if (e.key === "Enter") quickAddTask(); }}
               placeholder="Add a task…"
               className="flex-1 px-3 py-2 rounded-lg bg-brand-muted border border-brand-border text-sm text-gray-200 outline-none placeholder:text-gray-500 focus:border-gray-500"
+            />
+            <VoiceButton
+              onTranscript={t => setQuickTaskText(prev => (prev ? prev + " " : "") + t)}
+              disabled={quickTaskSaving}
             />
             <button
               onClick={quickAddTask}
@@ -992,6 +1118,10 @@ export default function Brain() {
               onKeyDown={e => { if (e.key === "Enter") quickAddMemory(); }}
               placeholder="Remember something…"
               className="flex-1 px-3 py-2 rounded-lg bg-brand-muted border border-brand-border text-sm text-gray-200 outline-none placeholder:text-gray-500 focus:border-gray-500"
+            />
+            <VoiceButton
+              onTranscript={t => setQuickMemoryText(prev => (prev ? prev + " " : "") + t)}
+              disabled={quickMemorySaving}
             />
             <button
               onClick={quickAddMemory}
@@ -1688,6 +1818,79 @@ export default function Brain() {
 
             <button
               onClick={() => setShowCatManager(false)}
+              className="w-full mt-4 py-3 rounded-xl bg-brand-muted border border-brand-border text-gray-500 text-sm font-medium"
+            >Done</button>
+          </div>
+        </div>
+      )}
+
+      {/* Tag Manager Modal */}
+      {showTagManager && (
+        <div className="fixed inset-0 z-[200] flex flex-col justify-end" style={{ background: "#0D0F12EE" }}>
+          <div className="flex-1 cursor-pointer" onClick={() => { setShowTagManager(false); setMergingTag(null); }} />
+          <div className="bg-brand-card border-t border-brand-border rounded-t-2xl px-5 pt-4 pb-6 max-h-[85vh] overflow-y-auto">
+            <div className="w-9 h-1 bg-gray-700 rounded-full mx-auto mb-4" />
+            <h2 className="text-base font-semibold mb-1" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+              Tag Cleanup
+            </h2>
+            <p className="text-[11px] text-gray-600 font-mono mb-4">
+              {duplicateGroups.length === 0
+                ? "No duplicate groups detected. Tags differing only by case or punctuation (#ai / #AI / #a.i.) appear here."
+                : `${duplicateGroups.length} group${duplicateGroups.length > 1 ? "s" : ""} with case/punctuation variants.`}
+            </p>
+
+            {duplicateGroups.map((group, gi) => {
+              const sorted = [...group].sort((a, b) => (tagCounts.get(b) ?? 0) - (tagCounts.get(a) ?? 0));
+              const suggestedTo = sorted[0];
+              const isActive = mergingTag && group.every(t => mergingTag.from.includes(t) || mergingTag.to === t);
+              return (
+                <div key={gi} className="mb-3 p-3 rounded-lg border border-brand-border bg-brand-muted/30">
+                  <div className="flex gap-1.5 flex-wrap mb-2">
+                    {sorted.map(tag => {
+                      const color = tagColor(tag);
+                      return (
+                        <span
+                          key={tag}
+                          className="px-2 py-0.5 rounded-full text-[11px] font-mono"
+                          style={{ border: `1px solid ${color}30`, background: `${color}10`, color }}
+                        >
+                          #{tag} <span className="opacity-60">{tagCounts.get(tag) ?? 0}</span>
+                        </span>
+                      );
+                    })}
+                  </div>
+
+                  {isActive && mergingTag ? (
+                    <div className="flex gap-2 items-center mt-2">
+                      <label className="text-[11px] text-gray-500 font-mono">Merge all into:</label>
+                      <input
+                        value={mergingTag.to}
+                        onChange={e => setMergingTag(m => m ? { ...m, to: e.target.value } : null)}
+                        className="flex-1 px-2 py-1 rounded-md bg-brand-muted border border-brand-border text-[12px] text-gray-200 outline-none"
+                      />
+                      <button
+                        onClick={() => mergeTags(mergingTag.from, mergingTag.to.trim())}
+                        disabled={tagMergeLoading || !mergingTag.to.trim()}
+                        className="px-3 py-1 rounded-md text-[11px] font-mono text-white disabled:opacity-50"
+                        style={{ background: "linear-gradient(135deg, #E8A838, #EB5757)" }}
+                      >{tagMergeLoading ? "…" : "Merge"}</button>
+                      <button
+                        onClick={() => setMergingTag(null)}
+                        className="px-2 py-1 rounded-md text-[11px] font-mono text-gray-500 border border-brand-border"
+                      >Cancel</button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setMergingTag({ from: group, to: suggestedTo })}
+                      className="text-[11px] font-mono text-[#5B8DEF] hover:text-[#E8A838]"
+                    >→ Merge variants</button>
+                  )}
+                </div>
+              );
+            })}
+
+            <button
+              onClick={() => { setShowTagManager(false); setMergingTag(null); }}
               className="w-full mt-4 py-3 rounded-xl bg-brand-muted border border-brand-border text-gray-500 text-sm font-medium"
             >Done</button>
           </div>

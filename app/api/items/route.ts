@@ -28,12 +28,12 @@ export async function GET(req: NextRequest) {
         coalesce(og_title,'') || ' ' ||
         coalesce(og_description,'')
       ) @@ to_tsquery('english', ${tsquery + ':*'})
-      ORDER BY created_at DESC
+      ORDER BY pinned DESC, created_at DESC
     `;
     return NextResponse.json(rows);
   }
 
-  const rows = await db.select().from(items).orderBy(desc(items.createdAt));
+  const rows = await db.select().from(items).orderBy(desc(items.pinned), desc(items.createdAt));
   return NextResponse.json(rows);
 }
 

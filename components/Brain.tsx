@@ -1282,69 +1282,6 @@ export default function Brain() {
           const isYouTube = item.siteName === "YouTube";
           const isCompact = density === "compact" && !expanded;
 
-          // Tasks render as a simple row with a checkbox — click it to mark done (delete)
-          if (item.type === "task") {
-            return (
-              <div
-                key={item.id}
-                className={`${density === "compact" ? "col-span-full" : ""} group flex items-center gap-3 px-3 py-2.5 mb-1.5 bg-brand-card border border-brand-border rounded-xl transition hover:border-gray-600`}
-                style={{ animation: `fadeSlide 0.3s ease ${idx * 0.03}s both` }}
-              >
-                <button
-                  onClick={() => completeTask(item.id)}
-                  className="w-5 h-5 shrink-0 rounded border border-[#56CCF260] hover:border-[#56CCF2] hover:bg-[#56CCF220] active:scale-90 transition flex items-center justify-center text-[11px] text-[#56CCF2]"
-                  aria-label="Mark task complete"
-                  title="Mark complete (deletes the task)"
-                >✓</button>
-                <span className="text-sm text-gray-300 flex-1 min-w-0 break-words">{item.title}</span>
-                <span className="text-[10px] text-gray-600 font-mono shrink-0">{timeAgo(item.createdAt)}</span>
-                <button
-                  onClick={() => handleEdit(item)}
-                  className="text-gray-600 hover:text-[#E8A838] text-xs opacity-0 group-hover:opacity-100 focus:opacity-100 transition shrink-0"
-                  aria-label="Edit task"
-                  title="Edit"
-                >✎</button>
-              </div>
-            );
-          }
-
-          // Memories render as persistent rows — pin + edit on hover, no completion
-          if (item.type === "memory") {
-            return (
-              <div
-                key={item.id}
-                className={`${density === "compact" ? "col-span-full" : ""} group flex items-center gap-3 px-3 py-2.5 mb-1.5 rounded-xl transition hover:border-gray-600 border`}
-                style={{
-                  background: item.pinned ? "#F2C94C10" : "var(--color-brand-card, #13161B)",
-                  borderColor: item.pinned ? "#F2C94C50" : "#1E2128",
-                  animation: `fadeSlide 0.3s ease ${idx * 0.03}s both`,
-                }}
-              >
-                <span className="text-base shrink-0" aria-hidden>💡</span>
-                <span className="text-sm text-gray-300 flex-1 min-w-0 break-words">{item.title}</span>
-                <span className="text-[10px] text-gray-600 font-mono shrink-0">{timeAgo(item.createdAt)}</span>
-                <button
-                  onClick={() => handlePin(item.id)}
-                  className={`text-xs transition shrink-0 ${item.pinned ? "text-[#F2C94C]" : "text-gray-600 hover:text-[#F2C94C] opacity-0 group-hover:opacity-100 focus:opacity-100"}`}
-                  aria-label={item.pinned ? "Unpin memory" : "Pin memory"}
-                  title={item.pinned ? "Unpin" : "Pin"}
-                >★</button>
-                <button
-                  onClick={() => handleEdit(item)}
-                  className="text-gray-600 hover:text-[#E8A838] text-xs opacity-0 group-hover:opacity-100 focus:opacity-100 transition shrink-0"
-                  aria-label="Edit memory"
-                  title="Edit"
-                >✎</button>
-                <button
-                  onClick={() => handleDelete(item.id)}
-                  className="text-gray-600 hover:text-red-400 text-xs opacity-0 group-hover:opacity-100 focus:opacity-100 transition shrink-0"
-                  aria-label="Delete memory"
-                  title="Delete"
-                >×</button>
-              </div>
-            );
-          }
-
           return (
             <div
               key={item.id}
@@ -1361,6 +1298,14 @@ export default function Brain() {
             >
               {/* Quick action overlay (edit + delete) — both density modes */}
               <div className="absolute top-1.5 right-1.5 z-10 flex gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition">
+                {item.type === "task" && (
+                  <button
+                    onClick={e => { e.stopPropagation(); completeTask(item.id); }}
+                    className="w-6 h-6 rounded-full bg-black/70 backdrop-blur-sm text-[#56CCF2] hover:bg-[#56CCF220] active:scale-90 transition flex items-center justify-center text-[11px]"
+                    aria-label="Mark task complete"
+                    title="Mark complete"
+                  >✓</button>
+                )}
                 <button
                   onClick={e => { e.stopPropagation(); handleEdit(item); }}
                   className="w-6 h-6 rounded-full bg-black/70 backdrop-blur-sm text-gray-400 hover:text-[#E8A838] hover:bg-[#E8A83820] active:scale-90 transition flex items-center justify-center text-[11px]"
@@ -1513,6 +1458,14 @@ export default function Brain() {
                     {/* Action buttons — hidden in compact view unless expanded */}
                     {!isCompact && (
                     <div className="flex flex-wrap gap-2 mt-3 pt-2.5 border-t border-brand-border">
+                      {item.type === "task" && (
+                        <button
+                          onClick={e => { e.stopPropagation(); completeTask(item.id); }}
+                          className="px-3 py-1.5 rounded-md text-[11px] font-mono transition hover:brightness-125 active:scale-95 flex items-center gap-1"
+                          style={{ border: "1px solid #56CCF260", background: "#56CCF215", color: "#56CCF2" }}
+                          title="Mark complete (deletes the task)"
+                        >✓ Complete</button>
+                      )}
                       <button
                         onClick={e => { e.stopPropagation(); handlePin(item.id); }}
                         className="px-3 py-1.5 rounded-md text-[11px] font-mono transition hover:brightness-125 active:scale-95"

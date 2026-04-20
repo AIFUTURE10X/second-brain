@@ -454,7 +454,7 @@ export default function Brain() {
   };
 
   // Helper: get parent categories (no parent)
-  const parentCats = categories.filter(c => !c.parentId);
+  const allParentCats = categories.filter(c => !c.parentId);
   const getChildren = (parentId: string) => categories.filter(c => c.parentId === parentId);
   // Get all category names under a parent (for filtering)
   const getCatNamesUnderParent = (name: string) => {
@@ -462,6 +462,14 @@ export default function Brain() {
     if (!parent) return [name];
     return [name, ...getChildren(parent.id).map(c => c.name)];
   };
+
+  // Hide categories with zero items from the filter bar (they remain in the DB
+  // and reappear automatically when an item is assigned to them again).
+  const usedCatNames = new Set(items.map(i => i.category).filter(Boolean));
+  const parentCats = allParentCats.filter(cat => {
+    if (usedCatNames.has(cat.name)) return true;
+    return getChildren(cat.id).some(sub => usedCatNames.has(sub.name));
+  });
 
   // Text search is now server-side; client filters only type + category + source
   const filtered = items
@@ -682,7 +690,7 @@ export default function Brain() {
             {/* Subcategories row — shows when parent is selected */}
             {catFilter !== "all" && (() => {
               const parent = categories.find(c => c.name === catFilter && !c.parentId);
-              const subs = parent ? getChildren(parent.id) : [];
+              const subs = parent ? getChildren(parent.id).filter(s => usedCatNames.has(s.name)) : [];
               return subs.length > 0 ? (
                 <div className="flex gap-1 items-center overflow-x-auto pl-4">
                   {subs.map(sub => (
@@ -1103,7 +1111,7 @@ export default function Brain() {
                   color: !form.category ? "#fff" : "#666",
                 }}
               >Auto</button>
-              {parentCats.map(cat => (
+              {allParentCats.map(cat => (
                 <span key={cat.id} className="contents">
                   <button
                     onClick={() => setForm(f => ({ ...f, category: cat.name }))}
@@ -1273,7 +1281,7 @@ export default function Brain() {
             {categories.length === 0 && (
               <p className="text-xs text-gray-600 font-mono mb-4">No categories yet. Add one below, or just save items — AI will auto-categorize.</p>
             )}
-            {parentCats.map(cat => (
+            {allParentCats.map(cat => (
               <div key={cat.id}>
                 <div className="flex items-center justify-between py-2 border-b border-brand-border">
                   <div className="flex items-center gap-2 flex-1 min-w-0">

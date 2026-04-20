@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { upload } from "@vercel/blob/client";
 import { showToast } from "./Toast";
 
-type ItemType = "note" | "link" | "clip" | "thought";
+type ItemType = "note" | "link" | "clip" | "thought" | "task";
 
 interface Attachment {
   url: string;
@@ -60,6 +60,7 @@ const TYPES: Record<ItemType, { icon: string; label: string; color: string }> = 
   link: { icon: "◈", label: "Link", color: "#5B8DEF" },
   clip: { icon: "✂", label: "Clip", color: "#6FCF97" },
   thought: { icon: "◉", label: "Thought", color: "#BB6BD9" },
+  task: { icon: "☐", label: "Task", color: "#56CCF2" },
 };
 
 const TAG_COLORS = ["#E8A838", "#5B8DEF", "#6FCF97", "#BB6BD9", "#EB5757", "#56CCF2", "#F2994A", "#9B51E0"];
@@ -115,6 +116,8 @@ export default function Brain() {
   const [withNotesOnly, setWithNotesOnly] = useState(false);
   const [tagMenuOpen, setTagMenuOpen] = useState(false);
   const [tagMenuSearch, setTagMenuSearch] = useState("");
+  const [quickTaskText, setQuickTaskText] = useState("");
+  const [quickTaskSaving, setQuickTaskSaving] = useState(false);
   const [search, setSearch] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [showCatManager, setShowCatManager] = useState(false);
@@ -318,6 +321,41 @@ export default function Brain() {
       showToast("Failed to save item", "error");
     }
     setSaving(false);
+  };
+
+  const quickAddTask = async () => {
+    const text = quickTaskText.trim();
+    if (!text || quickTaskSaving) return;
+    setQuickTaskSaving(true);
+    try {
+      const res = await fetch("/api/items", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "task", title: text, tags: [], category: "" }),
+      });
+      if (!res.ok) {
+        showToast("Failed to add task", "error");
+      } else {
+        setQuickTaskText("");
+        await fetchItems();
+      }
+    } catch {
+      showToast("Failed to add task", "error");
+    }
+    setQuickTaskSaving(false);
+  };
+
+  const completeTask = async (id: string) => {
+    try {
+      const res = await fetch(`/api/items?id=${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        showToast("Failed to complete task", "error");
+        return;
+      }
+      setItems(prev => prev.filter(i => i.id !== id));
+    } catch {
+      showToast("Failed to complete task", "error");
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -820,6 +858,30 @@ export default function Brain() {
         </div>
       )}
 
+      {/* Quick-add task input (on Task view) */}
+      {view === "task" && (
+        <div className="px-4 pt-2 pb-1">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={quickTaskText}
+              onChange={e => setQuickTaskText(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter") quickAddTask(); }}
+              placeholder="Add a task…"
+              className="flex-1 px-3 py-2 rounded-lg bg-brand-muted border border-brand-border text-sm text-gray-200 outline-none placeholder:text-gray-500 focus:border-gray-500"
+            />
+            <button
+              onClick={quickAddTask}
+              disabled={!quickTaskText.trim() || quickTaskSaving}
+              className="px-4 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-50 active:scale-95 transition"
+              style={{ background: "linear-gradient(135deg, #56CCF2, #2D9CDB)" }}
+            >
+              {quickTaskSaving ? "…" : "Add"}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Sort */}
       <div className="flex justify-end px-5 py-1">
         <button onClick={() => setSortBy(s => s === "newest" ? "oldest" : "newest")} className="text-[11px] text-gray-600 font-mono">
@@ -862,6 +924,32 @@ export default function Brain() {
           const hasPreview = item.ogImage && (item.type === "link" || item.type === "clip");
           const isYouTube = item.siteName === "YouTube";
           const isCompact = density === "compact" && !expanded;
+
+          // Tasks render as a simple row with a checkbox — click it to mark done (delete)
+          if (item.type === "task") {
+            return (
+              <div
+                key={item.id}
+                className={`${density === "compact" ? "col-span-full" : ""} group flex items-center gap-3 px-3 py-2.5 mb-1.5 bg-brand-card border border-brand-border rounded-xl transition hover:border-gray-600`}
+                style={{ animation: `fadeSlide 0.3s ease ${idx * 0.03}s both` }}
+              >
+                <button
+                  onClick={() => completeTask(item.id)}
+                  className="w-5 h-5 shrink-0 rounded border border-[#56CCF260] hover:border-[#56CCF2] hover:bg-[#56CCF220] active:scale-90 transition flex items-center justify-center text-[11px] text-[#56CCF2]"
+                  aria-label="Mark task complete"
+                  title="Mark complete (deletes the task)"
+                >✓</button>
+                <span className="text-sm text-gray-300 flex-1 min-w-0 break-words">{item.title}</span>
+                <span className="text-[10px] text-gray-600 font-mono shrink-0">{timeAgo(item.createdAt)}</span>
+                <button
+                  onClick={() => handleEdit(item)}
+                  className="text-gray-600 hover:text-[#E8A838] text-xs opacity-0 group-hover:opacity-100 focus:opacity-100 transition shrink-0"
+                  aria-label="Edit task"
+                  title="Edit"
+                >✎</button>
+              </div>
+            );
+          }
 
           return (
             <div

@@ -82,11 +82,12 @@ const SOURCE_LABELS: Record<string, string> = {
   "vercel.com": "Vercel",
 };
 
-function sourceFromUrl(url: string): { host: string; label: string } | null {
+function sourceFromUrl(url: string): { key: string; label: string } | null {
   if (!url) return null;
   try {
     const host = new URL(url).hostname.replace(/^www\./, "");
-    return { host, label: SOURCE_LABELS[host] || host };
+    const label = SOURCE_LABELS[host] || host;
+    return { key: label, label };
   } catch {
     return null;
   }
@@ -457,7 +458,7 @@ export default function Brain() {
     })
     .filter(i => {
       if (!sourceFilter) return true;
-      return sourceFromUrl(i.url)?.host === sourceFilter;
+      return sourceFromUrl(i.url)?.key === sourceFilter;
     })
     .sort((a, b) => {
       if (a.pinned !== b.pinned) return b.pinned ? 1 : -1;
@@ -477,12 +478,12 @@ export default function Brain() {
     for (const item of items) {
       const src = sourceFromUrl(item.url);
       if (!src) continue;
-      const existing = counts.get(src.host);
+      const existing = counts.get(src.key);
       if (existing) existing.count += 1;
-      else counts.set(src.host, { label: src.label, count: 1 });
+      else counts.set(src.key, { label: src.label, count: 1 });
     }
     return Array.from(counts.entries())
-      .map(([host, v]) => ({ host, label: v.label, count: v.count }))
+      .map(([key, v]) => ({ key, label: v.label, count: v.count }))
       .sort((a, b) => b.count - a.count);
   })();
   const counts: Record<string, number> = {
@@ -653,11 +654,11 @@ export default function Brain() {
       {sourceCounts.length > 0 && (
         <div className="flex gap-1.5 flex-wrap px-5 pt-2.5">
           {sourceCounts.slice(0, 10).map(src => {
-            const active = sourceFilter === src.host;
+            const active = sourceFilter === src.key;
             return (
               <button
-                key={src.host}
-                onClick={() => setSourceFilter(active ? null : src.host)}
+                key={src.key}
+                onClick={() => setSourceFilter(active ? null : src.key)}
                 className="px-2.5 py-0.5 rounded-full text-[11px] font-mono transition"
                 style={{
                   border: `1px solid ${active ? "#E8A83870" : "#44444460"}`,

@@ -156,6 +156,7 @@ export default function Brain() {
   const [mergingTag, setMergingTag] = useState<{ from: string[]; to: string } | null>(null);
   const [tagMergeLoading, setTagMergeLoading] = useState(false);
   const [reviewMode, setReviewMode] = useState(false);
+  const [customCatColors, setCustomCatColors] = useState<string[]>([]);
 
   // Persist density preference across reloads
   useEffect(() => {
@@ -165,6 +166,32 @@ export default function Brain() {
   useEffect(() => {
     if (typeof window !== "undefined") window.localStorage.setItem("sb_density", density);
   }, [density]);
+
+  // Persist custom category colors (per-device)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem("sb_custom_cat_colors");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) setCustomCatColors(parsed.filter((c): c is string => typeof c === "string"));
+      }
+    } catch {}
+  }, []);
+  useEffect(() => {
+    if (typeof window !== "undefined") window.localStorage.setItem("sb_custom_cat_colors", JSON.stringify(customCatColors));
+  }, [customCatColors]);
+
+  const addCustomCatColor = (hex: string): string => {
+    const normalized = hex.toLowerCase();
+    if (CAT_COLORS.map(c => c.toLowerCase()).includes(normalized)) return hex;
+    setCustomCatColors(prev => prev.map(c => c.toLowerCase()).includes(normalized) ? prev : [...prev, hex]);
+    return hex;
+  };
+  const removeCustomCatColor = (hex: string) => {
+    const normalized = hex.toLowerCase();
+    setCustomCatColors(prev => prev.filter(c => c.toLowerCase() !== normalized));
+  };
 
   const fetchItems = useCallback(async (query?: string) => {
     try {
@@ -1833,27 +1860,38 @@ export default function Brain() {
                 />
                 <div className="flex gap-2 items-center mb-2 flex-wrap">
                   <span className="text-[10px] text-gray-600 font-mono">Color:</span>
-                  {CAT_COLORS.slice(0, 8).map(c => (
-                    <button key={c} onClick={() => setEditingCat(cat => cat ? { ...cat, color: c } : null)}
-                      className="w-4 h-4 rounded-full transition-transform"
-                      style={{ background: c, border: editingCat.color === c ? "2px solid white" : "2px solid transparent", transform: editingCat.color === c ? "scale(1.2)" : "scale(1)" }}
-                    />
+                  {[...CAT_COLORS.slice(0, 8), ...customCatColors].map(c => (
+                    <span key={c} className="relative group">
+                      <button onClick={() => setEditingCat(cat => cat ? { ...cat, color: c } : null)}
+                        className="w-4 h-4 rounded-full transition-transform"
+                        style={{ background: c, border: editingCat.color === c ? "2px solid white" : "2px solid transparent", transform: editingCat.color === c ? "scale(1.2)" : "scale(1)" }}
+                        aria-label={`Use color ${c}`}
+                      />
+                      {customCatColors.includes(c) && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); removeCustomCatColor(c); }}
+                          className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-gray-800 text-gray-400 text-[8px] hidden group-hover:flex items-center justify-center border border-gray-600"
+                          title="Remove this custom color"
+                          aria-label={`Remove custom color ${c}`}
+                        >×</button>
+                      )}
+                    </span>
                   ))}
                   <label
-                    className="relative w-4 h-4 rounded-full cursor-pointer flex items-center justify-center text-[8px] text-white"
-                    style={{
-                      background: CAT_COLORS.includes(editingCat.color) ? "transparent" : editingCat.color,
-                      border: CAT_COLORS.includes(editingCat.color) ? "1px dashed #555" : "2px solid white",
-                    }}
-                    title="Custom color"
+                    className="relative w-4 h-4 rounded-full cursor-pointer flex items-center justify-center text-[8px] text-gray-400"
+                    style={{ border: "1px dashed #555" }}
+                    title="Add new color"
                   >
-                    {CAT_COLORS.includes(editingCat.color) && "+"}
+                    +
                     <input
                       type="color"
-                      value={editingCat.color}
-                      onChange={e => setEditingCat(cat => cat ? { ...cat, color: e.target.value } : null)}
+                      defaultValue="#888888"
+                      onChange={e => {
+                        const picked = addCustomCatColor(e.target.value);
+                        setEditingCat(cat => cat ? { ...cat, color: picked } : null);
+                      }}
                       className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                      aria-label="Pick custom color"
+                      aria-label="Add custom color"
                     />
                   </label>
                 </div>
@@ -1896,28 +1934,39 @@ export default function Brain() {
                 >{catLoading ? "..." : "Add"}</button>
               </div>
               <div className="flex gap-2 items-center mt-2 flex-wrap">
-                <div className="flex gap-1 items-center">
-                  {CAT_COLORS.slice(0, 6).map(c => (
-                    <button key={c} onClick={() => setNewCat(n => ({ ...n, color: c }))}
-                      className="w-4 h-4 rounded-full transition-transform"
-                      style={{ background: c, border: newCat.color === c ? "2px solid white" : "2px solid transparent", transform: newCat.color === c ? "scale(1.2)" : "scale(1)" }}
-                    />
+                <div className="flex gap-1 items-center flex-wrap">
+                  {[...CAT_COLORS.slice(0, 6), ...customCatColors].map(c => (
+                    <span key={c} className="relative group">
+                      <button onClick={() => setNewCat(n => ({ ...n, color: c }))}
+                        className="w-4 h-4 rounded-full transition-transform block"
+                        style={{ background: c, border: newCat.color === c ? "2px solid white" : "2px solid transparent", transform: newCat.color === c ? "scale(1.2)" : "scale(1)" }}
+                        aria-label={`Use color ${c}`}
+                      />
+                      {customCatColors.includes(c) && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); removeCustomCatColor(c); }}
+                          className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-gray-800 text-gray-400 text-[8px] hidden group-hover:flex items-center justify-center border border-gray-600"
+                          title="Remove this custom color"
+                          aria-label={`Remove custom color ${c}`}
+                        >×</button>
+                      )}
+                    </span>
                   ))}
                   <label
-                    className="relative w-4 h-4 rounded-full cursor-pointer flex items-center justify-center text-[8px] text-white ml-1"
-                    style={{
-                      background: CAT_COLORS.includes(newCat.color) ? "transparent" : newCat.color,
-                      border: CAT_COLORS.includes(newCat.color) ? "1px dashed #555" : "2px solid white",
-                    }}
-                    title="Custom color"
+                    className="relative w-4 h-4 rounded-full cursor-pointer flex items-center justify-center text-[8px] text-gray-400 ml-1"
+                    style={{ border: "1px dashed #555" }}
+                    title="Add new color"
                   >
-                    {CAT_COLORS.includes(newCat.color) && "+"}
+                    +
                     <input
                       type="color"
-                      value={newCat.color}
-                      onChange={e => setNewCat(n => ({ ...n, color: e.target.value }))}
+                      defaultValue="#888888"
+                      onChange={e => {
+                        const picked = addCustomCatColor(e.target.value);
+                        setNewCat(n => ({ ...n, color: picked }));
+                      }}
                       className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                      aria-label="Pick custom color"
+                      aria-label="Add custom color"
                     />
                   </label>
                 </div>

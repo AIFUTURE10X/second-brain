@@ -40,6 +40,18 @@ export async function POST(req: NextRequest) {
   const chatId = message.chat.id;
   const text = message.text || message.caption || "";
 
+  // Lock the bot to a single user ID (allowlist) — prevents strangers who find the bot
+  // username from spamming the owner's Brain. Accepts a single ID or a comma-separated list.
+  const allowedIds = (process.env.TELEGRAM_ALLOWED_USER_ID || "")
+    .split(",")
+    .map(s => s.trim())
+    .filter(Boolean);
+  const senderId = message.from?.id?.toString();
+  if (allowedIds.length > 0 && (!senderId || !allowedIds.includes(senderId))) {
+    await sendTelegram(botToken, chatId, "This bot is private.");
+    return NextResponse.json({ ok: true });
+  }
+
   // Extract URLs from the message
   const urlMatch = text.match(/https?:\/\/[^\s]+/);
   const url = urlMatch?.[0] || "";

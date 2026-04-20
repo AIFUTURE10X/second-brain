@@ -535,9 +535,10 @@ export default function Brain() {
       if (!res.ok) {
         showToast("Failed to add category", "error");
       } else {
+        const created: Category = await res.json();
+        setCategories(prev => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
         setNewCat({ name: "", color: CAT_COLORS[0], parentId: "" });
         showToast("Category created", "success");
-        await fetchCategories();
       }
     } catch {
       showToast("Failed to add category", "error");
@@ -557,8 +558,9 @@ export default function Brain() {
       if (!res.ok) {
         showToast("Failed to update category", "error");
       } else {
+        const updated: Category = await res.json();
+        setCategories(prev => prev.map(c => c.id === updated.id ? updated : c).sort((a, b) => a.name.localeCompare(b.name)));
         setEditingCat(null);
-        await fetchCategories();
         await fetchItems();
       }
     } catch {
@@ -575,8 +577,8 @@ export default function Brain() {
       if (!res.ok) {
         showToast("Failed to delete category", "error");
       } else {
+        setCategories(prev => prev.filter(c => c.id !== id && c.parentId !== id));
         if (editingCat?.id === id) setEditingCat(null);
-        await fetchCategories();
         await fetchItems();
       }
     } catch {

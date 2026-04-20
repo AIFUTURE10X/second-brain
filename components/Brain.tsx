@@ -113,6 +113,8 @@ export default function Brain() {
   const [catFilter, setCatFilter] = useState<string>("all");
   const [sourceFilter, setSourceFilter] = useState<string | null>(null);
   const [withNotesOnly, setWithNotesOnly] = useState(false);
+  const [tagMenuOpen, setTagMenuOpen] = useState(false);
+  const [tagMenuSearch, setTagMenuSearch] = useState("");
   const [search, setSearch] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [showCatManager, setShowCatManager] = useState(false);
@@ -207,11 +209,23 @@ export default function Brain() {
       if (e.key === "Escape") {
         if (showAdd) closeForm();
         else if (showCatManager) setShowCatManager(false);
+        else if (tagMenuOpen) setTagMenuOpen(false);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [showAdd, showCatManager]);
+  }, [showAdd, showCatManager, tagMenuOpen]);
+
+  // Close tag menu when clicking outside
+  useEffect(() => {
+    if (!tagMenuOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest("[data-tag-menu]")) setTagMenuOpen(false);
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [tagMenuOpen]);
 
   // Debounced server-side search
   useEffect(() => {
@@ -476,6 +490,29 @@ export default function Brain() {
   const allTags = [...new Set(items.flatMap(i => i.tags || []))];
   const withNotesCount = items.filter(i => (i.notes?.trim().length ?? 0) > 0).length;
 
+  const tagCounts = (() => {
+    const counts = new Map<string, number>();
+    for (const item of items) {
+      for (const tag of item.tags || []) {
+        counts.set(tag, (counts.get(tag) ?? 0) + 1);
+      }
+    }
+    return counts;
+  })();
+  const tagColor = (tag: string) => TAG_COLORS[allTags.indexOf(tag) % TAG_COLORS.length] || TAG_COLORS[0];
+  const tagsByCount = [...allTags].sort((a, b) => (tagCounts.get(b) ?? 0) - (tagCounts.get(a) ?? 0));
+  const INLINE_TAG_LIMIT = 8;
+  const inlineTags = (() => {
+    const top = tagsByCount.slice(0, INLINE_TAG_LIMIT);
+    if (search && allTags.includes(search) && !top.includes(search)) {
+      return [search, ...top.slice(0, INLINE_TAG_LIMIT - 1)];
+    }
+    return top;
+  })();
+  const menuTags = tagMenuSearch.trim()
+    ? tagsByCount.filter(t => t.toLowerCase().includes(tagMenuSearch.toLowerCase()))
+    : tagsByCount;
+
   const sourceCounts = (() => {
     const counts = new Map<string, { label: string; count: number }>();
     for (const item of items) {
@@ -698,25 +735,80 @@ export default function Brain() {
 
       {/* Tags */}
       {allTags.length > 0 && (
-        <div className="flex gap-1.5 px-5 py-2.5 overflow-x-auto scroll-fade">
-          {[...allTags]
-            .sort((a, b) => {
-              const aActive = search === a ? 1 : 0;
-              const bActive = search === b ? 1 : 0;
-              return bActive - aActive;
-            })
-            .map((tag, i) => (
+        <div className="relative px-5 py-2.5" data-tag-menu>
+          <div className="flex gap-1.5 items-center flex-wrap">
+            {inlineTags.map(tag => {
+              const color = tagColor(tag);
+              const active = search === tag;
+              return (
+                <button
+                  key={tag}
+                  onClick={() => setSearch(active ? "" : tag)}
+                  className="px-2.5 py-0.5 rounded-full text-[11px] font-mono transition whitespace-nowrap"
+                  style={{
+                    border: `1px solid ${color}30`,
+                    background: active ? `${color}20` : "transparent",
+                    color,
+                  }}
+                >#{tag}</button>
+              );
+            })}
+            {tagsByCount.length > INLINE_TAG_LIMIT && (
               <button
-                key={tag}
-                onClick={() => setSearch(search === tag ? "" : tag)}
-                className="px-2.5 py-0.5 rounded-full text-[11px] font-mono transition whitespace-nowrap shrink-0"
-                style={{
-                  border: `1px solid ${TAG_COLORS[i % TAG_COLORS.length]}30`,
-                  background: search === tag ? `${TAG_COLORS[i % TAG_COLORS.length]}20` : "transparent",
-                  color: TAG_COLORS[i % TAG_COLORS.length],
-                }}
-              >#{tag}</button>
-            ))}
+                onClick={() => setTagMenuOpen(v => !v)}
+                className="px-2.5 py-0.5 rounded-full text-[11px] font-mono transition whitespace-nowrap border border-gray-700 text-gray-500 hover:text-gray-300 hover:border-gray-500"
+                aria-expanded={tagMenuOpen}
+              >
+                + {tagsByCount.length - INLINE_TAG_LIMIT} more {tagMenuOpen ? "▴" : "▾"}
+              </button>
+            )}
+          </div>
+
+          {tagMenuOpen && (
+            <div
+              data-tag-menu
+              className="absolute top-full left-5 right-5 z-40 mt-1 rounded-xl border border-brand-border bg-[#0D0F12] p-3 shadow-2xl max-w-2xl"
+            >
+              <input
+                type="text"
+                autoFocus
+                value={tagMenuSearch}
+                onChange={e => setTagMenuSearch(e.target.value)}
+                placeholder="Search tags…"
+                className="w-full mb-2 px-3 py-2 rounded-lg bg-[#13161B] border border-brand-border text-sm text-gray-200 outline-none focus:border-gray-500"
+              />
+              <div className="max-h-64 overflow-y-auto no-scrollbar">
+                {menuTags.length === 0 ? (
+                  <div className="text-gray-500 text-xs p-4 text-center">No tags match &ldquo;{tagMenuSearch}&rdquo;</div>
+                ) : (
+                  <div className="flex gap-1.5 flex-wrap">
+                    {menuTags.map(tag => {
+                      const color = tagColor(tag);
+                      const active = search === tag;
+                      return (
+                        <button
+                          key={tag}
+                          onClick={() => {
+                            setSearch(active ? "" : tag);
+                            setTagMenuOpen(false);
+                            setTagMenuSearch("");
+                          }}
+                          className="px-2.5 py-0.5 rounded-full text-[11px] font-mono transition whitespace-nowrap"
+                          style={{
+                            border: `1px solid ${color}30`,
+                            background: active ? `${color}20` : "transparent",
+                            color,
+                          }}
+                        >
+                          #{tag} <span className="opacity-50">{tagCounts.get(tag) ?? 0}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

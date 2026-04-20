@@ -39,3 +39,13 @@ body {
   -webkit-mask-image: linear-gradient(to right, black 90%, transparent 100%);
   mask-image: linear-gradient(to right, black 90%, transparent 100%);
 }
+
+.scroll-fade::-webkit-scrollbar,
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.scroll-fade,
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}

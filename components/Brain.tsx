@@ -670,7 +670,7 @@ export default function Brain() {
               {helpOpen && (
                 <div
                   data-help-menu
-                  className="absolute right-0 top-full mt-2 z-50 w-[min(92vw,360px)] rounded-xl border border-brand-border bg-[#0D0F12] p-4 shadow-2xl text-left"
+                  className="fixed left-4 right-4 top-[68px] z-50 rounded-xl border border-brand-border bg-[#0D0F12] p-4 shadow-2xl text-left sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[360px]"
                 >
                   <div className="text-xs font-mono text-gray-400 mb-2 flex items-center justify-between">
                     <span>Telegram: <a href="https://t.me/philsbrain_bot" target="_blank" rel="noreferrer" className="text-[#5B8DEF] hover:underline">@philsbrain_bot</a></span>
@@ -797,7 +797,7 @@ export default function Brain() {
         {/* Category filters — hierarchical */}
         {categories.length > 0 && (
           <div className="flex flex-col gap-1 pb-3 pt-1.5">
-            <div className="flex gap-1 items-center overflow-x-auto">
+            <div className="flex gap-1 items-center overflow-x-auto scroll-fade">
               {catFilter !== "all" ? (
                 <button
                   onClick={() => { setCatFilter("all"); setView("all"); }}
@@ -829,7 +829,7 @@ export default function Brain() {
               const parent = categories.find(c => c.name === catFilter && !c.parentId);
               const subs = parent ? getChildren(parent.id).filter(s => usedCatNames.has(s.name)) : [];
               return subs.length > 0 ? (
-                <div className="flex gap-1 items-center overflow-x-auto pl-4">
+                <div className="flex gap-1 items-center overflow-x-auto scroll-fade pl-4">
                   {subs.map(sub => (
                     <button
                       key={sub.id}
@@ -1278,7 +1278,7 @@ export default function Brain() {
 
                     {/* Action buttons — hidden in compact view unless expanded */}
                     {!isCompact && (
-                    <div className="flex gap-2 mt-3 pt-2.5 border-t border-brand-border">
+                    <div className="flex flex-wrap gap-2 mt-3 pt-2.5 border-t border-brand-border">
                       <button
                         onClick={e => { e.stopPropagation(); handlePin(item.id); }}
                         className="px-3 py-1.5 rounded-md text-[11px] font-mono transition hover:brightness-125 active:scale-95"
@@ -1298,11 +1298,6 @@ export default function Brain() {
                         {summarizing === item.id && <span className="inline-block w-3 h-3 border border-current border-t-transparent rounded-full" style={{ animation: "spin 0.6s linear infinite" }} />}
                         {summarizing === item.id ? "Summarizing" : "Summarize"}
                       </button>
-                      <button
-                        onClick={e => { e.stopPropagation(); handleDelete(item.id); }}
-                        className="px-3 py-1.5 rounded-md text-[11px] font-mono transition hover:brightness-125 active:scale-95 ml-auto"
-                        style={{ border: "1px solid #EB575730", background: "#EB575715", color: "#EB5757" }}
-                      >Delete</button>
                     </div>
                     )}
                   </div>

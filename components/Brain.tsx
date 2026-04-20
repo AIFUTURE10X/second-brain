@@ -901,6 +901,34 @@ export default function Brain() {
               ⚑ Review <span className="opacity-50 text-[10px]">{reviewCount}</span>
             </button>
           )}
+          {(() => {
+            const activeFilters = [
+              view !== "all",
+              catFilter !== "all",
+              sourceFilter !== null,
+              withNotesOnly,
+              reviewMode,
+              search.trim().length > 0,
+            ].filter(Boolean).length;
+            if (activeFilters === 0) return null;
+            return (
+              <button
+                onClick={() => {
+                  setView("all");
+                  setCatFilter("all");
+                  setSourceFilter(null);
+                  setWithNotesOnly(false);
+                  setReviewMode(false);
+                  setSearch("");
+                }}
+                className="px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-mono font-medium transition-all shrink-0 ml-1 flex items-center gap-1.5 text-gray-400 hover:text-gray-200"
+                style={{ border: "1px solid #ffffff25", background: "#ffffff08" }}
+                title="Clear all active filters and search"
+              >
+                × Clear filters <span className="opacity-60 text-[10px]">{activeFilters}</span>
+              </button>
+            );
+          })()}
         </div>
 
         {/* Category filters — hierarchical */}

@@ -121,6 +121,7 @@ export default function Brain() {
   const [quickTaskSaving, setQuickTaskSaving] = useState(false);
   const [quickMemoryText, setQuickMemoryText] = useState("");
   const [quickMemorySaving, setQuickMemorySaving] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [showCatManager, setShowCatManager] = useState(false);
@@ -232,6 +233,17 @@ export default function Brain() {
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, [tagMenuOpen]);
+
+  // Close help popover when clicking outside
+  useEffect(() => {
+    if (!helpOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest("[data-help-menu]")) setHelpOpen(false);
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [helpOpen]);
 
   // Debounced server-side search
   useEffect(() => {
@@ -647,6 +659,55 @@ export default function Brain() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <div className="relative" data-help-menu>
+              <button
+                onClick={() => setHelpOpen(v => !v)}
+                className="w-10 h-10 rounded-xl text-gray-500 text-sm flex items-center justify-center border border-brand-border hover:text-gray-300 hover:border-gray-600 active:scale-95 transition"
+                aria-label="Show Telegram bot commands"
+                aria-expanded={helpOpen}
+                title="Telegram commands"
+              >✈</button>
+              {helpOpen && (
+                <div
+                  data-help-menu
+                  className="absolute right-0 top-full mt-2 z-50 w-[min(92vw,360px)] rounded-xl border border-brand-border bg-[#0D0F12] p-4 shadow-2xl text-left"
+                >
+                  <div className="text-xs font-mono text-gray-400 mb-2 flex items-center justify-between">
+                    <span>Telegram: <a href="https://t.me/philsbrain_bot" target="_blank" rel="noreferrer" className="text-[#5B8DEF] hover:underline">@philsbrain_bot</a></span>
+                    <button
+                      onClick={() => setHelpOpen(false)}
+                      className="text-gray-600 hover:text-gray-300 text-xs"
+                      aria-label="Close help"
+                    >×</button>
+                  </div>
+                  <div className="space-y-2 text-[11px] font-mono">
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-[#5B8DEF] shrink-0 w-24">URL</span>
+                      <span className="text-gray-400">→ ◈ Link (auto-tagged)</span>
+                    </div>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-[#BB6BD9] shrink-0 w-24">plain text</span>
+                      <span className="text-gray-400">→ ◉ Thought</span>
+                    </div>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-[#56CCF2] shrink-0 w-24">/t &lt;text&gt;</span>
+                      <span className="text-gray-400">→ ☐ Task</span>
+                    </div>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-[#F2C94C] shrink-0 w-24">/m &lt;text&gt;</span>
+                      <span className="text-gray-400">→ 💡 Memory</span>
+                    </div>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-[#6FCF97] shrink-0 w-24">forward msg</span>
+                      <span className="text-gray-400">→ captures content</span>
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-gray-600 font-mono mt-3 pt-3 border-t border-brand-border">
+                    Long-press any message in any chat, tap Forward, pick the bot.
+                  </p>
+                </div>
+              )}
+            </div>
             <button
               onClick={() => setDensity(d => d === "compact" ? "comfortable" : "compact")}
               className="w-10 h-10 rounded-xl text-gray-500 text-sm flex items-center justify-center border border-brand-border hover:text-gray-300 hover:border-gray-600 active:scale-95 transition"

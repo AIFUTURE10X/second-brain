@@ -65,6 +65,33 @@ const TYPES: Record<ItemType, { icon: string; label: string; color: string }> = 
 const TAG_COLORS = ["#E8A838", "#5B8DEF", "#6FCF97", "#BB6BD9", "#EB5757", "#56CCF2", "#F2994A", "#9B51E0"];
 const CAT_COLORS = ["#E8A838", "#5B8DEF", "#6FCF97", "#BB6BD9", "#EB5757", "#56CCF2", "#F2994A", "#9B51E0", "#27AE60", "#F2C94C"];
 
+const SOURCE_LABELS: Record<string, string> = {
+  "youtube.com": "YouTube",
+  "youtu.be": "YouTube",
+  "m.youtube.com": "YouTube",
+  "x.com": "X/Twitter",
+  "twitter.com": "X/Twitter",
+  "github.com": "GitHub",
+  "medium.com": "Medium",
+  "reddit.com": "Reddit",
+  "linkedin.com": "LinkedIn",
+  "tiktok.com": "TikTok",
+  "instagram.com": "Instagram",
+  "claude.ai": "Claude",
+  "anthropic.com": "Anthropic",
+  "vercel.com": "Vercel",
+};
+
+function sourceFromUrl(url: string): { host: string; label: string } | null {
+  if (!url) return null;
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, "");
+    return { host, label: SOURCE_LABELS[host] || host };
+  } catch {
+    return null;
+  }
+}
+
 function timeAgo(dateStr: string) {
   const diff = Date.now() - new Date(dateStr).getTime();
   const m = Math.floor(diff / 60000);
@@ -83,6 +110,7 @@ export default function Brain() {
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<"all" | ItemType>("all");
   const [catFilter, setCatFilter] = useState<string>("all");
+  const [sourceFilter, setSourceFilter] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [showCatManager, setShowCatManager] = useState(false);
@@ -169,7 +197,7 @@ export default function Brain() {
   }, [fetchItems, fetchCategories, search]);
 
   // Reset pagination when filters change
-  useEffect(() => { setVisibleCount(50); }, [view, catFilter, search, sortBy]);
+  useEffect(() => { setVisibleCount(50); }, [view, catFilter, search, sortBy, sourceFilter]);
 
   // Close modals on Escape
   useEffect(() => {
@@ -419,13 +447,17 @@ export default function Brain() {
     return [name, ...getChildren(parent.id).map(c => c.name)];
   };
 
-  // Text search is now server-side; client filters only type + category
+  // Text search is now server-side; client filters only type + category + source
   const filtered = items
     .filter(i => view === "all" || i.type === view)
     .filter(i => {
       if (catFilter === "all") return true;
       const matchNames = getCatNamesUnderParent(catFilter);
       return matchNames.includes(i.category);
+    })
+    .filter(i => {
+      if (!sourceFilter) return true;
+      return sourceFromUrl(i.url)?.host === sourceFilter;
     })
     .sort((a, b) => {
       if (a.pinned !== b.pinned) return b.pinned ? 1 : -1;
@@ -439,6 +471,20 @@ export default function Brain() {
   const hasMore = filtered.length > visibleCount;
 
   const allTags = [...new Set(items.flatMap(i => i.tags || []))];
+
+  const sourceCounts = (() => {
+    const counts = new Map<string, { label: string; count: number }>();
+    for (const item of items) {
+      const src = sourceFromUrl(item.url);
+      if (!src) continue;
+      const existing = counts.get(src.host);
+      if (existing) existing.count += 1;
+      else counts.set(src.host, { label: src.label, count: 1 });
+    }
+    return Array.from(counts.entries())
+      .map(([host, v]) => ({ host, label: v.label, count: v.count }))
+      .sort((a, b) => b.count - a.count);
+  })();
   const counts: Record<string, number> = {
     all: items.length,
     ...Object.fromEntries(Object.keys(TYPES).map(k => [k, items.filter(i => i.type === k).length])),
@@ -602,6 +648,29 @@ export default function Brain() {
           </div>
         )}
       </div>
+
+      {/* Sources (filter by site) */}
+      {sourceCounts.length > 0 && (
+        <div className="flex gap-1.5 flex-wrap px-5 pt-2.5">
+          {sourceCounts.slice(0, 10).map(src => {
+            const active = sourceFilter === src.host;
+            return (
+              <button
+                key={src.host}
+                onClick={() => setSourceFilter(active ? null : src.host)}
+                className="px-2.5 py-0.5 rounded-full text-[11px] font-mono transition"
+                style={{
+                  border: `1px solid ${active ? "#E8A83870" : "#44444460"}`,
+                  background: active ? "#E8A83820" : "transparent",
+                  color: active ? "#E8A838" : "#aaa",
+                }}
+              >
+                {src.label} <span className="opacity-50">{src.count}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Tags */}
       {allTags.length > 0 && (

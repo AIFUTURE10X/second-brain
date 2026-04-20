@@ -150,6 +150,7 @@ export default function Brain() {
   const [catLoading, setCatLoading] = useState(false);
   const [catSort, setCatSort] = useState<"manual" | "asc" | "desc">("manual");
   const [draggingCatId, setDraggingCatId] = useState<string | null>(null);
+  const [collapsedCats, setCollapsedCats] = useState<Set<string>>(new Set());
   const [visibleCount, setVisibleCount] = useState(50);
   const [density, setDensity] = useState<"comfortable" | "compact">("comfortable");
   const [showTagManager, setShowTagManager] = useState(false);
@@ -178,6 +179,29 @@ export default function Brain() {
       }
     } catch {}
   }, []);
+
+  // Persist which parent categories are collapsed (per-device)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem("sb_collapsed_cats");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) setCollapsedCats(new Set(parsed.filter((c): c is string => typeof c === "string")));
+      }
+    } catch {}
+  }, []);
+  useEffect(() => {
+    if (typeof window !== "undefined") window.localStorage.setItem("sb_collapsed_cats", JSON.stringify(Array.from(collapsedCats)));
+  }, [collapsedCats]);
+
+  const toggleCatCollapsed = (id: string) => {
+    setCollapsedCats(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
   useEffect(() => {
     if (typeof window !== "undefined") window.localStorage.setItem("sb_custom_cat_colors", JSON.stringify(customCatColors));
   }, [customCatColors]);
@@ -1756,7 +1780,10 @@ export default function Brain() {
                   setDraggingCatId(null);
                 },
               } : {};
-              return parents.map(cat => (
+              return parents.map(cat => {
+                const subs = childrenSorted(cat.id);
+                const collapsed = collapsedCats.has(cat.id);
+                return (
                 <div key={cat.id}>
                   <div
                     {...rowDragProps(cat)}
@@ -1765,11 +1792,29 @@ export default function Brain() {
                   >
                     <div className="flex items-center gap-2 flex-1 min-w-0">
                       {draggable && <span className="text-gray-700 cursor-grab active:cursor-grabbing select-none text-xs" title="Drag to reorder">⋮⋮</span>}
+                      {subs.length > 0 ? (
+                        <button
+                          onClick={() => toggleCatCollapsed(cat.id)}
+                          className="text-gray-500 hover:text-gray-200 text-[10px] w-4 h-4 flex items-center justify-center transition shrink-0"
+                          aria-expanded={!collapsed}
+                          aria-label={collapsed ? `Expand ${cat.name}` : `Collapse ${cat.name}`}
+                          title={collapsed ? "Show subcategories" : "Hide subcategories"}
+                        >{collapsed ? "▸" : "▾"}</button>
+                      ) : (
+                        <span className="w-4 shrink-0" />
+                      )}
                       <div className="w-3 h-3 rounded-full shrink-0" style={{ background: cat.color }} />
                       <span className="text-sm text-gray-300 truncate">{cat.name}</span>
                       <span className="text-[10px] text-gray-700 font-mono shrink-0">
                         {items.filter(i => getCatNamesUnderParent(cat.name).includes(i.category)).length}
                       </span>
+                      {subs.length > 0 && collapsed && (
+                        <span
+                          className="text-[10px] font-mono shrink-0 px-1.5 py-0.5 rounded-full ml-1"
+                          style={{ color: cat.color, background: `${cat.color}15`, border: `1px solid ${cat.color}30` }}
+                          title={`${subs.length} subcategor${subs.length === 1 ? "y" : "ies"}`}
+                        >+{subs.length}</span>
+                      )}
                     </div>
                     <div className="flex gap-1 shrink-0">
                       <button onClick={() => setEditingCat({ ...cat })} disabled={catLoading} aria-label={`Edit ${cat.name}`} className="text-[11px] text-gray-600 hover:text-blue-400 font-mono transition disabled:opacity-50">✎</button>
@@ -1777,7 +1822,7 @@ export default function Brain() {
                     </div>
                   </div>
                   {/* Subcategories */}
-                  {childrenSorted(cat.id).map(sub => (
+                  {!collapsed && subs.map(sub => (
                     <div
                       key={sub.id}
                       {...rowDragProps(sub)}
@@ -1799,7 +1844,8 @@ export default function Brain() {
                     </div>
                   ))}
                 </div>
-              ));
+                );
+              });
             })()}
 
             {/* Edit category inline */}

@@ -1593,7 +1593,7 @@ export default function Brain() {
             />
 
             <label className="block text-[11px] font-mono text-gray-400 mb-1.5 tracking-wide">
-              Attachments <span className="text-gray-600 font-normal">(PDF, XLS, DOC, images — max 10 MB each)</span>
+              Attachments <span className="text-gray-600 font-normal">(PDF, XLS, DOC, images — max 50 MB each)</span>
             </label>
             <input
               ref={fileInputRef}

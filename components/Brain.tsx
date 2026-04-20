@@ -112,6 +112,7 @@ export default function Brain() {
   const [view, setView] = useState<"all" | ItemType>("all");
   const [catFilter, setCatFilter] = useState<string>("all");
   const [sourceFilter, setSourceFilter] = useState<string | null>(null);
+  const [withNotesOnly, setWithNotesOnly] = useState(false);
   const [search, setSearch] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [showCatManager, setShowCatManager] = useState(false);
@@ -198,7 +199,7 @@ export default function Brain() {
   }, [fetchItems, fetchCategories, search]);
 
   // Reset pagination when filters change
-  useEffect(() => { setVisibleCount(50); }, [view, catFilter, search, sortBy, sourceFilter]);
+  useEffect(() => { setVisibleCount(50); }, [view, catFilter, search, sortBy, sourceFilter, withNotesOnly]);
 
   // Close modals on Escape
   useEffect(() => {
@@ -460,6 +461,7 @@ export default function Brain() {
       if (!sourceFilter) return true;
       return sourceFromUrl(i.url)?.key === sourceFilter;
     })
+    .filter(i => !withNotesOnly || (i.notes?.trim().length ?? 0) > 0)
     .sort((a, b) => {
       if (a.pinned !== b.pinned) return b.pinned ? 1 : -1;
       const da = new Date(a.createdAt).getTime();
@@ -472,6 +474,7 @@ export default function Brain() {
   const hasMore = filtered.length > visibleCount;
 
   const allTags = [...new Set(items.flatMap(i => i.tags || []))];
+  const withNotesCount = items.filter(i => (i.notes?.trim().length ?? 0) > 0).length;
 
   const sourceCounts = (() => {
     const counts = new Map<string, { label: string; count: number }>();
@@ -583,7 +586,7 @@ export default function Brain() {
             <button
               key={tab.key}
               onClick={() => { setView(tab.key); if (tab.key === "all") setCatFilter("all"); }}
-              className="px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-mono font-medium transition-all"
+              className="px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-mono font-medium transition-all shrink-0"
               style={{
                 border: view === tab.key ? "1px solid #E8A83850" : "1px solid transparent",
                 background: view === tab.key ? "#E8A83815" : "transparent",
@@ -593,6 +596,20 @@ export default function Brain() {
               {tab.icon} {tab.label} <span className="opacity-50 text-[10px]">{counts[tab.key]}</span>
             </button>
           ))}
+          {withNotesCount > 0 && (
+            <button
+              onClick={() => setWithNotesOnly(v => !v)}
+              className="px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-mono font-medium transition-all shrink-0 ml-1"
+              style={{
+                border: withNotesOnly ? "1px solid #6FCF9770" : "1px solid #6FCF9725",
+                background: withNotesOnly ? "#6FCF9720" : "transparent",
+                color: withNotesOnly ? "#6FCF97" : "#6FCF9780",
+              }}
+              title="Show only items with notes attached"
+            >
+              ✎ With notes <span className="opacity-50 text-[10px]">{withNotesCount}</span>
+            </button>
+          )}
         </div>
 
         {/* Category filters — hierarchical */}

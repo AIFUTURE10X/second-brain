@@ -737,16 +737,16 @@ export default function Brain() {
     <div className="min-h-screen relative pb-8">
       {/* Header */}
       <div className="sticky top-0 z-50 px-3 sm:px-5 pt-4 sm:pt-5 pb-0 border-b border-brand-border" style={{ background: "linear-gradient(180deg, #13161B 0%, #0D0F12 100%)" }}>
-        <div className="flex items-start sm:items-center justify-between gap-3 mb-4 flex-wrap">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
           <div className="min-w-0">
-            <h1 className="text-lg sm:text-xl font-bold truncate" style={{ fontFamily: "'Space Grotesk', sans-serif", background: "linear-gradient(135deg, #E8A838, #EB5757)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+            <h1 className="text-lg sm:text-xl font-bold whitespace-nowrap" style={{ fontFamily: "'Space Grotesk', sans-serif", color: "#E8A838" }}>
               ◆ Second Brain
             </h1>
             <p className="text-[11px] text-gray-600 font-mono mt-0.5">
               {items.length} items · synced
             </p>
           </div>
-          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-end">
+          <div className="flex items-center gap-1.5 sm:gap-2 justify-start sm:justify-end flex-wrap">
             <div className="relative" data-help-menu>
               <button
                 onClick={() => setHelpOpen(v => !v)}
@@ -825,7 +825,7 @@ export default function Brain() {
             <button
               onClick={() => { closeForm(); setShowAdd(true); }}
               className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl text-white text-xl flex items-center justify-center font-light transition-transform hover:scale-105 active:scale-95"
-              style={{ background: "linear-gradient(135deg, #E8A838, #EB5757)", boxShadow: "0 4px 16px rgba(232,168,56,0.3)" }}
+              style={{ background: "linear-gradient(135deg, #F2C94C, #E8A838)", boxShadow: "0 4px 16px rgba(232,168,56,0.35)" }}
               aria-label="Add new item"
             >+</button>
           </div>
@@ -910,10 +910,11 @@ export default function Brain() {
               reviewMode,
               search.trim().length > 0,
             ].filter(Boolean).length;
-            if (activeFilters === 0) return null;
+            const hasActive = activeFilters > 0;
             return (
               <button
                 onClick={() => {
+                  if (!hasActive) return;
                   setView("all");
                   setCatFilter("all");
                   setSourceFilter(null);
@@ -921,11 +922,16 @@ export default function Brain() {
                   setReviewMode(false);
                   setSearch("");
                 }}
-                className="px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-mono font-medium transition-all shrink-0 ml-1 flex items-center gap-1.5 text-gray-400 hover:text-gray-200"
-                style={{ border: "1px solid #ffffff25", background: "#ffffff08" }}
-                title="Clear all active filters and search"
+                disabled={!hasActive}
+                className="px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-mono font-medium transition-all shrink-0 ml-1 flex items-center gap-1.5 disabled:cursor-not-allowed"
+                style={{
+                  border: hasActive ? "1px solid #ffffff35" : "1px solid #ffffff15",
+                  background: hasActive ? "#ffffff10" : "transparent",
+                  color: hasActive ? "#ddd" : "#555",
+                }}
+                title={hasActive ? "Clear all active filters and search" : "No active filters"}
               >
-                × Clear filters <span className="opacity-60 text-[10px]">{activeFilters}</span>
+                × Clear filters {hasActive && <span className="opacity-60 text-[10px]">{activeFilters}</span>}
               </button>
             );
           })()}
@@ -1182,7 +1188,7 @@ export default function Brain() {
                 <button
                   onClick={() => { closeForm(); setShowAdd(true); }}
                   className="mt-4 px-5 py-2 rounded-xl text-white text-sm font-medium"
-                  style={{ background: "linear-gradient(135deg, #E8A838, #EB5757)" }}
+                  style={{ background: "linear-gradient(135deg, #F2C94C, #E8A838)" }}
                 >+ Add your first item</button>
               </>
             ) : catFilter !== "all" ? (
@@ -1651,7 +1657,7 @@ export default function Brain() {
                   onClick={() => handleSave()}
                   disabled={saving}
                   className="flex-1 py-3 rounded-xl text-white text-sm font-semibold transition-transform hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50"
-                  style={{ background: "linear-gradient(135deg, #E8A838, #EB5757)", boxShadow: "0 4px 16px rgba(232,168,56,0.25)" }}
+                  style={{ background: "linear-gradient(135deg, #F2C94C, #E8A838)", boxShadow: "0 4px 16px rgba(232,168,56,0.25)" }}
                 >
                   {saving ? "Saving..." : editingId ? "Update" : "Save"}
                 </button>
@@ -1748,7 +1754,7 @@ export default function Brain() {
                   </select>
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={handleEditCategory} disabled={catLoading} className="px-3 py-1.5 rounded-lg text-[11px] font-mono text-white disabled:opacity-50" style={{ background: "linear-gradient(135deg, #E8A838, #EB5757)" }}>{catLoading ? "Saving..." : "Save"}</button>
+                  <button onClick={handleEditCategory} disabled={catLoading} className="px-3 py-1.5 rounded-lg text-[11px] font-mono text-white disabled:opacity-50" style={{ background: "linear-gradient(135deg, #F2C94C, #E8A838)" }}>{catLoading ? "Saving..." : "Save"}</button>
                   <button onClick={() => setEditingCat(null)} className="px-3 py-1.5 rounded-lg text-[11px] font-mono text-gray-500 border border-brand-border">Cancel</button>
                 </div>
               </div>
@@ -1769,7 +1775,7 @@ export default function Brain() {
                   onClick={handleAddCategory}
                   disabled={catLoading}
                   className="px-3 py-2 rounded-lg text-sm font-medium text-white shrink-0 disabled:opacity-50"
-                  style={{ background: "linear-gradient(135deg, #E8A838, #EB5757)" }}
+                  style={{ background: "linear-gradient(135deg, #F2C94C, #E8A838)" }}
                 >{catLoading ? "..." : "Add"}</button>
               </div>
               <div className="flex gap-2 items-center mt-2">
@@ -1900,7 +1906,7 @@ export default function Brain() {
                         onClick={() => mergeTags(mergingTag.from, mergingTag.to.trim())}
                         disabled={tagMergeLoading || !mergingTag.to.trim()}
                         className="px-3 py-1 rounded-md text-[11px] font-mono text-white disabled:opacity-50"
-                        style={{ background: "linear-gradient(135deg, #E8A838, #EB5757)" }}
+                        style={{ background: "linear-gradient(135deg, #F2C94C, #E8A838)" }}
                       >{tagMergeLoading ? "…" : "Merge"}</button>
                       <button
                         onClick={() => setMergingTag(null)}

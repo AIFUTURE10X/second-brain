@@ -736,21 +736,21 @@ export default function Brain() {
   return (
     <div className="min-h-screen relative pb-8">
       {/* Header */}
-      <div className="sticky top-0 z-50 px-5 pt-5 pb-0 border-b border-brand-border" style={{ background: "linear-gradient(180deg, #13161B 0%, #0D0F12 100%)" }}>
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h1 className="text-xl font-bold" style={{ fontFamily: "'Space Grotesk', sans-serif", background: "linear-gradient(135deg, #E8A838, #EB5757)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+      <div className="sticky top-0 z-50 px-3 sm:px-5 pt-4 sm:pt-5 pb-0 border-b border-brand-border" style={{ background: "linear-gradient(180deg, #13161B 0%, #0D0F12 100%)" }}>
+        <div className="flex items-start sm:items-center justify-between gap-3 mb-4 flex-wrap">
+          <div className="min-w-0">
+            <h1 className="text-lg sm:text-xl font-bold truncate" style={{ fontFamily: "'Space Grotesk', sans-serif", background: "linear-gradient(135deg, #E8A838, #EB5757)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
               ◆ Second Brain
             </h1>
             <p className="text-[11px] text-gray-600 font-mono mt-0.5">
               {items.length} items · synced
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-end">
             <div className="relative" data-help-menu>
               <button
                 onClick={() => setHelpOpen(v => !v)}
-                className="w-10 h-10 rounded-xl text-gray-500 text-sm flex items-center justify-center border border-brand-border hover:text-gray-300 hover:border-gray-600 active:scale-95 transition"
+                className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl text-gray-500 text-sm flex items-center justify-center border border-brand-border hover:text-gray-300 hover:border-gray-600 active:scale-95 transition"
                 aria-label="Show Telegram bot commands"
                 aria-expanded={helpOpen}
                 title="Telegram commands"
@@ -798,7 +798,7 @@ export default function Brain() {
             </div>
             <button
               onClick={() => setDensity(d => d === "compact" ? "comfortable" : "compact")}
-              className="w-10 h-10 rounded-xl text-gray-500 text-sm flex items-center justify-center border border-brand-border hover:text-gray-300 hover:border-gray-600 active:scale-95 transition"
+              className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl text-gray-500 text-sm flex items-center justify-center border border-brand-border hover:text-gray-300 hover:border-gray-600 active:scale-95 transition"
               aria-label={density === "compact" ? "Switch to comfortable view" : "Switch to compact view"}
               title={density === "compact" ? "Comfortable view" : "Compact view"}
             >{density === "compact" ? "▦" : "≡"}</button>
@@ -807,24 +807,24 @@ export default function Brain() {
                 await Promise.all([fetchItems(search.trim() || undefined), fetchCategories()]);
                 showToast("Refreshed", "success");
               }}
-              className="w-10 h-10 rounded-xl text-gray-500 text-sm flex items-center justify-center border border-brand-border hover:text-gray-300 hover:border-gray-600 active:scale-95 transition"
+              className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl text-gray-500 text-sm flex items-center justify-center border border-brand-border hover:text-gray-300 hover:border-gray-600 active:scale-95 transition"
               aria-label="Refresh items"
               title="Refresh"
             >↻</button>
             <button
               onClick={() => setShowCatManager(true)}
-              className="w-10 h-10 rounded-xl text-gray-500 text-sm flex items-center justify-center border border-brand-border hover:text-gray-300 hover:border-gray-600 active:scale-95 transition"
+              className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl text-gray-500 text-sm flex items-center justify-center border border-brand-border hover:text-gray-300 hover:border-gray-600 active:scale-95 transition"
               aria-label="Manage categories"
             >⊞</button>
             <button
               onClick={handleExport}
-              className="w-10 h-10 rounded-xl text-gray-500 text-sm flex items-center justify-center border border-brand-border hover:text-gray-300 hover:border-gray-600 active:scale-95 transition"
+              className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl text-gray-500 text-sm flex items-center justify-center border border-brand-border hover:text-gray-300 hover:border-gray-600 active:scale-95 transition"
               aria-label="Download JSON backup"
               title="Download backup (JSON)"
             >↓</button>
             <button
               onClick={() => { closeForm(); setShowAdd(true); }}
-              className="w-10 h-10 rounded-xl text-white text-xl flex items-center justify-center font-light transition-transform hover:scale-105 active:scale-95"
+              className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl text-white text-xl flex items-center justify-center font-light transition-transform hover:scale-105 active:scale-95"
               style={{ background: "linear-gradient(135deg, #E8A838, #EB5757)", boxShadow: "0 4px 16px rgba(232,168,56,0.3)" }}
               aria-label="Add new item"
             >+</button>
@@ -845,7 +845,7 @@ export default function Brain() {
         </div>
 
         {/* Type filters */}
-        <div className="flex gap-1 overflow-x-auto pb-1.5 scroll-fade">
+        <div className="flex flex-wrap gap-1.5 pb-1.5">
           {[{ key: "all" as const, label: "All", icon: "◇", color: "#E8A838" }, ...Object.entries(TYPES).map(([k, v]) => ({ key: k as "all" | ItemType, label: v.label, icon: v.icon, color: v.color }))].map(tab => {
             const isTask = tab.key === "task";
             const hasOpenTasks = isTask && counts.task > 0;

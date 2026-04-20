@@ -1,4 +1,4 @@
-import { pgTable, text, boolean, uuid, timestamp, jsonb, uniqueIndex, index } from "drizzle-orm/pg-core";
+import { pgTable, text, boolean, integer, uuid, timestamp, jsonb, uniqueIndex, index } from "drizzle-orm/pg-core";
 
 export type Attachment = {
   url: string;
@@ -12,6 +12,7 @@ export const categories = pgTable("categories", {
   name: text("name").notNull(),
   color: text("color").notNull().default("#E8A838"),
   parentId: uuid("parent_id"),
+  position: integer("position").notNull().default(0),
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
 }, (table) => [
   uniqueIndex("categories_name_idx").on(table.name),

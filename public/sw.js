@@ -5,7 +5,7 @@
 //   Static assets (icons, manifest)      → cache-first
 //   Everything else                      → pass through (no caching)
 
-const CACHE_VERSION = "sb-v1";
+const CACHE_VERSION = "sb-v2";
 const DATA_CACHE = `${CACHE_VERSION}-data`;
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const PAGE_CACHE = `${CACHE_VERSION}-pages`;

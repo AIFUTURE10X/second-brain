@@ -54,6 +54,7 @@ interface Category {
   name: string;
   color: string;
   parentId: string | null;
+  position?: number;
 }
 
 const TYPES: Record<ItemType, { icon: string; label: string; color: string }> = {
@@ -147,6 +148,8 @@ export default function Brain() {
   const [newCat, setNewCat] = useState({ name: "", color: CAT_COLORS[0], parentId: "" });
   const [editingCat, setEditingCat] = useState<Category | null>(null);
   const [catLoading, setCatLoading] = useState(false);
+  const [catSort, setCatSort] = useState<"manual" | "asc" | "desc">("manual");
+  const [draggingCatId, setDraggingCatId] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState(50);
   const [density, setDensity] = useState<"comfortable" | "compact">("comfortable");
   const [showTagManager, setShowTagManager] = useState(false);
@@ -536,7 +539,7 @@ export default function Brain() {
         showToast("Failed to add category", "error");
       } else {
         const created: Category = await res.json();
-        setCategories(prev => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
+        setCategories(prev => [...prev, created].sort(sortByPosition));
         setNewCat({ name: "", color: CAT_COLORS[0], parentId: "" });
         showToast("Category created", "success");
       }
@@ -559,7 +562,7 @@ export default function Brain() {
         showToast("Failed to update category", "error");
       } else {
         const updated: Category = await res.json();
-        setCategories(prev => prev.map(c => c.id === updated.id ? updated : c).sort((a, b) => a.name.localeCompare(b.name)));
+        setCategories(prev => prev.map(c => c.id === updated.id ? updated : c).sort(sortByPosition));
         setEditingCat(null);
         await fetchItems();
       }
@@ -587,9 +590,47 @@ export default function Brain() {
     setCatLoading(false);
   };
 
+  // Sort by position (manual order from server) then name as tiebreak
+  const sortByPosition = (a: Category, b: Category) => (a.position ?? 0) - (b.position ?? 0) || a.name.localeCompare(b.name);
+
+  // Reorder a category within its parent group via drag-and-drop. Persists to server.
+  const reorderCategory = async (draggedId: string, targetId: string) => {
+    if (draggedId === targetId) return;
+    const dragged = categories.find(c => c.id === draggedId);
+    const target = categories.find(c => c.id === targetId);
+    if (!dragged || !target || dragged.parentId !== target.parentId) return;
+
+    const siblings = categories
+      .filter(c => c.parentId === dragged.parentId)
+      .sort(sortByPosition);
+    const without = siblings.filter(c => c.id !== draggedId);
+    const targetIdx = without.findIndex(c => c.id === targetId);
+    const reordered = [
+      ...without.slice(0, targetIdx),
+      dragged,
+      ...without.slice(targetIdx),
+    ];
+    const orders = reordered.map((c, i) => ({ id: c.id, position: i }));
+
+    setCategories(prev => prev.map(c => {
+      const o = orders.find(x => x.id === c.id);
+      return o ? { ...c, position: o.position } : c;
+    }));
+
+    try {
+      await fetch("/api/categories", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orders }),
+      });
+    } catch {
+      showToast("Failed to save order", "error");
+    }
+  };
+
   // Helper: get parent categories (no parent)
-  const allParentCats = categories.filter(c => !c.parentId);
-  const getChildren = (parentId: string) => categories.filter(c => c.parentId === parentId);
+  const allParentCats = categories.filter(c => !c.parentId).sort(sortByPosition);
+  const getChildren = (parentId: string) => categories.filter(c => c.parentId === parentId).sort(sortByPosition);
   // Get all category names under a parent (for filtering)
   const getCatNamesUnderParent = (name: string) => {
     const parent = categories.find(c => c.name === name && !c.parentId);
@@ -1682,47 +1723,104 @@ export default function Brain() {
           <div className="flex-1 cursor-pointer" onClick={() => setShowCatManager(false)} />
           <div className="bg-brand-card border-t border-brand-border rounded-t-2xl px-5 pt-4 pb-6 max-h-[85vh] overflow-y-auto">
             <div className="w-9 h-1 bg-gray-700 rounded-full mx-auto mb-4" />
-            <h2 className="text-base font-semibold mb-4" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-              Categories
-            </h2>
+            <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
+              <h2 className="text-base font-semibold" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                Categories
+              </h2>
+              <div className="flex gap-1 text-[10px] font-mono">
+                {(["manual", "asc", "desc"] as const).map(mode => (
+                  <button
+                    key={mode}
+                    onClick={() => setCatSort(mode)}
+                    className="px-2 py-1 rounded transition border"
+                    style={{
+                      borderColor: catSort === mode ? "#E8A83870" : "#ffffff15",
+                      background: catSort === mode ? "#E8A83815" : "transparent",
+                      color: catSort === mode ? "#E8A838" : "#888",
+                    }}
+                    title={mode === "manual" ? "Drag to reorder" : mode === "asc" ? "Sort A → Z" : "Sort Z → A"}
+                  >
+                    {mode === "manual" ? "↕ Manual" : mode === "asc" ? "A → Z" : "Z → A"}
+                  </button>
+                ))}
+              </div>
+            </div>
 
             {/* Existing categories — hierarchical */}
             {categories.length === 0 && (
               <p className="text-xs text-gray-600 font-mono mb-4">No categories yet. Add one below, or just save items — AI will auto-categorize.</p>
             )}
-            {allParentCats.map(cat => (
-              <div key={cat.id}>
-                <div className="flex items-center justify-between py-2 border-b border-brand-border">
-                  <div className="flex items-center gap-2 flex-1 min-w-0">
-                    <div className="w-3 h-3 rounded-full shrink-0" style={{ background: cat.color }} />
-                    <span className="text-sm text-gray-300 truncate">{cat.name}</span>
-                    <span className="text-[10px] text-gray-700 font-mono shrink-0">
-                      {items.filter(i => getCatNamesUnderParent(cat.name).includes(i.category)).length}
-                    </span>
-                  </div>
-                  <div className="flex gap-1 shrink-0">
-                    <button onClick={() => setEditingCat({ ...cat })} disabled={catLoading} aria-label={`Edit ${cat.name}`} className="text-[11px] text-gray-600 hover:text-blue-400 font-mono transition disabled:opacity-50">✎</button>
-                    <button onClick={() => handleDeleteCategory(cat.id)} disabled={catLoading} aria-label={`Delete ${cat.name}`} className="text-[11px] text-gray-600 hover:text-red-400 font-mono transition disabled:opacity-50">✕</button>
-                  </div>
-                </div>
-                {/* Subcategories */}
-                {getChildren(cat.id).map(sub => (
-                  <div key={sub.id} className="flex items-center justify-between py-1.5 pl-6 border-b border-brand-border/50">
+            {(() => {
+              const sortFn = catSort === "asc"
+                ? (a: Category, b: Category) => a.name.localeCompare(b.name)
+                : catSort === "desc"
+                  ? (a: Category, b: Category) => b.name.localeCompare(a.name)
+                  : sortByPosition;
+              const parents = categories.filter(c => !c.parentId).sort(sortFn);
+              const childrenSorted = (pid: string) => categories.filter(c => c.parentId === pid).sort(sortFn);
+              const draggable = catSort === "manual";
+              const rowDragProps = (cat: Category) => draggable ? {
+                draggable: true,
+                onDragStart: (e: React.DragEvent) => { setDraggingCatId(cat.id); e.dataTransfer.effectAllowed = "move"; },
+                onDragEnd: () => setDraggingCatId(null),
+                onDragOver: (e: React.DragEvent) => {
+                  if (!draggingCatId || draggingCatId === cat.id) return;
+                  const dragged = categories.find(c => c.id === draggingCatId);
+                  if (dragged?.parentId !== cat.parentId) return;
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
+                },
+                onDrop: (e: React.DragEvent) => {
+                  e.preventDefault();
+                  if (draggingCatId) reorderCategory(draggingCatId, cat.id);
+                  setDraggingCatId(null);
+                },
+              } : {};
+              return parents.map(cat => (
+                <div key={cat.id}>
+                  <div
+                    {...rowDragProps(cat)}
+                    className="flex items-center justify-between py-2 border-b border-brand-border transition-opacity"
+                    style={{ opacity: draggingCatId === cat.id ? 0.4 : 1 }}
+                  >
                     <div className="flex items-center gap-2 flex-1 min-w-0">
-                      <div className="w-2 h-2 rounded-full shrink-0" style={{ background: sub.color }} />
-                      <span className="text-xs text-gray-400 truncate">↳ {sub.name}</span>
+                      {draggable && <span className="text-gray-700 cursor-grab active:cursor-grabbing select-none text-xs" title="Drag to reorder">⋮⋮</span>}
+                      <div className="w-3 h-3 rounded-full shrink-0" style={{ background: cat.color }} />
+                      <span className="text-sm text-gray-300 truncate">{cat.name}</span>
                       <span className="text-[10px] text-gray-700 font-mono shrink-0">
-                        {items.filter(i => i.category === sub.name).length}
+                        {items.filter(i => getCatNamesUnderParent(cat.name).includes(i.category)).length}
                       </span>
                     </div>
                     <div className="flex gap-1 shrink-0">
-                      <button onClick={() => setEditingCat({ ...sub })} disabled={catLoading} aria-label={`Edit ${sub.name}`} className="text-[10px] text-gray-600 hover:text-blue-400 font-mono transition disabled:opacity-50">✎</button>
-                      <button onClick={() => handleDeleteCategory(sub.id)} disabled={catLoading} aria-label={`Delete ${sub.name}`} className="text-[10px] text-gray-600 hover:text-red-400 font-mono transition disabled:opacity-50">✕</button>
+                      <button onClick={() => setEditingCat({ ...cat })} disabled={catLoading} aria-label={`Edit ${cat.name}`} className="text-[11px] text-gray-600 hover:text-blue-400 font-mono transition disabled:opacity-50">✎</button>
+                      <button onClick={() => handleDeleteCategory(cat.id)} disabled={catLoading} aria-label={`Delete ${cat.name}`} className="text-[11px] text-gray-600 hover:text-red-400 font-mono transition disabled:opacity-50">✕</button>
                     </div>
                   </div>
-                ))}
-              </div>
-            ))}
+                  {/* Subcategories */}
+                  {childrenSorted(cat.id).map(sub => (
+                    <div
+                      key={sub.id}
+                      {...rowDragProps(sub)}
+                      className="flex items-center justify-between py-1.5 pl-6 border-b border-brand-border/50 transition-opacity"
+                      style={{ opacity: draggingCatId === sub.id ? 0.4 : 1 }}
+                    >
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        {draggable && <span className="text-gray-700 cursor-grab active:cursor-grabbing select-none text-[10px]" title="Drag to reorder">⋮⋮</span>}
+                        <div className="w-2 h-2 rounded-full shrink-0" style={{ background: sub.color }} />
+                        <span className="text-xs text-gray-400 truncate">↳ {sub.name}</span>
+                        <span className="text-[10px] text-gray-700 font-mono shrink-0">
+                          {items.filter(i => i.category === sub.name).length}
+                        </span>
+                      </div>
+                      <div className="flex gap-1 shrink-0">
+                        <button onClick={() => setEditingCat({ ...sub })} disabled={catLoading} aria-label={`Edit ${sub.name}`} className="text-[10px] text-gray-600 hover:text-blue-400 font-mono transition disabled:opacity-50">✎</button>
+                        <button onClick={() => handleDeleteCategory(sub.id)} disabled={catLoading} aria-label={`Delete ${sub.name}`} className="text-[10px] text-gray-600 hover:text-red-400 font-mono transition disabled:opacity-50">✕</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ));
+            })()}
 
             {/* Edit category inline */}
             {editingCat && (
@@ -1733,7 +1831,7 @@ export default function Brain() {
                   onChange={e => setEditingCat(c => c ? { ...c, name: e.target.value } : null)}
                   className="w-full px-3 py-1.5 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none mb-2 placeholder:text-gray-500"
                 />
-                <div className="flex gap-2 items-center mb-2">
+                <div className="flex gap-2 items-center mb-2 flex-wrap">
                   <span className="text-[10px] text-gray-600 font-mono">Color:</span>
                   {CAT_COLORS.slice(0, 8).map(c => (
                     <button key={c} onClick={() => setEditingCat(cat => cat ? { ...cat, color: c } : null)}
@@ -1741,6 +1839,23 @@ export default function Brain() {
                       style={{ background: c, border: editingCat.color === c ? "2px solid white" : "2px solid transparent", transform: editingCat.color === c ? "scale(1.2)" : "scale(1)" }}
                     />
                   ))}
+                  <label
+                    className="relative w-4 h-4 rounded-full cursor-pointer flex items-center justify-center text-[8px] text-white"
+                    style={{
+                      background: CAT_COLORS.includes(editingCat.color) ? "transparent" : editingCat.color,
+                      border: CAT_COLORS.includes(editingCat.color) ? "1px dashed #555" : "2px solid white",
+                    }}
+                    title="Custom color"
+                  >
+                    {CAT_COLORS.includes(editingCat.color) && "+"}
+                    <input
+                      type="color"
+                      value={editingCat.color}
+                      onChange={e => setEditingCat(cat => cat ? { ...cat, color: e.target.value } : null)}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      aria-label="Pick custom color"
+                    />
+                  </label>
                 </div>
                 <div className="flex gap-2 items-center mb-2">
                   <span className="text-[10px] text-gray-600 font-mono">Parent:</span>
@@ -1780,7 +1895,7 @@ export default function Brain() {
                   style={{ background: "linear-gradient(135deg, #F2C94C, #E8A838)" }}
                 >{catLoading ? "..." : "Add"}</button>
               </div>
-              <div className="flex gap-2 items-center mt-2">
+              <div className="flex gap-2 items-center mt-2 flex-wrap">
                 <div className="flex gap-1 items-center">
                   {CAT_COLORS.slice(0, 6).map(c => (
                     <button key={c} onClick={() => setNewCat(n => ({ ...n, color: c }))}
@@ -1788,6 +1903,23 @@ export default function Brain() {
                       style={{ background: c, border: newCat.color === c ? "2px solid white" : "2px solid transparent", transform: newCat.color === c ? "scale(1.2)" : "scale(1)" }}
                     />
                   ))}
+                  <label
+                    className="relative w-4 h-4 rounded-full cursor-pointer flex items-center justify-center text-[8px] text-white ml-1"
+                    style={{
+                      background: CAT_COLORS.includes(newCat.color) ? "transparent" : newCat.color,
+                      border: CAT_COLORS.includes(newCat.color) ? "1px dashed #555" : "2px solid white",
+                    }}
+                    title="Custom color"
+                  >
+                    {CAT_COLORS.includes(newCat.color) && "+"}
+                    <input
+                      type="color"
+                      value={newCat.color}
+                      onChange={e => setNewCat(n => ({ ...n, color: e.target.value }))}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      aria-label="Pick custom color"
+                    />
+                  </label>
                 </div>
                 <select
                   value={newCat.parentId}

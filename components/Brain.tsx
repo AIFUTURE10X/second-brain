@@ -1404,9 +1404,14 @@ export default function Brain() {
                     </div>
                   )}
                   {item.siteName && (
-                    <div className="absolute bottom-2 left-2 flex items-center gap-1.5 bg-black/70 rounded-md px-2 py-1">
-                      {item.favicon && <img src={item.favicon} alt="" className="w-3.5 h-3.5 rounded-sm" loading="lazy" />}
-                      <span className="text-[10px] text-gray-300 font-mono">{item.siteName}</span>
+                    <div className="absolute bottom-2 left-2 flex items-center gap-1.5 bg-black/70 rounded-md px-2 py-1 max-w-[calc(100%-1rem)]">
+                      {item.favicon && <img src={item.favicon} alt="" className="w-3.5 h-3.5 rounded-sm shrink-0" loading="lazy" />}
+                      <span className="text-[10px] text-gray-300 font-mono shrink-0">{item.siteName}</span>
+                      {isYouTube && item.ogDescription && (
+                        <span className="text-[10px] text-gray-400 font-mono truncate" title={item.ogDescription}>
+                          · {item.ogDescription}
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1435,8 +1440,17 @@ export default function Brain() {
                       </p>
                     </div>
 
-                    {/* OG description for links (when no user content) */}
-                    {item.ogDescription && !item.content && !isCompact && (
+                    {/* YouTube channel/author name */}
+                    {isYouTube && item.ogDescription && (
+                      <p className="text-[11px] mt-0.5 truncate flex items-center gap-1" style={{ color: "#EB5757" }}>
+                        <span className="text-[9px]" aria-hidden>▶</span>
+                        <span className="truncate">{item.ogDescription}</span>
+                      </p>
+                    )}
+
+                    {/* OG description for links (when no user content) — skip for YouTube since
+                        ogDescription holds the channel name shown above */}
+                    {item.ogDescription && !item.content && !isCompact && !isYouTube && (
                       <p className="text-xs text-gray-500 mt-1 line-clamp-2">{item.ogDescription}</p>
                     )}
 

@@ -665,20 +665,32 @@ export default function Brain() {
 
         {/* Type filters */}
         <div className="flex gap-1 overflow-x-auto pb-1.5 scroll-fade">
-          {[{ key: "all" as const, label: "All", icon: "◇" }, ...Object.entries(TYPES).map(([k, v]) => ({ key: k as "all" | ItemType, label: v.label, icon: v.icon }))].map(tab => (
-            <button
-              key={tab.key}
-              onClick={() => { setView(tab.key); if (tab.key === "all") setCatFilter("all"); }}
-              className="px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-mono font-medium transition-all shrink-0"
-              style={{
-                border: view === tab.key ? "1px solid #E8A83850" : "1px solid transparent",
-                background: view === tab.key ? "#E8A83815" : "transparent",
-                color: view === tab.key ? "#E8A838" : "#666",
-              }}
-            >
-              {tab.icon} {tab.label} <span className="opacity-50 text-[10px]">{counts[tab.key]}</span>
-            </button>
-          ))}
+          {[{ key: "all" as const, label: "All", icon: "◇" }, ...Object.entries(TYPES).map(([k, v]) => ({ key: k as "all" | ItemType, label: v.label, icon: v.icon }))].map(tab => {
+            const isTask = tab.key === "task";
+            const hasOpenTasks = isTask && counts.task > 0;
+            return (
+              <button
+                key={tab.key}
+                onClick={() => { setView(tab.key); if (tab.key === "all") setCatFilter("all"); }}
+                className="px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-mono font-medium transition-all shrink-0 flex items-center gap-1.5"
+                style={{
+                  border: view === tab.key ? "1px solid #E8A83850" : "1px solid transparent",
+                  background: view === tab.key ? "#E8A83815" : "transparent",
+                  color: view === tab.key ? "#E8A838" : "#666",
+                }}
+              >
+                <span>{tab.icon} {tab.label}</span>
+                {hasOpenTasks ? (
+                  <span
+                    className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full text-[10px] font-bold text-white"
+                    style={{ background: "#56CCF2" }}
+                  >{counts.task}</span>
+                ) : (
+                  <span className="opacity-50 text-[10px]">{counts[tab.key]}</span>
+                )}
+              </button>
+            );
+          })}
           {withNotesCount > 0 && (
             <button
               onClick={() => setWithNotesOnly(v => !v)}

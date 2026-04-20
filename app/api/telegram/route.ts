@@ -38,7 +38,12 @@ export async function POST(req: NextRequest) {
   if (!message) return NextResponse.json({ ok: true });
 
   const chatId = message.chat.id;
-  const text = message.text || message.caption || "";
+  const rawText = message.text || message.caption || "";
+
+  // Detect task prefix: "/t " or "/task " → save as task instead of thought/link
+  const taskMatch = rawText.match(/^\/(task|t)\s+([\s\S]+)/i);
+  const isTaskCommand = !!taskMatch;
+  const text = isTaskCommand ? taskMatch![2].trim() : rawText;
 
   // Lock the bot to a single user ID (allowlist) — prevents strangers who find the bot
   // username from spamming the owner's Brain. Accepts a single ID or a comma-separated list.
@@ -58,7 +63,7 @@ export async function POST(req: NextRequest) {
   const remainingText = text.replace(/https?:\/\/[^\s]+/g, "").trim();
 
   if (!url && !remainingText) {
-    await sendTelegram(botToken, chatId, "Send me a URL or some text to save to your Brain.");
+    await sendTelegram(botToken, chatId, "Send me a URL, text to save as a thought, or '/t buy milk' to add a task.");
     return NextResponse.json({ ok: true });
   }
 
@@ -70,15 +75,17 @@ export async function POST(req: NextRequest) {
     }
 
     // Determine type + content
-    const type = url ? "link" : "thought";
-    const title = og.ogTitle || remainingText.slice(0, 100) || "";
-    const content = url ? remainingText : text;
-    const notes = url && remainingText ? remainingText : "";
+    const type = isTaskCommand ? "task" : url ? "link" : "thought";
+    const title = isTaskCommand
+      ? text.slice(0, 200)
+      : og.ogTitle || remainingText.slice(0, 100) || "";
+    const content = isTaskCommand ? "" : url ? remainingText : text;
+    const notes = !isTaskCommand && url && remainingText ? remainingText : "";
 
-    // AI auto-tag if available
+    // AI auto-tag if available — skip for tasks (they're lightweight)
     let tags: string[] = [];
     let category = "";
-    if (process.env.ANTHROPIC_API_KEY) {
+    if (!isTaskCommand && process.env.ANTHROPIC_API_KEY) {
       const existingCats = await db.select({ name: categories.name }).from(categories).orderBy(asc(categories.name));
       const ai = await aiTagAndCategorize({
         title,
@@ -127,10 +134,11 @@ export async function POST(req: NextRequest) {
       .returning();
 
     // Reply with confirmation
-    const emoji = type === "link" ? "◈" : "◉";
+    const emoji = type === "task" ? "☐" : type === "link" ? "◈" : "◉";
+    const label = type === "task" ? "Task added!" : "Saved to Brain!";
     const tagStr = tags.length > 0 ? `\nTags: ${tags.map(t => `#${t}`).join(" ")}` : "";
     const catStr = category ? `\nCategory: ${category}` : "";
-    await sendTelegram(botToken, chatId, `${emoji} Saved to Brain!\n\n${row.title || "Untitled"}${tagStr}${catStr}`);
+    await sendTelegram(botToken, chatId, `${emoji} ${label}\n\n${row.title || "Untitled"}${tagStr}${catStr}`);
 
     return NextResponse.json({ ok: true });
   } catch (e) {

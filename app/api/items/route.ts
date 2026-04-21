@@ -11,7 +11,15 @@ export async function GET(req: NextRequest) {
   const denied = checkApiKey(req);
   if (denied) return denied;
 
-  const q = new URL(req.url).searchParams.get("q")?.trim();
+  const url = new URL(req.url);
+  const id = url.searchParams.get("id");
+  const q = url.searchParams.get("q")?.trim();
+
+  if (id) {
+    const [row] = await db.select().from(items).where(eq(items.id, id));
+    if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    return NextResponse.json(row);
+  }
 
   if (q) {
     // Full-text search across title, content, notes, og_title, og_description

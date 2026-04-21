@@ -158,6 +158,10 @@ export default function Brain() {
   const [tagMergeLoading, setTagMergeLoading] = useState(false);
   const [reviewMode, setReviewMode] = useState(false);
   const [customCatColors, setCustomCatColors] = useState<string[]>([]);
+  const [pickerTarget, setPickerTarget] = useState<null | "content" | "notes">(null);
+  const [pickerSearch, setPickerSearch] = useState("");
+  const contentRef = useRef<HTMLTextAreaElement>(null);
+  const notesRef = useRef<HTMLTextAreaElement>(null);
 
   // Persist density preference across reloads
   useEffect(() => {
@@ -298,7 +302,8 @@ export default function Brain() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        if (showAdd) closeForm();
+        if (pickerTarget) { setPickerTarget(null); setPickerSearch(""); }
+        else if (showAdd) closeForm();
         else if (showCatManager) setShowCatManager(false);
         else if (showTagManager) { setShowTagManager(false); setMergingTag(null); }
         else if (tagMenuOpen) setTagMenuOpen(false);
@@ -311,7 +316,7 @@ export default function Brain() {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [showAdd, showCatManager, showTagManager, tagMenuOpen]);
+  }, [showAdd, showCatManager, showTagManager, tagMenuOpen, pickerTarget]);
 
   // Close tag menu when clicking outside
   useEffect(() => {
@@ -359,6 +364,28 @@ export default function Brain() {
     setForm({ type: "note", title: "", content: "", url: "", notes: "", tags: "", category: "", attachments: [] });
     setShowAdd(false);
     setEditingId(null);
+  };
+
+  const insertFromCard = (item: Item) => {
+    const target = pickerTarget;
+    if (!target) return;
+    const body = [item.content, item.notes].filter(Boolean).join("\n\n");
+    const snippet = item.title ? `${item.title}\n${body}`.trim() : body;
+    if (!snippet) { setPickerTarget(null); setPickerSearch(""); return; }
+    const ref = target === "content" ? contentRef : notesRef;
+    const el = ref.current;
+    setForm(f => {
+      const current = f[target] || "";
+      const start = el?.selectionStart ?? current.length;
+      const end = el?.selectionEnd ?? current.length;
+      const prefix = current.slice(0, start);
+      const suffix = current.slice(end);
+      const sep = prefix && !prefix.endsWith("\n") ? "\n\n" : "";
+      const next = `${prefix}${sep}${snippet}${suffix}`;
+      return { ...f, [target]: next };
+    });
+    setPickerTarget(null);
+    setPickerSearch("");
   };
 
   const handleFileUpload = async (files: FileList | null) => {
@@ -1655,22 +1682,40 @@ export default function Brain() {
               className="w-full px-3 py-2.5 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none mb-2.5 placeholder:text-gray-500"
             />
             <textarea
+              ref={contentRef}
               value={form.content}
               onChange={e => setForm(f => ({ ...f, content: e.target.value }))}
               placeholder={form.type === "thought" ? "What's on your mind..." : "Content / description..."}
               aria-label="Content"
               rows={3}
-              className="w-full px-3 py-2.5 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none mb-2.5 resize-y leading-relaxed placeholder:text-gray-500"
+              className="w-full px-3 py-2.5 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none mb-1.5 resize-y leading-relaxed placeholder:text-gray-500"
             />
+            <button
+              type="button"
+              onClick={() => { setPickerTarget("content"); setPickerSearch(""); }}
+              className="mb-2.5 text-[11px] font-mono text-gray-500 hover:text-gray-300 transition"
+            >
+              + Insert from another card
+            </button>
             {(form.type === "link" || form.type === "clip") && (
-              <textarea
-                value={form.notes}
-                onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-                placeholder="My annotations on this link..."
-                aria-label="Annotations"
-                rows={2}
-                className="w-full px-3 py-2.5 bg-brand-muted border border-type-link/20 rounded-lg text-sm text-gray-400 italic outline-none mb-2.5 resize-y leading-relaxed placeholder:text-gray-500"
-              />
+              <>
+                <textarea
+                  ref={notesRef}
+                  value={form.notes}
+                  onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+                  placeholder="My annotations on this link..."
+                  aria-label="Annotations"
+                  rows={2}
+                  className="w-full px-3 py-2.5 bg-brand-muted border border-type-link/20 rounded-lg text-sm text-gray-400 italic outline-none mb-1.5 resize-y leading-relaxed placeholder:text-gray-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => { setPickerTarget("notes"); setPickerSearch(""); }}
+                  className="mb-2.5 text-[11px] font-mono text-gray-500 hover:text-gray-300 transition"
+                >
+                  + Insert from another card
+                </button>
+              </>
             )}
             <label className="block text-[11px] font-mono text-gray-400 mb-1.5 tracking-wide">
               Tags <span className="text-gray-600 font-normal">(comma-separated)</span>
@@ -1755,6 +1800,76 @@ export default function Brain() {
                 {editingId ? "Update & Add Another" : "Save & Add Another"}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Card Picker — insert content from another card */}
+      {pickerTarget && (
+        <div className="fixed inset-0 z-[210] flex flex-col justify-end" style={{ background: "#0D0F12EE" }}>
+          <div className="flex-1 cursor-pointer" onClick={() => { setPickerTarget(null); setPickerSearch(""); }} />
+          <div className="bg-brand-card border-t border-brand-border rounded-t-2xl px-5 pt-4 pb-6 max-h-[80vh] flex flex-col">
+            <div className="w-9 h-1 bg-gray-700 rounded-full mx-auto mb-4" />
+            <h2 className="text-base font-semibold mb-3" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+              Insert from another card
+            </h2>
+            <input
+              autoFocus
+              value={pickerSearch}
+              onChange={e => setPickerSearch(e.target.value)}
+              placeholder="Search cards by title, content, or tag..."
+              aria-label="Search cards"
+              className="w-full px-3 py-2.5 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none mb-3 placeholder:text-gray-500"
+            />
+            <div className="flex-1 overflow-y-auto flex flex-col gap-1.5">
+              {(() => {
+                const q = pickerSearch.trim().toLowerCase();
+                const matches = items
+                  .filter(it => it.id !== editingId)
+                  .filter(it => {
+                    if (!q) return true;
+                    return (
+                      it.title.toLowerCase().includes(q) ||
+                      it.content.toLowerCase().includes(q) ||
+                      it.notes.toLowerCase().includes(q) ||
+                      it.tags.some(t => t.toLowerCase().includes(q))
+                    );
+                  })
+                  .slice(0, 100);
+                if (matches.length === 0) {
+                  return <div className="text-xs text-gray-500 font-mono py-6 text-center">No cards found</div>;
+                }
+                return matches.map(it => {
+                  const t = TYPES[it.type];
+                  const preview = (it.content || it.notes || "").slice(0, 120);
+                  return (
+                    <button
+                      key={it.id}
+                      type="button"
+                      onClick={() => insertFromCard(it)}
+                      className="text-left px-3 py-2 rounded-lg bg-brand-muted border border-brand-border hover:border-gray-600 transition"
+                    >
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <span style={{ color: t.color }} className="text-xs">{t.icon}</span>
+                        <span className="text-sm text-gray-200 truncate flex-1">{it.title || "(untitled)"}</span>
+                        {it.category && (
+                          <span className="text-[10px] font-mono text-gray-500">{it.category}</span>
+                        )}
+                      </div>
+                      {preview && (
+                        <div className="text-[11px] text-gray-500 line-clamp-2">{preview}</div>
+                      )}
+                    </button>
+                  );
+                });
+              })()}
+            </div>
+            <button
+              onClick={() => { setPickerTarget(null); setPickerSearch(""); }}
+              className="mt-3 py-2.5 rounded-xl bg-brand-muted border border-brand-border text-gray-400 text-sm font-medium active:scale-[0.99] transition"
+            >
+              Cancel
+            </button>
           </div>
         </div>
       )}

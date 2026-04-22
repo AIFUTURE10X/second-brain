@@ -309,28 +309,28 @@ export default function Brain() {
   const popOutCard = useCallback((id: string) => {
     if (typeof window === "undefined") return;
     const absoluteUrl = new URL(`/card/${id}`, window.location.origin).toString();
-    const label = `card-${id}`;
 
-    // Tauri desktop app: window.open() is blocked by WebView2, so call our
-    // custom Rust command that creates a real native Tauri window.
+    // Tauri desktop app: open the card in the user's default system browser via
+    // the opener plugin. WebView2 multi-window is too unreliable for our use
+    // case, and Chrome handles popups (and copy-paste between them) properly.
     const tauriIpc = (window as unknown as { __TAURI_INTERNALS__?: { invoke?: (cmd: string, args?: unknown) => Promise<unknown> } }).__TAURI_INTERNALS__;
     if (tauriIpc && typeof tauriIpc.invoke === "function") {
-      tauriIpc.invoke("pop_out_card", { url: absoluteUrl, label })
+      tauriIpc.invoke("plugin:opener|open_url", { url: absoluteUrl, with: null })
         .catch((err: unknown) => {
-          console.error("[popOut] tauri pop_out_card failed:", err);
+          console.error("[popOut] opener failed:", err);
           showToast(`Pop-out failed: ${String(err)}`, "error");
         });
       return;
     }
 
-    // Regular browser path
+    // Regular browser path — popup window
     const w = 720;
     const h = 900;
     const left = window.screenX + Math.max(0, window.outerWidth - w - 40);
     const top = window.screenY + 40;
     let popup: Window | null = null;
     try {
-      popup = window.open(absoluteUrl, label, `popup,width=${w},height=${h},left=${left},top=${top}`);
+      popup = window.open(absoluteUrl, `card-${id}`, `popup,width=${w},height=${h},left=${left},top=${top}`);
     } catch {
       popup = null;
     }

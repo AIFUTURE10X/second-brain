@@ -313,24 +313,15 @@ export default function Brain() {
     const h = 900;
     const left = window.screenX + Math.max(0, window.outerWidth - w - 40);
     const top = window.screenY + 40;
-    console.log("[popOut] attempting window.open", { id, href });
     let popup: Window | null = null;
     try {
-      popup = window.open(href, `card-${id}`, `popup=yes,width=${w},height=${h},left=${left},top=${top}`);
-    } catch (err) {
-      console.warn("[popOut] window.open threw", err);
+      popup = window.open(href, `card-${id}`, `popup,width=${w},height=${h},left=${left},top=${top}`);
+    } catch {
+      popup = null;
     }
-    if (!popup || popup.closed) {
-      console.warn("[popOut] popup blocked or returned null — opening in new tab via anchor fallback");
-      const a = document.createElement("a");
-      a.href = href;
-      a.target = "_blank";
-      a.rel = "noopener";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    } else {
-      console.log("[popOut] popup window opened successfully");
+    if (popup === null) {
+      // True popup block — inform the user instead of silently opening in Chrome
+      showToast("Popup blocked — allow popups for this site to pop out cards", "error");
     }
   }, []);
 

@@ -1413,7 +1413,15 @@ export default function Brain() {
         {visibleItems.map((item, idx) => {
           const t = TYPES[item.type] || TYPES.note;
           const expanded = expandedId === item.id;
-          const hasPreview = item.ogImage && (item.type === "link" || item.type === "clip");
+          const firstImageAttachment = (item.attachments || []).find(a => a.contentType?.startsWith("image/"));
+          const hasOgPreview = !!(item.ogImage && (item.type === "link" || item.type === "clip"));
+          const hasAttachmentPreview = !hasOgPreview && !!firstImageAttachment;
+          const hasPreview = hasOgPreview || hasAttachmentPreview;
+          const previewImageSrc = hasOgPreview ? item.ogImage : firstImageAttachment?.url;
+          const previewLinkUrl = hasOgPreview ? item.url : firstImageAttachment?.url;
+          const displayedAttachments = hasAttachmentPreview
+            ? (item.attachments || []).filter(a => a.url !== firstImageAttachment?.url)
+            : (item.attachments || []);
           const isYouTube = item.siteName === "YouTube";
           const isCompact = density === "compact" && !expanded;
 
@@ -1464,15 +1472,15 @@ export default function Brain() {
               {/* Compact-mode top thumbnail (shorter than comfortable banner) */}
               {hasPreview && isCompact && (
                 <a
-                  href={item.url}
+                  href={previewLinkUrl}
                   target="_blank"
                   rel="noreferrer"
                   onClick={e => e.stopPropagation()}
                   className="relative block w-full h-20 bg-brand-muted overflow-hidden group"
-                  title={isYouTube ? "Open on YouTube" : "Open link"}
+                  title={isYouTube ? "Open on YouTube" : hasOgPreview ? "Open link" : "Open image"}
                 >
                   <img
-                    src={item.ogImage}
+                    src={previewImageSrc}
                     alt=""
                     loading="lazy"
                     className="w-full h-full object-cover"
@@ -1490,15 +1498,15 @@ export default function Brain() {
               {/* Thumbnail preview for links */}
               {hasPreview && !isCompact && (
                 <a
-                  href={item.url}
+                  href={previewLinkUrl}
                   target="_blank"
                   rel="noreferrer"
                   onClick={e => e.stopPropagation()}
                   className="relative block w-full h-32 sm:h-40 bg-brand-muted overflow-hidden group"
-                  title={isYouTube ? "Open on YouTube" : "Open link"}
+                  title={isYouTube ? "Open on YouTube" : hasOgPreview ? "Open link" : "Open image"}
                 >
                   <img
-                    src={item.ogImage}
+                    src={previewImageSrc}
                     alt=""
                     className="w-full h-full object-cover"
                     loading="lazy"
@@ -1510,7 +1518,7 @@ export default function Brain() {
                       </div>
                     </div>
                   )}
-                  {item.siteName && (
+                  {hasOgPreview && item.siteName && (
                     <div className="absolute bottom-2 left-2 flex items-center gap-1.5 bg-black/70 rounded-md px-2 py-1 max-w-[calc(100%-1rem)]">
                       {item.favicon && <img src={item.favicon} alt="" className="w-3.5 h-3.5 rounded-sm shrink-0" loading="lazy" />}
                       <span className="text-[10px] text-gray-300 font-mono shrink-0">{item.siteName}</span>
@@ -1597,16 +1605,16 @@ export default function Brain() {
                       {isCompact && (item.tags || []).length > 3 && (
                         <span className="text-[10px] text-gray-600 font-mono">+{(item.tags || []).length - 3}</span>
                       )}
-                      {isCompact && (item.attachments || []).length > 0 && (
-                        <span className="text-[10px] text-gray-500 font-mono" title={`${(item.attachments || []).length} attachment${(item.attachments || []).length > 1 ? "s" : ""}`}>📎 {(item.attachments || []).length}</span>
+                      {isCompact && displayedAttachments.length > 0 && (
+                        <span className="text-[10px] text-gray-500 font-mono" title={`${displayedAttachments.length} attachment${displayedAttachments.length > 1 ? "s" : ""}`}>📎 {displayedAttachments.length}</span>
                       )}
                       <span className="text-[10px] text-gray-700 ml-auto font-mono">{timeAgo(item.createdAt)}</span>
                     </div>
 
                     {/* Attachments */}
-                    {(item.attachments || []).length > 0 && !isCompact && (
+                    {displayedAttachments.length > 0 && !isCompact && (
                       <div className="flex flex-wrap gap-1.5 mt-2">
-                        {(item.attachments || []).map(att => (
+                        {displayedAttachments.map(att => (
                           <a
                             key={att.url}
                             href={att.url}

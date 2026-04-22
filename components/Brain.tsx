@@ -307,15 +307,30 @@ export default function Brain() {
 
   const popOutCard = useCallback((id: string) => {
     if (typeof window === "undefined") return;
+    const href = `/card/${id}`;
     const w = 720;
     const h = 900;
     const left = window.screenX + Math.max(0, window.outerWidth - w - 40);
     const top = window.screenY + 40;
-    window.open(
-      `/card/${id}`,
-      `card-${id}`,
-      `popup=yes,width=${w},height=${h},left=${left},top=${top}`,
-    );
+    console.log("[popOut] attempting window.open", { id, href });
+    let popup: Window | null = null;
+    try {
+      popup = window.open(href, `card-${id}`, `popup=yes,width=${w},height=${h},left=${left},top=${top}`);
+    } catch (err) {
+      console.warn("[popOut] window.open threw", err);
+    }
+    if (!popup || popup.closed) {
+      console.warn("[popOut] popup blocked or returned null — opening in new tab via anchor fallback");
+      const a = document.createElement("a");
+      a.href = href;
+      a.target = "_blank";
+      a.rel = "noopener";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } else {
+      console.log("[popOut] popup window opened successfully");
+    }
   }, []);
 
   // Open the add form when launched via PWA shortcut (?new=1)
@@ -370,8 +385,10 @@ export default function Brain() {
   // Paste image from clipboard while the add/edit modal is open
   useEffect(() => {
     if (!showAdd) return;
+    console.log("[paste] listener attached (modal open)");
     const onPaste = (e: ClipboardEvent) => {
       const items = Array.from(e.clipboardData?.items || []);
+      console.log("[paste] event fired", { itemCount: items.length, kinds: items.map(i => `${i.kind}:${i.type}`) });
       const imageFiles: File[] = [];
       for (const it of items) {
         if (it.kind === "file" && it.type.startsWith("image/")) {
@@ -385,14 +402,48 @@ export default function Brain() {
           }
         }
       }
+      console.log("[paste] image files extracted:", imageFiles.length);
       if (imageFiles.length > 0) {
         e.preventDefault();
         handleFileUpload(imageFiles);
       }
     };
     window.addEventListener("paste", onPaste);
-    return () => window.removeEventListener("paste", onPaste);
+    return () => {
+      console.log("[paste] listener removed");
+      window.removeEventListener("paste", onPaste);
+    };
   }, [showAdd]);
+
+  // Manual paste-from-clipboard button (bypasses browser paste-event quirks)
+  const pasteFromClipboard = useCallback(async () => {
+    try {
+      if (!navigator.clipboard?.read) {
+        showToast("Clipboard API not available in this browser", "error");
+        return;
+      }
+      const items = await navigator.clipboard.read();
+      const imageFiles: File[] = [];
+      for (const item of items) {
+        for (const type of item.types) {
+          if (type.startsWith("image/")) {
+            const blob = await item.getType(type);
+            const ext = type.split("/")[1] || "png";
+            imageFiles.push(new File([blob], `pasted-${Date.now()}.${ext}`, { type }));
+            break;
+          }
+        }
+      }
+      if (imageFiles.length === 0) {
+        showToast("No image in clipboard", "error");
+        return;
+      }
+      await handleFileUpload(imageFiles);
+    } catch (err) {
+      console.error("[pasteButton] failed:", err);
+      showToast("Clipboard access denied — grant permission or try Ctrl+V", "error");
+    }
+  }, []);
 
   // Close tag menu when clicking outside
   useEffect(() => {
@@ -1715,7 +1766,9 @@ export default function Brain() {
           className="fixed inset-0 z-[200] flex flex-col justify-end"
           style={{ background: "#0D0F12EE" }}
           onDragEnter={e => {
-            const hasFiles = Array.from(e.dataTransfer?.types || []).some(t => t === "Files" || t === "application/x-moz-file");
+            const types = Array.from(e.dataTransfer?.types || []);
+            const hasFiles = types.some(t => t === "Files" || t === "application/x-moz-file");
+            console.log("[drag] enter", { types, hasFiles });
             if (hasFiles) setIsDragOver(true);
           }}
           onDragOver={e => {
@@ -1731,7 +1784,9 @@ export default function Brain() {
           onDrop={e => {
             e.preventDefault();
             setIsDragOver(false);
-            if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
+            const fileCount = e.dataTransfer?.files?.length || 0;
+            console.log("[drag] drop", { fileCount });
+            if (fileCount > 0) {
               handleFileUpload(e.dataTransfer.files);
             }
           }}
@@ -1898,14 +1953,25 @@ export default function Brain() {
               className="hidden"
               aria-label="Attach files"
             />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              className="w-full px-3 py-2.5 bg-brand-muted border border-dashed border-brand-border rounded-lg text-sm text-gray-400 outline-none mb-2 hover:border-gray-600 hover:text-gray-300 active:scale-[0.99] transition disabled:opacity-50"
-            >
-              {uploading ? "Uploading..." : "+ Attach files"}
-            </button>
+            <div className="flex gap-2 mb-2">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="flex-1 px-3 py-2.5 bg-brand-muted border border-dashed border-brand-border rounded-lg text-sm text-gray-400 outline-none hover:border-gray-600 hover:text-gray-300 active:scale-[0.99] transition disabled:opacity-50"
+              >
+                {uploading ? "Uploading..." : "+ Attach files"}
+              </button>
+              <button
+                type="button"
+                onClick={pasteFromClipboard}
+                disabled={uploading}
+                className="px-3 py-2.5 bg-brand-muted border border-dashed border-brand-border rounded-lg text-sm text-gray-400 outline-none hover:border-gray-600 hover:text-gray-300 active:scale-[0.99] transition disabled:opacity-50"
+                title="Paste image from clipboard"
+              >
+                📋 Paste
+              </button>
+            </div>
             {form.attachments.length > 0 && (
               <div className="flex flex-col gap-1.5 mb-4">
                 {form.attachments.map(att => (

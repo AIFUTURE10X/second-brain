@@ -44,22 +44,19 @@ export async function GET(req: NextRequest) {
         site_name AS "siteName",
         created_at AS "createdAt",
         updated_at AS "updatedAt"
-      FROM items, to_tsquery('english', ${tsquery}) AS query
-      WHERE to_tsvector('english',
-        coalesce(title,'') || ' ' ||
-        coalesce(content,'') || ' ' ||
-        coalesce(notes,'') || ' ' ||
-        coalesce(og_title,'') || ' ' ||
-        coalesce(og_description,'')
-      ) @@ query
+      FROM items, to_tsquery('english', ${tsquery}) AS query,
+           LATERAL (
+             SELECT coalesce(title,'') || ' ' ||
+                    coalesce(content,'') || ' ' ||
+                    coalesce(notes,'') || ' ' ||
+                    coalesce(og_title,'') || ' ' ||
+                    coalesce(og_description,'') || ' ' ||
+                    coalesce(category,'') || ' ' ||
+                    coalesce(tags::text, '') AS haystack
+           ) h
+      WHERE to_tsvector('english', h.haystack) @@ query
       ORDER BY pinned DESC,
-               ts_rank_cd(to_tsvector('english',
-                 coalesce(title,'') || ' ' ||
-                 coalesce(content,'') || ' ' ||
-                 coalesce(notes,'') || ' ' ||
-                 coalesce(og_title,'') || ' ' ||
-                 coalesce(og_description,'')
-               ), query) DESC,
+               ts_rank_cd(to_tsvector('english', h.haystack), query) DESC,
                created_at DESC
     `;
     return NextResponse.json(rows);

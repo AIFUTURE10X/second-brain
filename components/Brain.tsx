@@ -141,6 +141,7 @@ export default function Brain() {
   });
   const [uploading, setUploading] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [dragOverCardId, setDragOverCardId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const syncChannelRef = useRef<BroadcastChannel | null>(null);
@@ -549,6 +550,53 @@ export default function Brain() {
 
   const removeAttachment = (url: string) => {
     setForm(f => ({ ...f, attachments: f.attachments.filter(a => a.url !== url) }));
+  };
+
+  // Attach files directly to an existing card (from drag/drop onto the card)
+  const attachFilesToItem = async (itemId: string, files: FileList | File[]) => {
+    const fileArr = Array.from(files);
+    if (fileArr.length === 0) return;
+    const target = items.find(i => i.id === itemId);
+    if (!target) return;
+    setUploading(true);
+    try {
+      const uploaded: Attachment[] = [];
+      for (const file of fileArr) {
+        if (file.size > 50 * 1024 * 1024) {
+          showToast(`${file.name} exceeds 50 MB`, "error");
+          continue;
+        }
+        const blob = await upload(file.name, file, {
+          access: "public",
+          handleUploadUrl: "/api/upload",
+        });
+        uploaded.push({
+          url: blob.url,
+          name: file.name,
+          contentType: file.type || "application/octet-stream",
+          size: file.size,
+        });
+      }
+      if (uploaded.length === 0) { setUploading(false); return; }
+      const nextAttachments = [...(target.attachments || []), ...uploaded];
+      const res = await fetch("/api/items", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: itemId, attachments: nextAttachments }),
+      });
+      if (!res.ok) {
+        showToast("Failed to save attachment", "error");
+        setUploading(false);
+        return;
+      }
+      const saved = await res.json().catch(() => null);
+      setItems(prev => prev.map(i => i.id === itemId ? { ...i, attachments: nextAttachments } : i));
+      if (saved && saved.id) broadcastSync({ type: "item-updated", item: saved });
+      showToast(`Attached ${uploaded.length} file${uploaded.length > 1 ? "s" : ""}`, "success");
+    } catch (err) {
+      showToast((err as Error).message || "Upload failed", "error");
+    }
+    setUploading(false);
   };
 
   const handleSave = async (andAddAnother = false) => {
@@ -1504,6 +1552,7 @@ export default function Brain() {
           const isYouTube = item.siteName === "YouTube";
           const isCompact = density === "compact" && !expanded;
 
+          const isDragTarget = dragOverCardId === item.id;
           return (
             <div
               key={item.id}
@@ -1511,11 +1560,36 @@ export default function Brain() {
               tabIndex={0}
               onClick={() => setExpandedId(expanded ? null : item.id)}
               onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setExpandedId(expanded ? null : item.id); } }}
+              onDragEnter={e => {
+                const types = Array.from(e.dataTransfer?.types || []);
+                if (!types.some(t => t === "Files" || t === "application/x-moz-file")) return;
+                setDragOverCardId(item.id);
+              }}
+              onDragOver={e => {
+                const types = Array.from(e.dataTransfer?.types || []);
+                if (!types.some(t => t === "Files" || t === "application/x-moz-file")) return;
+                e.preventDefault();
+                e.stopPropagation();
+                if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+              }}
+              onDragLeave={e => {
+                const related = e.relatedTarget as Node | null;
+                if (related && e.currentTarget.contains(related)) return;
+                setDragOverCardId(prev => prev === item.id ? null : prev);
+              }}
+              onDrop={e => {
+                if (!e.dataTransfer?.files || e.dataTransfer.files.length === 0) return;
+                e.preventDefault();
+                e.stopPropagation();
+                setDragOverCardId(null);
+                attachFilesToItem(item.id, e.dataTransfer.files);
+              }}
               className={`bg-brand-card rounded-xl ${density === "compact" ? "" : "mb-2.5"} cursor-pointer transition-all overflow-hidden relative group`}
               style={{
-                border: `1px solid ${item.pinned ? "#E8A83850" : "#1E2128"}`,
-                background: item.pinned ? "#E8A83808" : undefined,
+                border: `1px solid ${isDragTarget ? "#E8A838" : item.pinned ? "#E8A83850" : "#1E2128"}`,
+                background: isDragTarget ? "#E8A83820" : item.pinned ? "#E8A83808" : undefined,
                 animation: `fadeSlide 0.3s ease ${idx * 0.03}s both`,
+                boxShadow: isDragTarget ? "0 0 0 2px #E8A83840" : undefined,
               }}
             >
               {/* Quick action overlay (edit + delete) — both density modes */}

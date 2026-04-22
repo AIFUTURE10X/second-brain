@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { upload } from "@vercel/blob/client";
 import { showToast } from "./Toast";
 import { VoiceButton } from "./VoiceButton";
-import { SYNC_CHANNEL, getSyncClientId, type SyncMessage, type SyncPayload } from "@/lib/sync";
 
 type ItemType = "note" | "link" | "clip" | "thought" | "task" | "memory";
 
@@ -142,8 +141,6 @@ export default function Brain() {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const syncChannelRef = useRef<BroadcastChannel | null>(null);
-  const syncClientIdRef = useRef<string>("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<"newest" | "oldest">("newest");
   const [saving, setSaving] = useState(false);
@@ -271,51 +268,6 @@ export default function Brain() {
   }, []);
 
   useEffect(() => { fetchItems(); fetchCategories(); }, [fetchItems, fetchCategories]);
-
-  // Live sync across windows (main app + pop-out card windows)
-  useEffect(() => {
-    if (typeof window === "undefined" || typeof BroadcastChannel === "undefined") return;
-    syncClientIdRef.current = getSyncClientId();
-    const ch = new BroadcastChannel(SYNC_CHANNEL);
-    syncChannelRef.current = ch;
-    ch.onmessage = (ev: MessageEvent<SyncMessage>) => {
-      const msg = ev.data;
-      if (!msg || msg.source === syncClientIdRef.current) return;
-      if (msg.type === "item-updated" || msg.type === "item-created") {
-        const incoming = msg.item as Item;
-        setItems(prev => {
-          const idx = prev.findIndex(i => i.id === incoming.id);
-          if (idx === -1) return [incoming, ...prev];
-          const next = prev.slice();
-          next[idx] = incoming;
-          return next;
-        });
-        fetchCategories();
-      } else if (msg.type === "item-deleted") {
-        setItems(prev => prev.filter(i => i.id !== msg.id));
-      }
-    };
-    return () => { ch.close(); syncChannelRef.current = null; };
-  }, [fetchCategories]);
-
-  const broadcastSync = useCallback((msg: SyncPayload) => {
-    const ch = syncChannelRef.current;
-    if (!ch) return;
-    ch.postMessage({ ...msg, source: syncClientIdRef.current } as SyncMessage);
-  }, []);
-
-  const popOutCard = useCallback((id: string) => {
-    if (typeof window === "undefined") return;
-    const w = 720;
-    const h = 900;
-    const left = window.screenX + Math.max(0, window.outerWidth - w - 40);
-    const top = window.screenY + 40;
-    window.open(
-      `/card/${id}`,
-      `card-${id}`,
-      `popup=yes,width=${w},height=${h},left=${left},top=${top}`,
-    );
-  }, []);
 
   // Open the add form when launched via PWA shortcut (?new=1)
   useEffect(() => {
@@ -487,12 +439,6 @@ export default function Brain() {
         setSaving(false);
         return;
       }
-      try {
-        const saved = await res.clone().json();
-        if (saved && saved.id) {
-          broadcastSync({ type: editingId ? "item-updated" : "item-created", item: saved });
-        }
-      } catch {}
       showToast(editingId ? "Item updated" : "Item saved", "success");
       await fetchItems();
       if (editingId) {
@@ -606,7 +552,6 @@ export default function Brain() {
         return;
       }
       setItems(prev => prev.filter(i => i.id !== id));
-      broadcastSync({ type: "item-deleted", id });
     } catch {
       showToast("Failed to complete task", "error");
     }
@@ -622,7 +567,6 @@ export default function Brain() {
       }
       setItems(prev => prev.filter(i => i.id !== id));
       if (expandedId === id) setExpandedId(null);
-      broadcastSync({ type: "item-deleted", id });
     } catch {
       showToast("Failed to delete item", "error");
     }
@@ -641,10 +585,6 @@ export default function Brain() {
         showToast("Failed to update pin", "error");
         return;
       }
-      try {
-        const saved = await res.clone().json();
-        if (saved && saved.id) broadcastSync({ type: "item-updated", item: saved });
-      } catch {}
       setItems(prev => prev.map(i => i.id === id ? { ...i, pinned: !i.pinned } : i));
     } catch {
       showToast("Failed to update pin", "error");
@@ -1448,12 +1388,6 @@ export default function Brain() {
                   title="Edit"
                 >✎</button>
                 <button
-                  onClick={e => { e.stopPropagation(); popOutCard(item.id); }}
-                  className="w-6 h-6 rounded-full bg-black/70 backdrop-blur-sm text-gray-400 hover:text-[#5B8DEF] hover:bg-[#5B8DEF20] active:scale-90 transition flex items-center justify-center text-[11px]"
-                  aria-label="Pop out in new window"
-                  title="Pop out"
-                >⇱</button>
-                <button
                   onClick={e => { e.stopPropagation(); handleDelete(item.id); }}
                   className="w-6 h-6 rounded-full bg-black/70 backdrop-blur-sm text-gray-400 hover:text-red-400 hover:bg-red-500/20 active:scale-90 transition flex items-center justify-center text-sm"
                   aria-label="Delete item"
@@ -1463,7 +1397,14 @@ export default function Brain() {
 
               {/* Compact-mode top thumbnail (shorter than comfortable banner) */}
               {hasPreview && isCompact && (
-                <div className="relative w-full h-20 bg-brand-muted overflow-hidden">
+                <a
+                  href={item.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={e => e.stopPropagation()}
+                  className="relative block w-full h-20 bg-brand-muted overflow-hidden group"
+                  title={isYouTube ? "Open on YouTube" : "Open link"}
+                >
                   <img
                     src={item.ogImage}
                     alt=""
@@ -1472,17 +1413,24 @@ export default function Brain() {
                   />
                   {isYouTube && (
                     <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="w-8 h-8 rounded-full bg-red-600 flex items-center justify-center shadow-lg">
+                      <div className="w-8 h-8 rounded-full bg-red-600 flex items-center justify-center shadow-lg group-hover:scale-110 transition">
                         <span className="text-white text-xs ml-0.5">▶</span>
                       </div>
                     </div>
                   )}
-                </div>
+                </a>
               )}
 
               {/* Thumbnail preview for links */}
               {hasPreview && !isCompact && (
-                <div className="relative w-full h-32 sm:h-40 bg-brand-muted overflow-hidden">
+                <a
+                  href={item.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={e => e.stopPropagation()}
+                  className="relative block w-full h-32 sm:h-40 bg-brand-muted overflow-hidden group"
+                  title={isYouTube ? "Open on YouTube" : "Open link"}
+                >
                   <img
                     src={item.ogImage}
                     alt=""
@@ -1491,7 +1439,7 @@ export default function Brain() {
                   />
                   {isYouTube && (
                     <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="w-12 h-12 rounded-full bg-red-600 flex items-center justify-center shadow-lg">
+                      <div className="w-12 h-12 rounded-full bg-red-600 flex items-center justify-center shadow-lg group-hover:scale-110 transition">
                         <span className="text-white text-lg ml-0.5">▶</span>
                       </div>
                     </div>
@@ -1507,7 +1455,7 @@ export default function Brain() {
                       )}
                     </div>
                   )}
-                </div>
+                </a>
               )}
 
               <div className={isCompact ? "px-3 py-2" : "p-4"}>
@@ -1665,19 +1613,9 @@ export default function Brain() {
           <div className="flex-1 cursor-pointer" onClick={closeForm} />
           <div className="bg-brand-card border-t border-brand-border rounded-t-2xl px-5 pt-4 pb-6 max-h-[90vh] overflow-y-auto">
             <div className="w-9 h-1 bg-gray-700 rounded-full mx-auto mb-4" />
-            <div className="flex items-center justify-between mb-4 gap-2">
-              <h2 className="text-base font-semibold" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-                {editingId ? "Edit Item" : "Add to Brain"}
-              </h2>
-              {editingId && (
-                <button
-                  type="button"
-                  onClick={() => { const id = editingId; closeForm(); popOutCard(id); }}
-                  className="px-2.5 py-1 rounded-md text-[11px] font-mono border border-brand-border text-gray-400 hover:text-[#5B8DEF] hover:border-[#5B8DEF60] transition"
-                  title="Open this card in a new window"
-                >⇱ Pop out</button>
-              )}
-            </div>
+            <h2 className="text-base font-semibold mb-4" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+              {editingId ? "Edit Item" : "Add to Brain"}
+            </h2>
 
             {/* Type picker */}
             <div className="flex gap-1.5 mb-4">

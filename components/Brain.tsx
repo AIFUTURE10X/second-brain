@@ -308,19 +308,33 @@ export default function Brain() {
 
   const popOutCard = useCallback((id: string) => {
     if (typeof window === "undefined") return;
-    const href = `/card/${id}`;
+    const absoluteUrl = new URL(`/card/${id}`, window.location.origin).toString();
+    const label = `card-${id}`;
+
+    // Tauri desktop app: window.open() is blocked by WebView2, so call our
+    // custom Rust command that creates a real native Tauri window.
+    const tauriIpc = (window as unknown as { __TAURI_INTERNALS__?: { invoke?: (cmd: string, args?: unknown) => Promise<unknown> } }).__TAURI_INTERNALS__;
+    if (tauriIpc && typeof tauriIpc.invoke === "function") {
+      tauriIpc.invoke("pop_out_card", { url: absoluteUrl, label })
+        .catch((err: unknown) => {
+          console.error("[popOut] tauri pop_out_card failed:", err);
+          showToast(`Pop-out failed: ${String(err)}`, "error");
+        });
+      return;
+    }
+
+    // Regular browser path
     const w = 720;
     const h = 900;
     const left = window.screenX + Math.max(0, window.outerWidth - w - 40);
     const top = window.screenY + 40;
     let popup: Window | null = null;
     try {
-      popup = window.open(href, `card-${id}`, `popup,width=${w},height=${h},left=${left},top=${top}`);
+      popup = window.open(absoluteUrl, label, `popup,width=${w},height=${h},left=${left},top=${top}`);
     } catch {
       popup = null;
     }
     if (popup === null) {
-      // True popup block — inform the user instead of silently opening in Chrome
       showToast("Popup blocked — allow popups for this site to pop out cards", "error");
     }
   }, []);

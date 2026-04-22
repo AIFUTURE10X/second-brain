@@ -1,4 +1,4 @@
-use tauri::{WebviewUrl, WebviewWindowBuilder};
+use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
 // Injected into every page load. Intercepts clicks on anchors with
 // target="_blank" (and any cross-origin link) and reroutes them through
@@ -69,10 +69,34 @@ const EXTERNAL_LINK_INTERCEPTOR: &str = r#"
 })();
 "#;
 
+// Custom command: open a card as a standalone Tauri window.
+// Called from the frontend via window.__TAURI_INTERNALS__.invoke("pop_out_card", ...)
+// because window.open() in WebView2 silently fails for same-origin popups.
+#[tauri::command]
+fn pop_out_card(app: tauri::AppHandle, url: String, label: String) -> Result<(), String> {
+    // Re-focus if a window with this label already exists instead of erroring
+    if let Some(existing) = app.get_webview_window(&label) {
+        let _ = existing.set_focus();
+        return Ok(());
+    }
+    let parsed = tauri::Url::parse(&url).map_err(|e| e.to_string())?;
+    WebviewWindowBuilder::new(&app, &label, WebviewUrl::External(parsed))
+        .title("Second Brain — Card")
+        .inner_size(720.0, 900.0)
+        .min_inner_size(400.0, 500.0)
+        .resizable(true)
+        .initialization_script(EXTERNAL_LINK_INTERCEPTOR)
+        .devtools(true)
+        .build()
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .invoke_handler(tauri::generate_handler![pop_out_card])
         .setup(|app| {
             let url: tauri::Url = "https://second-brain-bice-two.vercel.app/"
                 .parse()

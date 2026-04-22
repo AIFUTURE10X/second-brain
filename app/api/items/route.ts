@@ -22,14 +22,18 @@ export async function GET(req: NextRequest) {
   }
 
   if (q) {
-    // Full-text search across title, content, notes, og_title, og_description
-    // Sanitize special PostgreSQL tsquery characters to prevent injection
+    // Full-text search across title, content, notes, og_title, og_description.
+    // Sanitize special PostgreSQL tsquery characters to prevent injection.
     const sanitized = q.replace(/[!|&():*<>'\\]/g, " ").trim();
     if (!sanitized) return NextResponse.json([]);
-    const tsquery = sanitized.split(/\s+/).filter(Boolean).join(" & ");
+    // OR each term with prefix matching so "claude code" finds cards
+    // containing "claude" OR anything starting with "code" — handy while
+    // typing. Each term gets :* (prefix), joined with | (OR).
+    const terms = sanitized.split(/\s+/).filter(Boolean);
+    const tsquery = terms.map(t => `${t}:*`).join(" | ");
+    // ts_rank_cd ranks matches so cards hitting more of the terms float up.
     // Alias snake_case columns to camelCase so search results match the
-    // Drizzle-select shape the frontend expects (otherwise ogImage is
-    // undefined → no thumbnails, createdAt is undefined → "Invalid Date").
+    // Drizzle-select shape the frontend expects.
     const rows = await sql`
       SELECT
         id, type, title, content, url, notes, tags, category, pinned, attachments,
@@ -40,15 +44,23 @@ export async function GET(req: NextRequest) {
         site_name AS "siteName",
         created_at AS "createdAt",
         updated_at AS "updatedAt"
-      FROM items
+      FROM items, to_tsquery('english', ${tsquery}) AS query
       WHERE to_tsvector('english',
         coalesce(title,'') || ' ' ||
         coalesce(content,'') || ' ' ||
         coalesce(notes,'') || ' ' ||
         coalesce(og_title,'') || ' ' ||
         coalesce(og_description,'')
-      ) @@ to_tsquery('english', ${tsquery + ':*'})
-      ORDER BY pinned DESC, created_at DESC
+      ) @@ query
+      ORDER BY pinned DESC,
+               ts_rank_cd(to_tsvector('english',
+                 coalesce(title,'') || ' ' ||
+                 coalesce(content,'') || ' ' ||
+                 coalesce(notes,'') || ' ' ||
+                 coalesce(og_title,'') || ' ' ||
+                 coalesce(og_description,'')
+               ), query) DESC,
+               created_at DESC
     `;
     return NextResponse.json(rows);
   }

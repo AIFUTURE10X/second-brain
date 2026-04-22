@@ -140,6 +140,7 @@ export default function Brain() {
     attachments: [] as Attachment[],
   });
   const [uploading, setUploading] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const syncChannelRef = useRef<BroadcastChannel | null>(null);
@@ -436,7 +437,7 @@ export default function Brain() {
     setPickerSearch("");
   };
 
-  const handleFileUpload = async (files: FileList | null) => {
+  const handleFileUpload = async (files: FileList | File[] | null) => {
     if (!files || files.length === 0) return;
     setUploading(true);
     const uploaded: Attachment[] = [];
@@ -1685,7 +1686,53 @@ export default function Brain() {
       {showAdd && (
         <div className="fixed inset-0 z-[200] flex flex-col justify-end" style={{ background: "#0D0F12EE" }}>
           <div className="flex-1 cursor-pointer" onClick={closeForm} />
-          <div className="bg-brand-card border-t border-brand-border rounded-t-2xl px-5 pt-4 pb-6 max-h-[90vh] overflow-y-auto">
+          <div
+            className="bg-brand-card border-t border-brand-border rounded-t-2xl px-5 pt-4 pb-6 max-h-[90vh] overflow-y-auto relative"
+            onDragOver={e => {
+              if (!Array.from(e.dataTransfer.types || []).includes("Files")) return;
+              e.preventDefault();
+              if (!isDragOver) setIsDragOver(true);
+            }}
+            onDragLeave={e => {
+              if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+              setIsDragOver(false);
+            }}
+            onDrop={e => {
+              e.preventDefault();
+              setIsDragOver(false);
+              if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                handleFileUpload(e.dataTransfer.files);
+              }
+            }}
+            onPaste={e => {
+              const items = Array.from(e.clipboardData?.items || []);
+              const imageFiles: File[] = [];
+              for (const it of items) {
+                if (it.kind === "file" && it.type.startsWith("image/")) {
+                  const f = it.getAsFile();
+                  if (f) {
+                    const ext = it.type.split("/")[1] || "png";
+                    const named = f.name && f.name !== "image.png"
+                      ? f
+                      : new File([f], `pasted-${Date.now()}.${ext}`, { type: it.type });
+                    imageFiles.push(named);
+                  }
+                }
+              }
+              if (imageFiles.length > 0) {
+                e.preventDefault();
+                handleFileUpload(imageFiles);
+              }
+            }}
+          >
+            {isDragOver && (
+              <div className="absolute inset-0 z-10 flex items-center justify-center rounded-t-2xl pointer-events-none border-2 border-dashed border-[#E8A838] bg-[#E8A83820] backdrop-blur-[2px]">
+                <div className="text-center">
+                  <div className="text-3xl mb-2">📎</div>
+                  <p className="text-sm font-mono text-[#E8A838]">Drop to attach</p>
+                </div>
+              </div>
+            )}
             <div className="w-9 h-1 bg-gray-700 rounded-full mx-auto mb-4" />
             <div className="flex items-center justify-between mb-4 gap-2">
               <h2 className="text-base font-semibold" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
@@ -1827,7 +1874,7 @@ export default function Brain() {
             />
 
             <label className="block text-[11px] font-mono text-gray-400 mb-1.5 tracking-wide">
-              Attachments <span className="text-gray-600 font-normal">(PDF, XLS, DOC, images — max 50 MB each)</span>
+              Attachments <span className="text-gray-600 font-normal">(PDF, XLS, DOC, images — max 50 MB · drop or paste here)</span>
             </label>
             <input
               ref={fileInputRef}

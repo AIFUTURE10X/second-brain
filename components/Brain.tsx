@@ -367,6 +367,33 @@ export default function Brain() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [showAdd, showCatManager, showTagManager, tagMenuOpen, pickerTarget]);
 
+  // Paste image from clipboard while the add/edit modal is open
+  useEffect(() => {
+    if (!showAdd) return;
+    const onPaste = (e: ClipboardEvent) => {
+      const items = Array.from(e.clipboardData?.items || []);
+      const imageFiles: File[] = [];
+      for (const it of items) {
+        if (it.kind === "file" && it.type.startsWith("image/")) {
+          const f = it.getAsFile();
+          if (f) {
+            const ext = it.type.split("/")[1] || "png";
+            const named = f.name && f.name !== "image.png"
+              ? f
+              : new File([f], `pasted-${Date.now()}.${ext}`, { type: it.type });
+            imageFiles.push(named);
+          }
+        }
+      }
+      if (imageFiles.length > 0) {
+        e.preventDefault();
+        handleFileUpload(imageFiles);
+      }
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, [showAdd]);
+
   // Close tag menu when clicking outside
   useEffect(() => {
     if (!tagMenuOpen) return;
@@ -1684,60 +1711,41 @@ export default function Brain() {
 
       {/* Add/Edit Modal */}
       {showAdd && (
-        <div className="fixed inset-0 z-[200] flex flex-col justify-end" style={{ background: "#0D0F12EE" }}>
-          <div className="flex-1 cursor-pointer" onClick={closeForm} />
-          <div
-            className="bg-brand-card border-t border-brand-border rounded-t-2xl px-5 pt-4 pb-6 max-h-[90vh] overflow-y-auto relative"
-            onDragEnter={e => {
-              const hasFiles = Array.from(e.dataTransfer?.types || []).some(t => t === "Files" || t === "application/x-moz-file");
-              if (hasFiles) setIsDragOver(true);
-            }}
-            onDragOver={e => {
-              // MUST preventDefault on every tick or the drop event won't fire.
-              e.preventDefault();
-              if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
-            }}
-            onDragLeave={e => {
-              const related = e.relatedTarget as Node | null;
-              if (related && e.currentTarget.contains(related)) return;
-              setIsDragOver(false);
-            }}
-            onDrop={e => {
-              e.preventDefault();
-              setIsDragOver(false);
-              if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
-                handleFileUpload(e.dataTransfer.files);
-              }
-            }}
-            onPaste={e => {
-              const items = Array.from(e.clipboardData?.items || []);
-              const imageFiles: File[] = [];
-              for (const it of items) {
-                if (it.kind === "file" && it.type.startsWith("image/")) {
-                  const f = it.getAsFile();
-                  if (f) {
-                    const ext = it.type.split("/")[1] || "png";
-                    const named = f.name && f.name !== "image.png"
-                      ? f
-                      : new File([f], `pasted-${Date.now()}.${ext}`, { type: it.type });
-                    imageFiles.push(named);
-                  }
-                }
-              }
-              if (imageFiles.length > 0) {
-                e.preventDefault();
-                handleFileUpload(imageFiles);
-              }
-            }}
-          >
-            {isDragOver && (
-              <div className="absolute inset-0 z-10 flex items-center justify-center rounded-t-2xl pointer-events-none border-2 border-dashed border-[#E8A838] bg-[#E8A83820] backdrop-blur-[2px]">
-                <div className="text-center">
-                  <div className="text-3xl mb-2">📎</div>
-                  <p className="text-sm font-mono text-[#E8A838]">Drop to attach</p>
-                </div>
+        <div
+          className="fixed inset-0 z-[200] flex flex-col justify-end"
+          style={{ background: "#0D0F12EE" }}
+          onDragEnter={e => {
+            const hasFiles = Array.from(e.dataTransfer?.types || []).some(t => t === "Files" || t === "application/x-moz-file");
+            if (hasFiles) setIsDragOver(true);
+          }}
+          onDragOver={e => {
+            // MUST preventDefault on every tick or the drop event won't fire.
+            e.preventDefault();
+            if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+          }}
+          onDragLeave={e => {
+            const related = e.relatedTarget as Node | null;
+            if (related && e.currentTarget.contains(related)) return;
+            setIsDragOver(false);
+          }}
+          onDrop={e => {
+            e.preventDefault();
+            setIsDragOver(false);
+            if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
+              handleFileUpload(e.dataTransfer.files);
+            }
+          }}
+        >
+          {isDragOver && (
+            <div className="absolute inset-0 z-[210] flex items-center justify-center pointer-events-none border-2 border-dashed border-[#E8A838] bg-[#E8A83820] backdrop-blur-[2px]">
+              <div className="text-center">
+                <div className="text-4xl mb-2">📎</div>
+                <p className="text-base font-mono text-[#E8A838]">Drop to attach</p>
               </div>
-            )}
+            </div>
+          )}
+          <div className="flex-1 cursor-pointer" onClick={closeForm} />
+          <div className="bg-brand-card border-t border-brand-border rounded-t-2xl px-5 pt-4 pb-6 max-h-[90vh] overflow-y-auto relative">
             <div className="w-9 h-1 bg-gray-700 rounded-full mx-auto mb-4" />
             <div className="flex items-center justify-between mb-4 gap-2">
               <h2 className="text-base font-semibold" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>

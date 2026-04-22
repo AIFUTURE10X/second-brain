@@ -3,6 +3,9 @@
   "identifier": "default",
   "description": "Default capability for main window",
   "windows": ["main"],
+  "remote": {
+    "urls": ["https://second-brain-bice-two.vercel.app/*"]
+  },
   "permissions": [
     "core:default",
     "opener:default",

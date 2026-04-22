@@ -6,6 +6,8 @@ use tauri::{WebviewUrl, WebviewWindowBuilder};
 // this, target="_blank" clicks inside the WebView2 webview do nothing.
 const EXTERNAL_LINK_INTERCEPTOR: &str = r#"
 (function () {
+  function log() { try { console.log.apply(console, ["[sb-desktop]"].concat([].slice.call(arguments))); } catch (e) {} }
+
   function isExternal(href) {
     try {
       var u = new URL(href, window.location.href);
@@ -18,8 +20,14 @@ const EXTERNAL_LINK_INTERCEPTOR: &str = r#"
 
   function openExternal(href) {
     var ipc = window.__TAURI_INTERNALS__;
-    if (!ipc || typeof ipc.invoke !== "function") return false;
-    ipc.invoke("plugin:opener|open_url", { url: href, with: null });
+    if (!ipc || typeof ipc.invoke !== "function") {
+      log("IPC bridge missing, cannot open", href);
+      return false;
+    }
+    log("opening externally:", href);
+    ipc.invoke("plugin:opener|open_url", { url: href, with: null })
+      .then(function () { log("opener succeeded"); })
+      .catch(function (err) { log("opener failed:", err); });
     return true;
   }
 
@@ -35,9 +43,11 @@ const EXTERNAL_LINK_INTERCEPTOR: &str = r#"
         if (node.tagName === "A" && node.href) {
           var href = node.href;
           var blank = node.target === "_blank";
-          if ((blank || isExternal(href)) && openExternal(href)) {
-            e.preventDefault();
-            e.stopPropagation();
+          if (blank || isExternal(href)) {
+            if (openExternal(href)) {
+              e.preventDefault();
+              e.stopPropagation();
+            }
           }
           return;
         }
@@ -54,6 +64,8 @@ const EXTERNAL_LINK_INTERCEPTOR: &str = r#"
     }
     return origOpen.apply(this, arguments);
   };
+
+  log("link interceptor installed");
 })();
 "#;
 
@@ -73,6 +85,7 @@ pub fn run() {
                 .resizable(true)
                 .center()
                 .initialization_script(EXTERNAL_LINK_INTERCEPTOR)
+                .devtools(true)
                 .build()?;
 
             Ok(())

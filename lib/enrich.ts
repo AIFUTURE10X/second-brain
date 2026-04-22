@@ -51,7 +51,7 @@ async function enrichYouTube(url: string, videoId: string): Promise<EnrichResult
     return {
       ogTitle: data.title || "",
       ogDescription: `${data.author_name || ""}`,
-      ogImage: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+      ogImage: data.thumbnail_url || `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
       siteName: "YouTube",
       favicon: "https://www.youtube.com/favicon.ico",
     };

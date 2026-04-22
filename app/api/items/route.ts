@@ -27,8 +27,20 @@ export async function GET(req: NextRequest) {
     const sanitized = q.replace(/[!|&():*<>'\\]/g, " ").trim();
     if (!sanitized) return NextResponse.json([]);
     const tsquery = sanitized.split(/\s+/).filter(Boolean).join(" & ");
+    // Alias snake_case columns to camelCase so search results match the
+    // Drizzle-select shape the frontend expects (otherwise ogImage is
+    // undefined → no thumbnails, createdAt is undefined → "Invalid Date").
     const rows = await sql`
-      SELECT * FROM items
+      SELECT
+        id, type, title, content, url, notes, tags, category, pinned, attachments,
+        favicon,
+        og_title AS "ogTitle",
+        og_description AS "ogDescription",
+        og_image AS "ogImage",
+        site_name AS "siteName",
+        created_at AS "createdAt",
+        updated_at AS "updatedAt"
+      FROM items
       WHERE to_tsvector('english',
         coalesce(title,'') || ' ' ||
         coalesce(content,'') || ' ' ||

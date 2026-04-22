@@ -1688,19 +1688,24 @@ export default function Brain() {
           <div className="flex-1 cursor-pointer" onClick={closeForm} />
           <div
             className="bg-brand-card border-t border-brand-border rounded-t-2xl px-5 pt-4 pb-6 max-h-[90vh] overflow-y-auto relative"
+            onDragEnter={e => {
+              const hasFiles = Array.from(e.dataTransfer?.types || []).some(t => t === "Files" || t === "application/x-moz-file");
+              if (hasFiles) setIsDragOver(true);
+            }}
             onDragOver={e => {
-              if (!Array.from(e.dataTransfer.types || []).includes("Files")) return;
+              // MUST preventDefault on every tick or the drop event won't fire.
               e.preventDefault();
-              if (!isDragOver) setIsDragOver(true);
+              if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
             }}
             onDragLeave={e => {
-              if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+              const related = e.relatedTarget as Node | null;
+              if (related && e.currentTarget.contains(related)) return;
               setIsDragOver(false);
             }}
             onDrop={e => {
               e.preventDefault();
               setIsDragOver(false);
-              if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+              if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
                 handleFileUpload(e.dataTransfer.files);
               }
             }}

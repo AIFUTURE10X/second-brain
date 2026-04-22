@@ -92,11 +92,21 @@ fn pop_out_card(app: tauri::AppHandle, url: String, label: String) -> Result<(),
     Ok(())
 }
 
+// Close a card pop-out window by label. Used by the Close button in the card
+// page because window.close() does not work for Tauri-created windows.
+#[tauri::command]
+fn close_card_window(app: tauri::AppHandle, label: String) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window(&label) {
+        window.close().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![pop_out_card])
+        .invoke_handler(tauri::generate_handler![pop_out_card, close_card_window])
         .setup(|app| {
             let url: tauri::Url = "https://second-brain-bice-two.vercel.app/"
                 .parse()

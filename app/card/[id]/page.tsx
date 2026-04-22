@@ -87,15 +87,19 @@ export default function CardPopoutPage() {
 
   const fetchItem = useCallback(async () => {
     if (!id) return;
+    console.log("[card] fetching", id);
     try {
       const res = await fetch(`/api/items?id=${encodeURIComponent(id)}`);
+      console.log("[card] fetch response", { status: res.status, ok: res.ok });
       if (res.status === 404) { setNotFound(true); setLoading(false); return; }
       if (!res.ok) { setLoading(false); return; }
       const row: Item = await res.json();
+      console.log("[card] item loaded:", row.title || row.id);
       applyItem(row);
       setLoading(false);
       document.title = row.title ? `${row.title} — Second Brain` : "Card — Second Brain";
-    } catch {
+    } catch (err) {
+      console.error("[card] fetch failed:", err);
       setLoading(false);
     }
   }, [id, applyItem]);
@@ -309,7 +313,16 @@ export default function CardPopoutPage() {
 
       <div className="flex gap-2">
         <button
-          onClick={() => window.close()}
+          onClick={() => {
+            // window.close() doesn't work in Tauri windows — use the custom command
+            const tauri = (window as unknown as { __TAURI_INTERNALS__?: { invoke?: (cmd: string, args?: unknown) => Promise<unknown> } }).__TAURI_INTERNALS__;
+            if (tauri?.invoke && id) {
+              tauri.invoke("close_card_window", { label: `card-${id}` })
+                .catch((err: unknown) => console.error("[card] close failed:", err));
+              return;
+            }
+            window.close();
+          }}
           className="py-3 px-4 rounded-xl bg-brand-muted border border-brand-border text-gray-500 text-sm font-medium active:scale-95 transition"
         >Close</button>
         <button

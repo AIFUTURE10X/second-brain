@@ -1,8 +1,8 @@
 {
   "$schema": "../gen/schemas/windows-schema.json",
   "identifier": "default",
-  "description": "Default capability for main window and pop-out card windows",
-  "windows": ["main", "card-*"],
+  "description": "Default capability for main window and all pop-out windows",
+  "windows": ["*"],
   "remote": {
     "urls": ["https://second-brain-bice-two.vercel.app/*"]
   },

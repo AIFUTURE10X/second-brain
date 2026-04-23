@@ -421,6 +421,65 @@ export default function Brain() {
     };
   }, [showAdd]);
 
+  // Unwrap hard line-wrapped prose: join single newlines inside paragraphs,
+  // but preserve blank lines, headers, lists, blockquotes, and code blocks.
+  const unwrapPastedText = useCallback((text: string): string => {
+    const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+    const isStructure = (l: string) =>
+      /^(\s*[-*+>]\s|\s*\d+[.)]\s|\s*#{1,6}\s|\s{4,}\S|\t)/.test(l) ||
+      /^```/.test(l.trim());
+    const lines = normalized.split("\n");
+    const out: string[] = [];
+    let buffer: string[] = [];
+    let inFence = false;
+    const flush = () => {
+      if (buffer.length === 0) return;
+      out.push(buffer.map(l => l.trim()).join(" ").trim());
+      buffer = [];
+    };
+    for (const line of lines) {
+      if (/^```/.test(line.trim())) {
+        flush();
+        out.push(line);
+        inFence = !inFence;
+        continue;
+      }
+      if (inFence) {
+        out.push(line);
+      } else if (line.trim() === "") {
+        flush();
+        out.push("");
+      } else if (isStructure(line)) {
+        flush();
+        out.push(line);
+      } else {
+        buffer.push(line);
+      }
+    }
+    flush();
+    return out.join("\n").replace(/\n{3,}/g, "\n\n");
+  }, []);
+
+  const handleSmartPaste = useCallback(
+    (field: "content" | "notes") => (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+      const text = e.clipboardData.getData("text/plain");
+      if (!text || !text.includes("\n")) return;
+      const cleaned = unwrapPastedText(text);
+      if (cleaned === text) return;
+      e.preventDefault();
+      const ta = e.currentTarget;
+      const start = ta.selectionStart ?? ta.value.length;
+      const end = ta.selectionEnd ?? ta.value.length;
+      const newValue = ta.value.slice(0, start) + cleaned + ta.value.slice(end);
+      setForm(f => ({ ...f, [field]: newValue }));
+      const caret = start + cleaned.length;
+      requestAnimationFrame(() => {
+        ta.selectionStart = ta.selectionEnd = caret;
+      });
+    },
+    [unwrapPastedText]
+  );
+
   // Manual paste-from-clipboard button (bypasses browser paste-event quirks)
   const pasteFromClipboard = useCallback(async () => {
     try {
@@ -1977,6 +2036,7 @@ export default function Brain() {
               ref={contentRef}
               value={form.content}
               onChange={e => setForm(f => ({ ...f, content: e.target.value }))}
+              onPaste={handleSmartPaste("content")}
               placeholder={form.type === "thought" ? "What's on your mind..." : "Content / description..."}
               aria-label="Content"
               rows={3}
@@ -1995,6 +2055,7 @@ export default function Brain() {
                   ref={notesRef}
                   value={form.notes}
                   onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+                  onPaste={handleSmartPaste("notes")}
                   placeholder="My annotations on this link..."
                   aria-label="Annotations"
                   rows={2}

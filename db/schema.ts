@@ -44,6 +44,8 @@ export const items = pgTable("items", {
   tags: jsonb("tags").$type<string[]>().default([]),
   category: text("category").default(""),
   pinned: boolean("pinned").default(false),
+  favourite: boolean("favourite").default(false),
+  actionRequired: boolean("action_required").default(false),
   attachments: jsonb("attachments").$type<Attachment[]>().default([]),
   // OpenGraph / link preview data (auto-filled on save)
   ogTitle: text("og_title").default(""),

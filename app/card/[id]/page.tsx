@@ -31,6 +31,8 @@ interface Item {
   tags: string[];
   category: string;
   pinned: boolean;
+  favourite?: boolean;
+  actionRequired?: boolean;
   attachments?: Attachment[];
   ogTitle: string;
   ogDescription: string;
@@ -82,6 +84,8 @@ export default function CardPopoutPage() {
     noteEntries: [] as NoteEntry[],
     tags: "",
     category: "",
+    favourite: false,
+    actionRequired: false,
   });
 
   const channelRef = useRef<BroadcastChannel | null>(null);
@@ -141,6 +145,8 @@ export default function CardPopoutPage() {
       noteEntries: entries,
       tags: (next.tags || []).join(", "),
       category: next.category || "",
+      favourite: !!next.favourite,
+      actionRequired: !!next.actionRequired,
     });
     setDirty(false);
   }, []);
@@ -304,7 +310,7 @@ export default function CardPopoutPage() {
         </div>
       )}
 
-      <div className="flex gap-1.5 mb-4 flex-wrap">
+      <div className="flex gap-1.5 mb-3 flex-wrap">
         {(Object.entries(TYPES) as [ItemType, typeof TYPES.note][]).map(([k, v]) => (
           <button
             key={k}
@@ -317,6 +323,29 @@ export default function CardPopoutPage() {
             }}
           >{v.icon} {v.label}</button>
         ))}
+      </div>
+
+      <div className="flex gap-1.5 mb-4 flex-wrap">
+        <button
+          type="button"
+          onClick={() => onField("favourite", !form.favourite)}
+          className="px-3 py-1.5 rounded-md text-[11px] font-mono transition active:scale-95"
+          style={{
+            border: form.favourite ? "1px solid #F2C94C90" : "1px solid #F2C94C30",
+            background: form.favourite ? "#F2C94C25" : "#F2C94C10",
+            color: "#F2C94C",
+          }}
+        >{form.favourite ? "★ Favourite" : "☆ Mark favourite"}</button>
+        <button
+          type="button"
+          onClick={() => onField("actionRequired", !form.actionRequired)}
+          className="px-3 py-1.5 rounded-md text-[11px] font-mono transition active:scale-95"
+          style={{
+            border: form.actionRequired ? "1px solid #EB575790" : "1px solid #EB575730",
+            background: form.actionRequired ? "#EB575725" : "#EB575710",
+            color: "#EB5757",
+          }}
+        >{form.actionRequired ? "⚡ Action needed" : "⚡ Flag for action"}</button>
       </div>
 
       <input

@@ -33,6 +33,8 @@ interface Item {
   tags: string[];
   category: string;
   pinned: boolean;
+  favourite?: boolean;
+  actionRequired?: boolean;
   attachments?: Attachment[];
   ogTitle: string;
   ogDescription: string;
@@ -145,6 +147,8 @@ export default function Brain() {
   const [catFilter, setCatFilter] = useState<string>("all");
   const [sourceFilter, setSourceFilter] = useState<string | null>(null);
   const [withNotesOnly, setWithNotesOnly] = useState(false);
+  const [favouritesOnly, setFavouritesOnly] = useState(false);
+  const [actionOnly, setActionOnly] = useState(false);
   const [tagMenuOpen, setTagMenuOpen] = useState(false);
   const [tagMenuSearch, setTagMenuSearch] = useState("");
   const [quickTaskText, setQuickTaskText] = useState("");
@@ -165,6 +169,8 @@ export default function Brain() {
     tags: "",
     category: "",
     attachments: [] as Attachment[],
+    favourite: false,
+    actionRequired: false,
   });
   const focusEntryIdRef = useRef<string | null>(null);
   const entryRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
@@ -394,7 +400,7 @@ export default function Brain() {
   }, [fetchItems, fetchCategories, search]);
 
   // Reset pagination when filters change
-  useEffect(() => { setVisibleCount(50); }, [view, catFilter, search, sortBy, sourceFilter, withNotesOnly, reviewMode]);
+  useEffect(() => { setVisibleCount(50); }, [view, catFilter, search, sortBy, sourceFilter, withNotesOnly, favouritesOnly, actionOnly, reviewMode]);
 
   // Close modals on Escape, focus search on Cmd/Ctrl+K
   useEffect(() => {
@@ -573,7 +579,7 @@ export default function Brain() {
   const resetForm = (keepOpen = false) => {
     const lastCategory = form.category;
     const lastType = form.type;
-    setForm({ type: lastType, title: "", content: "", url: "", noteEntries: [], tags: "", category: lastCategory, attachments: [] });
+    setForm({ type: lastType, title: "", content: "", url: "", noteEntries: [], tags: "", category: lastCategory, attachments: [], favourite: false, actionRequired: false });
     if (!keepOpen) {
       setShowAdd(false);
     }
@@ -581,7 +587,7 @@ export default function Brain() {
   };
 
   const closeForm = () => {
-    setForm({ type: "note", title: "", content: "", url: "", noteEntries: [], tags: "", category: "", attachments: [] });
+    setForm({ type: "note", title: "", content: "", url: "", noteEntries: [], tags: "", category: "", attachments: [], favourite: false, actionRequired: false });
     setShowAdd(false);
     setEditingId(null);
   };
@@ -910,6 +916,30 @@ export default function Brain() {
     }
   };
 
+  const handleToggleFlag = async (id: string, flag: "favourite" | "actionRequired") => {
+    const item = items.find(i => i.id === id);
+    if (!item) return;
+    const next = !item[flag];
+    try {
+      const res = await fetch("/api/items", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, [flag]: next }),
+      });
+      if (!res.ok) {
+        showToast("Failed to update", "error");
+        return;
+      }
+      try {
+        const saved = await res.clone().json();
+        if (saved && saved.id) broadcastSync({ type: "item-updated", item: saved });
+      } catch {}
+      setItems(prev => prev.map(i => i.id === id ? { ...i, [flag]: next } : i));
+    } catch {
+      showToast("Failed to update", "error");
+    }
+  };
+
   const handleSummarize = async (id: string) => {
     setSummarizing(id);
     try {
@@ -947,6 +977,8 @@ export default function Brain() {
       tags: (item.tags || []).join(", "),
       category: item.category || "",
       attachments: item.attachments || [],
+      favourite: !!item.favourite,
+      actionRequired: !!item.actionRequired,
     });
     setEditingId(item.id);
     setShowAdd(true);
@@ -1090,6 +1122,8 @@ export default function Brain() {
       const hasEntry = (i.noteEntries || []).some(e => e.body?.trim().length > 0);
       return hasLegacy || hasEntry;
     })
+    .filter(i => !favouritesOnly || !!i.favourite)
+    .filter(i => !actionOnly || !!i.actionRequired)
     .filter(i => {
       if (!reviewMode) return true;
       const noCategory = !i.category?.trim();
@@ -1115,6 +1149,8 @@ export default function Brain() {
     const hasEntry = (i.noteEntries || []).some(e => e.body?.trim().length > 0);
     return hasLegacy || hasEntry;
   }).length;
+  const favouriteCount = items.filter(i => i.favourite).length;
+  const actionCount = items.filter(i => i.actionRequired).length;
   const reviewCount = items.filter(i => {
     const noCategory = !i.category?.trim();
     const noTags = (i.tags?.length ?? 0) === 0;
@@ -1363,6 +1399,34 @@ export default function Brain() {
               title="Show only items with notes attached"
             >
               ✎ With notes <span className="opacity-50 text-[10px]">{withNotesCount}</span>
+            </button>
+          )}
+          {favouriteCount > 0 && (
+            <button
+              onClick={() => setFavouritesOnly(v => !v)}
+              className="px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-mono font-medium transition-all shrink-0 ml-1"
+              style={{
+                border: favouritesOnly ? "1px solid #F2C94C90" : "1px solid #F2C94C30",
+                background: favouritesOnly ? "#F2C94C25" : "transparent",
+                color: favouritesOnly ? "#F2C94C" : "#F2C94C90",
+              }}
+              title="Show only favourites"
+            >
+              ★ Favourites <span className="opacity-50 text-[10px]">{favouriteCount}</span>
+            </button>
+          )}
+          {actionCount > 0 && (
+            <button
+              onClick={() => setActionOnly(v => !v)}
+              className="px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-mono font-medium transition-all shrink-0 ml-1"
+              style={{
+                border: actionOnly ? "1px solid #EB575790" : "1px solid #EB575730",
+                background: actionOnly ? "#EB575725" : "transparent",
+                color: actionOnly ? "#EB5757" : "#EB575790",
+              }}
+              title="Show only items needing action"
+            >
+              ⚡ Needs action <span className="opacity-50 text-[10px]">{actionCount}</span>
             </button>
           )}
           {reviewCount > 0 && (
@@ -1843,6 +1907,8 @@ export default function Brain() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
                       {item.pinned && <span className="text-[10px]" title="Pinned">📌</span>}
+                      {item.favourite && <span className="text-[10px]" style={{ color: "#F2C94C" }} title="Favourite">★</span>}
+                      {item.actionRequired && <span className="text-[10px]" style={{ color: "#EB5757" }} title="Needs action">⚡</span>}
                       {hasPreview && !isCompact && (
                         <div
                           className="w-5 h-5 rounded flex items-center justify-center text-[10px] shrink-0"
@@ -1969,6 +2035,26 @@ export default function Brain() {
                         style={{ border: "1px solid #E8A83830", background: "#E8A83810", color: "#E8A838" }}
                       >{item.pinned ? "Unpin" : "Pin"}</button>
                       <button
+                        onClick={e => { e.stopPropagation(); handleToggleFlag(item.id, "favourite"); }}
+                        className="px-3 py-1.5 rounded-md text-[11px] font-mono transition hover:brightness-125 active:scale-95"
+                        style={{
+                          border: item.favourite ? "1px solid #F2C94C90" : "1px solid #F2C94C30",
+                          background: item.favourite ? "#F2C94C25" : "#F2C94C10",
+                          color: "#F2C94C",
+                        }}
+                        title={item.favourite ? "Remove from favourites" : "Mark as favourite"}
+                      >{item.favourite ? "★ Favourite" : "☆ Favourite"}</button>
+                      <button
+                        onClick={e => { e.stopPropagation(); handleToggleFlag(item.id, "actionRequired"); }}
+                        className="px-3 py-1.5 rounded-md text-[11px] font-mono transition hover:brightness-125 active:scale-95"
+                        style={{
+                          border: item.actionRequired ? "1px solid #EB575790" : "1px solid #EB575730",
+                          background: item.actionRequired ? "#EB575725" : "#EB575710",
+                          color: "#EB5757",
+                        }}
+                        title={item.actionRequired ? "Clear action flag" : "Mark as needing action"}
+                      >{item.actionRequired ? "⚡ Action needed" : "⚡ Flag action"}</button>
+                      <button
                         onClick={e => { e.stopPropagation(); handleEdit(item); }}
                         className="px-3 py-1.5 rounded-md text-[11px] font-mono transition hover:brightness-125 active:scale-95"
                         style={{ border: "1px solid #5B8DEF30", background: "#5B8DEF10", color: "#5B8DEF" }}
@@ -2058,7 +2144,7 @@ export default function Brain() {
             </div>
 
             {/* Type picker */}
-            <div className="flex gap-1.5 mb-4">
+            <div className="flex gap-1.5 mb-3">
               {(Object.entries(TYPES) as [ItemType, typeof TYPES.note][]).map(([k, v]) => (
                 <button
                   key={k}
@@ -2071,6 +2157,30 @@ export default function Brain() {
                   }}
                 >{v.icon} {v.label}</button>
               ))}
+            </div>
+
+            {/* Flags */}
+            <div className="flex gap-1.5 mb-4">
+              <button
+                type="button"
+                onClick={() => setForm(f => ({ ...f, favourite: !f.favourite }))}
+                className="px-3 py-1.5 rounded-md text-[11px] font-mono transition active:scale-95"
+                style={{
+                  border: form.favourite ? "1px solid #F2C94C90" : "1px solid #F2C94C30",
+                  background: form.favourite ? "#F2C94C25" : "#F2C94C10",
+                  color: "#F2C94C",
+                }}
+              >{form.favourite ? "★ Favourite" : "☆ Mark favourite"}</button>
+              <button
+                type="button"
+                onClick={() => setForm(f => ({ ...f, actionRequired: !f.actionRequired }))}
+                className="px-3 py-1.5 rounded-md text-[11px] font-mono transition active:scale-95"
+                style={{
+                  border: form.actionRequired ? "1px solid #EB575790" : "1px solid #EB575730",
+                  background: form.actionRequired ? "#EB575725" : "#EB575710",
+                  color: "#EB5757",
+                }}
+              >{form.actionRequired ? "⚡ Action needed" : "⚡ Flag for action"}</button>
             </div>
 
             {/* Category selector — pick existing, type new, or auto */}

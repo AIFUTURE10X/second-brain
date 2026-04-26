@@ -1994,7 +1994,23 @@ export default function Brain() {
                       {isCompact && displayedAttachments.length > 0 && (
                         <span className="text-[10px] text-gray-500 font-mono" title={`${displayedAttachments.length} attachment${displayedAttachments.length > 1 ? "s" : ""}`}>📎 {displayedAttachments.length}</span>
                       )}
-                      <span className="text-[10px] text-gray-700 ml-auto font-mono">{timeAgo(item.createdAt)}</span>
+                      <div className="ml-auto flex items-center gap-0.5">
+                        <button
+                          onClick={e => { e.stopPropagation(); handleToggleFlag(item.id, "favourite"); }}
+                          className="text-[12px] leading-none px-1 py-0.5 rounded hover:bg-white/5 transition"
+                          style={{ color: item.favourite ? "#F2C94C" : "#3a3d44", opacity: item.favourite ? 1 : 0.7 }}
+                          title={item.favourite ? "Unfavourite" : "Mark as favourite"}
+                          aria-label={item.favourite ? "Unfavourite" : "Mark as favourite"}
+                        >{item.favourite ? "★" : "☆"}</button>
+                        <button
+                          onClick={e => { e.stopPropagation(); handleToggleFlag(item.id, "actionRequired"); }}
+                          className="text-[12px] leading-none px-1 py-0.5 rounded hover:bg-white/5 transition"
+                          style={{ color: item.actionRequired ? "#EB5757" : "#3a3d44", opacity: item.actionRequired ? 1 : 0.7 }}
+                          title={item.actionRequired ? "Clear action flag" : "Mark as needing action"}
+                          aria-label={item.actionRequired ? "Clear action flag" : "Mark as needing action"}
+                        >⚡</button>
+                        <span className="text-[10px] text-gray-700 font-mono ml-1">{timeAgo(item.createdAt)}</span>
+                      </div>
                     </div>
 
                     {/* Attachments */}

@@ -68,6 +68,27 @@ export default function CardPopoutPage() {
   const channelRef = useRef<BroadcastChannel | null>(null);
   const clientIdRef = useRef<string>("");
   const dirtyRef = useRef(false);
+  const notesRef = useRef<HTMLTextAreaElement>(null);
+
+  const appendNoteEntry = () => {
+    const now = new Date();
+    const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+    const divider = `--- ${stamp} ---\n`;
+    setForm(f => {
+      const trimmed = f.notes.replace(/\s+$/, "");
+      const next = trimmed ? `${trimmed}\n\n${divider}` : divider;
+      return { ...f, notes: next };
+    });
+    setDirty(true);
+    requestAnimationFrame(() => {
+      const el = notesRef.current;
+      if (el) {
+        el.focus();
+        el.selectionStart = el.selectionEnd = el.value.length;
+        el.scrollTop = el.scrollHeight;
+      }
+    });
+  };
 
   useEffect(() => { dirtyRef.current = dirty; }, [dirty]);
 
@@ -289,16 +310,26 @@ export default function CardPopoutPage() {
         className="w-full px-3 py-2.5 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none mb-2.5 resize-y leading-relaxed placeholder:text-gray-500"
       />
 
-      {(form.type === "link" || form.type === "clip") && (
-        <textarea
-          value={form.notes}
-          onChange={e => onField("notes", e.target.value)}
-          placeholder="My annotations on this link..."
-          aria-label="Annotations"
-          rows={4}
-          className="w-full px-3 py-2.5 bg-brand-muted border border-type-link/20 rounded-lg text-sm text-gray-400 italic outline-none mb-2.5 resize-y leading-relaxed placeholder:text-gray-500"
-        />
-      )}
+      <label className="block text-[11px] font-mono text-gray-400 mb-1.5 tracking-wide flex items-center gap-2">
+        <span>Notes</span>
+        <span className="text-gray-600 font-normal">(your annotations — append timestamped entries to keep a running log)</span>
+      </label>
+      <textarea
+        ref={notesRef}
+        value={form.notes}
+        onChange={e => onField("notes", e.target.value)}
+        placeholder={form.type === "link" || form.type === "clip" ? "My annotations on this link..." : "Add notes about this card..."}
+        aria-label="Notes"
+        rows={form.type === "link" || form.type === "clip" ? 4 : 6}
+        className="w-full px-3 py-2.5 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-400 italic outline-none mb-1.5 resize-y leading-relaxed placeholder:text-gray-500"
+      />
+      <button
+        type="button"
+        onClick={appendNoteEntry}
+        className="mb-2.5 text-[11px] font-mono text-gray-500 hover:text-gray-300 transition"
+      >
+        + Append timestamped entry
+      </button>
 
       <label className="block text-[11px] font-mono text-gray-400 mb-1.5 tracking-wide">
         Tags <span className="text-gray-600 font-normal">(comma-separated)</span>

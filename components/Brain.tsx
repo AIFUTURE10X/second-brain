@@ -149,6 +149,7 @@ export default function Brain() {
   const [withNotesOnly, setWithNotesOnly] = useState(false);
   const [favouritesOnly, setFavouritesOnly] = useState(false);
   const [actionOnly, setActionOnly] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [tagMenuOpen, setTagMenuOpen] = useState(false);
   const [tagMenuSearch, setTagMenuSearch] = useState("");
   const [quickTaskText, setQuickTaskText] = useState("");
@@ -1318,13 +1319,22 @@ export default function Brain() {
             >{density === "compact" ? "▦" : "≡"}</button>
             <button
               onClick={async () => {
-                await Promise.all([fetchItems(search.trim() || undefined), fetchCategories()]);
-                showToast("Refreshed", "success");
+                if (isRefreshing) return;
+                setIsRefreshing(true);
+                try {
+                  await Promise.all([fetchItems(search.trim() || undefined), fetchCategories()]);
+                  showToast("Refreshed", "success");
+                } finally {
+                  setIsRefreshing(false);
+                }
               }}
-              className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl text-gray-500 text-sm flex items-center justify-center border border-brand-border hover:text-gray-300 hover:border-gray-600 active:scale-95 transition"
+              disabled={isRefreshing}
+              className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl text-gray-500 text-sm flex items-center justify-center border border-brand-border hover:text-gray-300 hover:border-gray-600 active:scale-95 transition disabled:opacity-60"
               aria-label="Refresh items"
               title="Refresh"
-            >↻</button>
+            >
+              <span style={{ display: "inline-block", animation: isRefreshing ? "spin 0.8s linear infinite" : undefined }}>↻</span>
+            </button>
             <button
               onClick={() => setShowCatManager(true)}
               className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl text-gray-500 text-sm flex items-center justify-center border border-brand-border hover:text-gray-300 hover:border-gray-600 active:scale-95 transition"

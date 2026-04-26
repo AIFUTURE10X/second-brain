@@ -37,6 +37,9 @@ export async function GET(req: NextRequest) {
     const rows = await sql`
       SELECT
         id, type, title, content, url, notes, tags, category, pinned, attachments,
+        favourite,
+        action_required AS "actionRequired",
+        note_entries AS "noteEntries",
         favicon,
         og_title AS "ogTitle",
         og_description AS "ogDescription",

@@ -54,11 +54,19 @@ const formatStamp = (iso: string) => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 };
 
-function fileIcon(contentType: string): string {
+// Some browsers report `.md` files with an empty type — force markdown so the
+// server allowlist accepts it. Pass through everything else.
+function resolveContentType(file: File): string {
+  if (/\.(md|markdown)$/i.test(file.name)) return "text/markdown";
+  return file.type || "application/octet-stream";
+}
+
+function fileIcon(contentType: string, name?: string): string {
   if (contentType.startsWith("image/")) return "🖼";
   if (contentType === "application/pdf") return "📄";
   if (contentType.includes("spreadsheet") || contentType.includes("excel") || contentType === "text/csv") return "📊";
   if (contentType.includes("word") || contentType.includes("document")) return "📝";
+  if (contentType === "text/markdown" || contentType === "text/x-markdown" || (name && /\.(md|markdown)$/i.test(name))) return "Ⓜ";
   if (contentType === "text/plain") return "📃";
   return "📎";
 }
@@ -639,14 +647,16 @@ export default function Brain() {
           showToast(`${file.name} exceeds 50 MB`, "error");
           continue;
         }
-        const blob = await upload(file.name, file, {
+        const contentType = resolveContentType(file);
+        const body = file.type === contentType ? file : new File([file], file.name, { type: contentType });
+        const blob = await upload(file.name, body, {
           access: "public",
           handleUploadUrl: "/api/upload",
         });
         uploaded.push({
           url: blob.url,
           name: file.name,
-          contentType: file.type || "application/octet-stream",
+          contentType,
           size: file.size,
         });
       }
@@ -679,14 +689,16 @@ export default function Brain() {
           showToast(`${file.name} exceeds 50 MB`, "error");
           continue;
         }
-        const blob = await upload(file.name, file, {
+        const contentType = resolveContentType(file);
+        const body = file.type === contentType ? file : new File([file], file.name, { type: contentType });
+        const blob = await upload(file.name, body, {
           access: "public",
           handleUploadUrl: "/api/upload",
         });
         uploaded.push({
           url: blob.url,
           name: file.name,
-          contentType: file.type || "application/octet-stream",
+          contentType,
           size: file.size,
         });
       }
@@ -1932,7 +1944,7 @@ export default function Brain() {
                             className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-mono bg-brand-muted border border-brand-border text-gray-300 hover:border-gray-600 hover:text-white transition"
                             title={`${att.name} · ${formatSize(att.size)}`}
                           >
-                            <span>{fileIcon(att.contentType)}</span>
+                            <span>{fileIcon(att.contentType, att.name)}</span>
                             <span className="max-w-[160px] truncate">{att.name}</span>
                             <span className="text-gray-600 text-[9px]">{formatSize(att.size)}</span>
                           </a>
@@ -2191,13 +2203,13 @@ export default function Brain() {
             />
 
             <label className="block text-[11px] font-mono text-gray-400 mb-1.5 tracking-wide">
-              Attachments <span className="text-gray-600 font-normal">(PDF, XLS, DOC, images — max 50 MB · drop or paste here)</span>
+              Attachments <span className="text-gray-600 font-normal">(PDF, XLS, DOC, MD, images — max 50 MB · drop or paste here)</span>
             </label>
             <input
               ref={fileInputRef}
               type="file"
               multiple
-              accept=".pdf,.xls,.xlsx,.doc,.docx,.csv,.txt,image/*"
+              accept=".pdf,.xls,.xlsx,.doc,.docx,.csv,.txt,.md,.markdown,image/*"
               onChange={e => handleFileUpload(e.target.files)}
               className="hidden"
               aria-label="Attach files"
@@ -2228,7 +2240,7 @@ export default function Brain() {
                     key={att.url}
                     className="flex items-center gap-2 px-3 py-2 bg-brand-muted border border-brand-border rounded-lg text-xs"
                   >
-                    <span className="text-sm">{fileIcon(att.contentType)}</span>
+                    <span className="text-sm">{fileIcon(att.contentType, att.name)}</span>
                     <a
                       href={att.url}
                       target="_blank"

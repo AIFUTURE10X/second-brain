@@ -10,6 +10,8 @@ const ALLOWED_CONTENT_TYPES = [
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "text/csv",
   "text/plain",
+  "text/markdown",
+  "text/x-markdown",
   "image/png",
   "image/jpeg",
   "image/gif",

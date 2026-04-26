@@ -7,6 +7,13 @@ export type Attachment = {
   size: number;
 };
 
+export type NoteEntry = {
+  id: string;
+  body: string;
+  createdAt: string; // ISO
+  updatedAt: string; // ISO
+};
+
 // Synced user preferences keyed by string. Single-user app so no user_id.
 // value is a JSON blob — keep it small. Examples: "custom_cat_colors": ["#ff0", "#0ff"]
 export const settings = pgTable("settings", {
@@ -32,7 +39,8 @@ export const items = pgTable("items", {
   title: text("title").notNull().default(""),
   content: text("content").default(""),
   url: text("url").default(""),
-  notes: text("notes").default(""), // personal annotations (separate from content)
+  notes: text("notes").default(""), // legacy single-blob annotations — kept for back-compat; new edits use noteEntries
+  noteEntries: jsonb("note_entries").$type<NoteEntry[]>().default([]),
   tags: jsonb("tags").$type<string[]>().default([]),
   category: text("category").default(""),
   pinned: boolean("pinned").default(false),

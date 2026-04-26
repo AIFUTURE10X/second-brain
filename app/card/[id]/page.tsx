@@ -13,6 +13,13 @@ interface Attachment {
   size: number;
 }
 
+interface NoteEntry {
+  id: string;
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 interface Item {
   id: string;
   type: ItemType;
@@ -20,6 +27,7 @@ interface Item {
   content: string;
   url: string;
   notes: string;
+  noteEntries?: NoteEntry[];
   tags: string[];
   category: string;
   pinned: boolean;
@@ -32,6 +40,17 @@ interface Item {
   createdAt: string;
   updatedAt: string;
 }
+
+const newEntryId = () =>
+  (typeof crypto !== "undefined" && "randomUUID" in crypto)
+    ? crypto.randomUUID()
+    : `e_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+
+const formatStamp = (iso: string) => {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+};
 
 const TYPES: Record<ItemType, { icon: string; label: string; color: string }> = {
   note: { icon: "✎", label: "Note", color: "#E8A838" },
@@ -60,7 +79,7 @@ export default function CardPopoutPage() {
     title: "",
     content: "",
     url: "",
-    notes: "",
+    noteEntries: [] as NoteEntry[],
     tags: "",
     category: "",
   });
@@ -68,38 +87,58 @@ export default function CardPopoutPage() {
   const channelRef = useRef<BroadcastChannel | null>(null);
   const clientIdRef = useRef<string>("");
   const dirtyRef = useRef(false);
-  const notesRef = useRef<HTMLTextAreaElement>(null);
+  const focusEntryIdRef = useRef<string | null>(null);
+  const entryRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
 
-  const appendNoteEntry = () => {
-    const now = new Date();
-    const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-    const divider = `--- ${stamp} ---\n`;
-    setForm(f => {
-      const trimmed = f.notes.replace(/\s+$/, "");
-      const next = trimmed ? `${trimmed}\n\n${divider}` : divider;
-      return { ...f, notes: next };
-    });
+  const addNoteEntry = () => {
+    const now = new Date().toISOString();
+    const entry: NoteEntry = { id: newEntryId(), body: "", createdAt: now, updatedAt: now };
+    focusEntryIdRef.current = entry.id;
+    setForm(f => ({ ...f, noteEntries: [...f.noteEntries, entry] }));
     setDirty(true);
-    requestAnimationFrame(() => {
-      const el = notesRef.current;
-      if (el) {
-        el.focus();
-        el.selectionStart = el.selectionEnd = el.value.length;
-        el.scrollTop = el.scrollHeight;
-      }
-    });
   };
+
+  const updateNoteEntry = (id: string, body: string) => {
+    const now = new Date().toISOString();
+    setForm(f => ({
+      ...f,
+      noteEntries: f.noteEntries.map(e => e.id === id ? { ...e, body, updatedAt: now } : e),
+    }));
+    setDirty(true);
+  };
+
+  const deleteNoteEntry = (id: string) => {
+    setForm(f => ({ ...f, noteEntries: f.noteEntries.filter(e => e.id !== id) }));
+    setDirty(true);
+  };
+
+  useEffect(() => {
+    const target = focusEntryIdRef.current;
+    if (!target) return;
+    const el = entryRefs.current[target];
+    if (el) {
+      el.focus();
+      el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      focusEntryIdRef.current = null;
+    }
+  }, [form.noteEntries]);
 
   useEffect(() => { dirtyRef.current = dirty; }, [dirty]);
 
   const applyItem = useCallback((next: Item) => {
     setItem(next);
+    let entries = Array.isArray(next.noteEntries) ? next.noteEntries : [];
+    if (entries.length === 0 && next.notes && next.notes.trim()) {
+      // Legacy notes field — surface as a single entry so it can be split/edited
+      const stamp = next.createdAt || new Date().toISOString();
+      entries = [{ id: newEntryId(), body: next.notes, createdAt: stamp, updatedAt: stamp }];
+    }
     setForm({
       type: next.type,
       title: next.title || "",
       content: next.content || "",
       url: next.url || "",
-      notes: next.notes || "",
+      noteEntries: entries,
       tags: (next.tags || []).join(", "),
       category: next.category || "",
     });
@@ -167,11 +206,16 @@ export default function CardPopoutPage() {
     if (!id || saving) return;
     setSaving(true);
     const tags = form.tags.split(",").map(t => t.trim()).filter(Boolean);
+    // Drop entries whose body is entirely empty so we don't persist accidental blanks.
+    const entries = form.noteEntries.filter(e => e.body.trim().length > 0);
+    // Once entries exist, retire the legacy single-blob `notes` field so it
+    // doesn't reappear next load alongside the migrated entry.
+    const legacyClear = entries.length > 0 ? { notes: "" } : {};
     try {
       const res = await fetch("/api/items", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, ...form, tags }),
+        body: JSON.stringify({ id, ...form, tags, noteEntries: entries, ...legacyClear }),
       });
       if (!res.ok) { setSaving(false); return; }
       const saved: Item = await res.json();
@@ -310,25 +354,44 @@ export default function CardPopoutPage() {
         className="w-full px-3 py-2.5 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none mb-2.5 resize-y leading-relaxed placeholder:text-gray-500"
       />
 
-      <label className="block text-[11px] font-mono text-gray-400 mb-1.5 tracking-wide flex items-center gap-2">
-        <span>Notes</span>
-        <span className="text-gray-600 font-normal">(your annotations — append timestamped entries to keep a running log)</span>
+      <label className="block text-[11px] font-mono text-gray-400 mb-1.5 tracking-wide">
+        Notes <span className="text-gray-600 font-normal">(each entry is independently editable / deletable)</span>
       </label>
-      <textarea
-        ref={notesRef}
-        value={form.notes}
-        onChange={e => onField("notes", e.target.value)}
-        placeholder={form.type === "link" || form.type === "clip" ? "My annotations on this link..." : "Add notes about this card..."}
-        aria-label="Notes"
-        rows={form.type === "link" || form.type === "clip" ? 4 : 6}
-        className="w-full px-3 py-2.5 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-400 italic outline-none mb-1.5 resize-y leading-relaxed placeholder:text-gray-500"
-      />
+      <div className="flex flex-col gap-2 mb-2">
+        {form.noteEntries.map(entry => (
+          <div key={entry.id} className="rounded-lg border border-brand-border bg-brand-muted">
+            <div className="flex items-center gap-2 px-3 py-1.5 border-b border-brand-border">
+              <span className="text-[10px] font-mono text-gray-500">{formatStamp(entry.createdAt)}</span>
+              {entry.updatedAt && entry.updatedAt !== entry.createdAt && (
+                <span className="text-[10px] font-mono text-gray-600">· edited {formatStamp(entry.updatedAt)}</span>
+              )}
+              <div className="flex-1" />
+              <button
+                type="button"
+                onClick={() => deleteNoteEntry(entry.id)}
+                aria-label="Delete entry"
+                title="Delete entry"
+                className="text-[11px] font-mono text-gray-500 hover:text-red-400 transition px-1"
+              >×</button>
+            </div>
+            <textarea
+              ref={el => { entryRefs.current[entry.id] = el; }}
+              value={entry.body}
+              onChange={e => updateNoteEntry(entry.id, e.target.value)}
+              placeholder="Write a note..."
+              aria-label="Note entry"
+              rows={3}
+              className="w-full px-3 py-2 bg-transparent text-sm text-gray-300 outline-none resize-y leading-relaxed placeholder:text-gray-500"
+            />
+          </div>
+        ))}
+      </div>
       <button
         type="button"
-        onClick={appendNoteEntry}
+        onClick={addNoteEntry}
         className="mb-2.5 text-[11px] font-mono text-gray-500 hover:text-gray-300 transition"
       >
-        + Append timestamped entry
+        + Add entry
       </button>
 
       <label className="block text-[11px] font-mono text-gray-400 mb-1.5 tracking-wide">

@@ -15,6 +15,13 @@ interface Attachment {
   size: number;
 }
 
+interface NoteEntry {
+  id: string;
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 interface Item {
   id: string;
   type: ItemType;
@@ -22,6 +29,7 @@ interface Item {
   content: string;
   url: string;
   notes: string;
+  noteEntries?: NoteEntry[];
   tags: string[];
   category: string;
   pinned: boolean;
@@ -34,6 +42,17 @@ interface Item {
   createdAt: string;
   updatedAt: string;
 }
+
+const newEntryId = () =>
+  (typeof crypto !== "undefined" && "randomUUID" in crypto)
+    ? crypto.randomUUID()
+    : `e_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+
+const formatStamp = (iso: string) => {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+};
 
 function fileIcon(contentType: string): string {
   if (contentType.startsWith("image/")) return "🖼";
@@ -134,11 +153,13 @@ export default function Brain() {
     title: "",
     content: "",
     url: "",
-    notes: "",
+    noteEntries: [] as NoteEntry[],
     tags: "",
     category: "",
     attachments: [] as Attachment[],
   });
+  const focusEntryIdRef = useRef<string | null>(null);
+  const entryRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
   const [uploading, setUploading] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const [dragOverCardId, setDragOverCardId] = useState<string | null>(null);
@@ -163,10 +184,9 @@ export default function Brain() {
   const [tagMergeLoading, setTagMergeLoading] = useState(false);
   const [reviewMode, setReviewMode] = useState(false);
   const [customCatColors, setCustomCatColors] = useState<string[]>([]);
-  const [pickerTarget, setPickerTarget] = useState<null | "content" | "notes">(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerSearch, setPickerSearch] = useState("");
   const contentRef = useRef<HTMLTextAreaElement>(null);
-  const notesRef = useRef<HTMLTextAreaElement>(null);
 
   // Persist density preference across reloads
   useEffect(() => {
@@ -372,7 +392,7 @@ export default function Brain() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        if (pickerTarget) { setPickerTarget(null); setPickerSearch(""); }
+        if (pickerOpen) { setPickerOpen(false); setPickerSearch(""); }
         else if (showAdd) closeForm();
         else if (showCatManager) setShowCatManager(false);
         else if (showTagManager) { setShowTagManager(false); setMergingTag(null); }
@@ -386,7 +406,7 @@ export default function Brain() {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [showAdd, showCatManager, showTagManager, tagMenuOpen, pickerTarget]);
+  }, [showAdd, showCatManager, showTagManager, tagMenuOpen, pickerOpen]);
 
   // Paste image from clipboard while the add/edit modal is open
   useEffect(() => {
@@ -461,7 +481,7 @@ export default function Brain() {
   }, []);
 
   const handleSmartPaste = useCallback(
-    (field: "content" | "notes") => (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    (field: "content") => (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
       const text = e.clipboardData.getData("text/plain");
       if (!text || !text.includes("\n")) return;
       const cleaned = unwrapPastedText(text);
@@ -545,7 +565,7 @@ export default function Brain() {
   const resetForm = (keepOpen = false) => {
     const lastCategory = form.category;
     const lastType = form.type;
-    setForm({ type: lastType, title: "", content: "", url: "", notes: "", tags: "", category: lastCategory, attachments: [] });
+    setForm({ type: lastType, title: "", content: "", url: "", noteEntries: [], tags: "", category: lastCategory, attachments: [] });
     if (!keepOpen) {
       setShowAdd(false);
     }
@@ -553,49 +573,59 @@ export default function Brain() {
   };
 
   const closeForm = () => {
-    setForm({ type: "note", title: "", content: "", url: "", notes: "", tags: "", category: "", attachments: [] });
+    setForm({ type: "note", title: "", content: "", url: "", noteEntries: [], tags: "", category: "", attachments: [] });
     setShowAdd(false);
     setEditingId(null);
   };
 
-  const appendNoteEntry = () => {
-    const now = new Date();
-    const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-    const divider = `--- ${stamp} ---\n`;
-    setForm(f => {
-      const trimmed = (f.notes || "").replace(/\s+$/, "");
-      const next = trimmed ? `${trimmed}\n\n${divider}` : divider;
-      return { ...f, notes: next };
-    });
-    requestAnimationFrame(() => {
-      const el = notesRef.current;
-      if (el) {
-        el.focus();
-        el.selectionStart = el.selectionEnd = el.value.length;
-        el.scrollTop = el.scrollHeight;
-      }
-    });
+  const addNoteEntry = () => {
+    const now = new Date().toISOString();
+    const entry: NoteEntry = { id: newEntryId(), body: "", createdAt: now, updatedAt: now };
+    focusEntryIdRef.current = entry.id;
+    setForm(f => ({ ...f, noteEntries: [...f.noteEntries, entry] }));
   };
 
-  const insertFromCard = (item: Item) => {
-    const target = pickerTarget;
+  const updateNoteEntry = (id: string, body: string) => {
+    const now = new Date().toISOString();
+    setForm(f => ({
+      ...f,
+      noteEntries: f.noteEntries.map(e => e.id === id ? { ...e, body, updatedAt: now } : e),
+    }));
+  };
+
+  const deleteNoteEntry = (id: string) => {
+    setForm(f => ({ ...f, noteEntries: f.noteEntries.filter(e => e.id !== id) }));
+  };
+
+  useEffect(() => {
+    const target = focusEntryIdRef.current;
     if (!target) return;
-    const body = [item.content, item.notes].filter(Boolean).join("\n\n");
+    const el = entryRefs.current[target];
+    if (el) {
+      el.focus();
+      el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      focusEntryIdRef.current = null;
+    }
+  }, [form.noteEntries]);
+
+  const insertFromCard = (item: Item) => {
+    const entryBodies = (item.noteEntries || []).map(e => e.body).filter(Boolean);
+    const legacy = item.notes ? [item.notes] : [];
+    const body = [item.content, ...legacy, ...entryBodies].filter(Boolean).join("\n\n");
     const snippet = item.title ? `${item.title}\n${body}`.trim() : body;
-    if (!snippet) { setPickerTarget(null); setPickerSearch(""); return; }
-    const ref = target === "content" ? contentRef : notesRef;
-    const el = ref.current;
+    if (!snippet) { setPickerOpen(false); setPickerSearch(""); return; }
+    const el = contentRef.current;
     setForm(f => {
-      const current = f[target] || "";
+      const current = f.content || "";
       const start = el?.selectionStart ?? current.length;
       const end = el?.selectionEnd ?? current.length;
       const prefix = current.slice(0, start);
       const suffix = current.slice(end);
       const sep = prefix && !prefix.endsWith("\n") ? "\n\n" : "";
       const next = `${prefix}${sep}${snippet}${suffix}`;
-      return { ...f, [target]: next };
+      return { ...f, content: next };
     });
-    setPickerTarget(null);
+    setPickerOpen(false);
     setPickerSearch("");
   };
 
@@ -686,11 +716,18 @@ export default function Brain() {
     if (!form.title.trim() && !form.content.trim() && !form.url.trim()) return;
     setSaving(true);
     const tags = form.tags.split(",").map(t => t.trim()).filter(Boolean);
+    const noteEntries = form.noteEntries.filter(e => e.body.trim().length > 0);
+    // Once entries exist, clear the legacy single-blob field on the server so
+    // we don't double-render after the migration on next load.
+    const legacyClear = noteEntries.length > 0 && editingId ? { notes: "" } : {};
+    const payload = editingId
+      ? { id: editingId, ...form, tags, noteEntries, ...legacyClear }
+      : { ...form, tags, noteEntries };
     try {
       const res = await fetch(editingId ? "/api/items" : "/api/items", {
         method: editingId ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(editingId ? { id: editingId, ...form, tags } : { ...form, tags }),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) {
         showToast("Failed to save item", "error");
@@ -884,12 +921,17 @@ export default function Brain() {
   };
 
   const handleEdit = (item: Item) => {
+    let entries = Array.isArray(item.noteEntries) ? item.noteEntries : [];
+    if (entries.length === 0 && item.notes && item.notes.trim()) {
+      const stamp = item.createdAt || new Date().toISOString();
+      entries = [{ id: newEntryId(), body: item.notes, createdAt: stamp, updatedAt: stamp }];
+    }
     setForm({
       type: item.type,
       title: item.title,
       content: item.content || "",
       url: item.url || "",
-      notes: item.notes || "",
+      noteEntries: entries,
       tags: (item.tags || []).join(", "),
       category: item.category || "",
       attachments: item.attachments || [],
@@ -1030,7 +1072,12 @@ export default function Brain() {
       if (!sourceFilter) return true;
       return sourceFromUrl(i.url)?.key === sourceFilter;
     })
-    .filter(i => !withNotesOnly || (i.notes?.trim().length ?? 0) > 0)
+    .filter(i => {
+      if (!withNotesOnly) return true;
+      const hasLegacy = (i.notes?.trim().length ?? 0) > 0;
+      const hasEntry = (i.noteEntries || []).some(e => e.body?.trim().length > 0);
+      return hasLegacy || hasEntry;
+    })
     .filter(i => {
       if (!reviewMode) return true;
       const noCategory = !i.category?.trim();
@@ -1051,7 +1098,11 @@ export default function Brain() {
   const hasMore = filtered.length > visibleCount;
 
   const allTags = [...new Set(items.flatMap(i => i.tags || []))];
-  const withNotesCount = items.filter(i => (i.notes?.trim().length ?? 0) > 0).length;
+  const withNotesCount = items.filter(i => {
+    const hasLegacy = (i.notes?.trim().length ?? 0) > 0;
+    const hasEntry = (i.noteEntries || []).some(e => e.body?.trim().length > 0);
+    return hasLegacy || hasEntry;
+  }).length;
   const reviewCount = items.filter(i => {
     const noCategory = !i.category?.trim();
     const noTags = (i.tags?.length ?? 0) === 0;
@@ -1821,12 +1872,33 @@ export default function Brain() {
                       </p>
                     )}
 
-                    {/* Notes section (separate from content) */}
-                    {item.notes && !isCompact && (
-                      <div className={`mt-2 pl-2.5 border-l-2 ${expanded ? "" : "line-clamp-2"}`} style={{ borderColor: t.color + "40" }}>
-                        <p className="text-[11px] text-gray-400 italic leading-relaxed">{item.notes}</p>
-                      </div>
-                    )}
+                    {/* Notes section (separate from content) — entries first, legacy fallback */}
+                    {!isCompact && (() => {
+                      const entries = (item.noteEntries || []).filter(e => e.body?.trim().length > 0);
+                      if (entries.length > 0) {
+                        const visible = expanded ? entries : entries.slice(0, 2);
+                        return (
+                          <div className="mt-2 pl-2.5 border-l-2 flex flex-col gap-1" style={{ borderColor: t.color + "40" }}>
+                            {visible.map(e => (
+                              <p key={e.id} className={`text-[11px] text-gray-400 italic leading-relaxed ${expanded ? "whitespace-pre-wrap" : "line-clamp-2"}`}>
+                                {e.body}
+                              </p>
+                            ))}
+                            {!expanded && entries.length > 2 && (
+                              <span className="text-[10px] font-mono text-gray-600">+{entries.length - 2} more entries</span>
+                            )}
+                          </div>
+                        );
+                      }
+                      if (item.notes) {
+                        return (
+                          <div className={`mt-2 pl-2.5 border-l-2 ${expanded ? "" : "line-clamp-2"}`} style={{ borderColor: t.color + "40" }}>
+                            <p className="text-[11px] text-gray-400 italic leading-relaxed">{item.notes}</p>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
 
                     <div className={`flex items-center gap-2 ${isCompact ? "mt-1" : "mt-2"} flex-wrap`}>
                       {item.category && (
@@ -2063,40 +2135,50 @@ export default function Brain() {
             />
             <button
               type="button"
-              onClick={() => { setPickerTarget("content"); setPickerSearch(""); }}
+              onClick={() => { setPickerOpen(true); setPickerSearch(""); }}
               className="mb-2.5 text-[11px] font-mono text-gray-500 hover:text-gray-300 transition"
             >
               + Insert from another card
             </button>
             <label className="block text-[11px] font-mono text-gray-400 mb-1.5 tracking-wide">
-              Notes <span className="text-gray-600 font-normal">(your annotations — append timestamped entries to keep a log)</span>
+              Notes <span className="text-gray-600 font-normal">(each entry is independently editable / deletable)</span>
             </label>
-            <textarea
-              ref={notesRef}
-              value={form.notes}
-              onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-              onPaste={handleSmartPaste("notes")}
-              placeholder={form.type === "link" || form.type === "clip" ? "My annotations on this link..." : "Add notes about this card..."}
-              aria-label="Notes"
-              rows={form.type === "link" || form.type === "clip" ? 2 : 3}
-              className="w-full px-3 py-2.5 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-400 italic outline-none mb-1.5 resize-y leading-relaxed placeholder:text-gray-500"
-            />
-            <div className="flex gap-3 mb-2.5">
-              <button
-                type="button"
-                onClick={appendNoteEntry}
-                className="text-[11px] font-mono text-gray-500 hover:text-gray-300 transition"
-              >
-                + Append timestamped entry
-              </button>
-              <button
-                type="button"
-                onClick={() => { setPickerTarget("notes"); setPickerSearch(""); }}
-                className="text-[11px] font-mono text-gray-500 hover:text-gray-300 transition"
-              >
-                + Insert from another card
-              </button>
+            <div className="flex flex-col gap-2 mb-2">
+              {form.noteEntries.map(entry => (
+                <div key={entry.id} className="rounded-lg border border-brand-border bg-brand-muted">
+                  <div className="flex items-center gap-2 px-3 py-1.5 border-b border-brand-border">
+                    <span className="text-[10px] font-mono text-gray-500">{formatStamp(entry.createdAt)}</span>
+                    {entry.updatedAt && entry.updatedAt !== entry.createdAt && (
+                      <span className="text-[10px] font-mono text-gray-600">· edited {formatStamp(entry.updatedAt)}</span>
+                    )}
+                    <div className="flex-1" />
+                    <button
+                      type="button"
+                      onClick={() => deleteNoteEntry(entry.id)}
+                      aria-label="Delete entry"
+                      title="Delete entry"
+                      className="text-[11px] font-mono text-gray-500 hover:text-red-400 transition px-1"
+                    >×</button>
+                  </div>
+                  <textarea
+                    ref={el => { entryRefs.current[entry.id] = el; }}
+                    value={entry.body}
+                    onChange={e => updateNoteEntry(entry.id, e.target.value)}
+                    placeholder="Write a note..."
+                    aria-label="Note entry"
+                    rows={3}
+                    className="w-full px-3 py-2 bg-transparent text-sm text-gray-300 outline-none resize-y leading-relaxed placeholder:text-gray-500"
+                  />
+                </div>
+              ))}
             </div>
+            <button
+              type="button"
+              onClick={addNoteEntry}
+              className="mb-2.5 text-[11px] font-mono text-gray-500 hover:text-gray-300 transition"
+            >
+              + Add entry
+            </button>
             <label className="block text-[11px] font-mono text-gray-400 mb-1.5 tracking-wide">
               Tags <span className="text-gray-600 font-normal">(comma-separated)</span>
             </label>
@@ -2196,9 +2278,9 @@ export default function Brain() {
       )}
 
       {/* Card Picker — insert content from another card */}
-      {pickerTarget && (
+      {pickerOpen && (
         <div className="fixed inset-0 z-[210] flex flex-col justify-end" style={{ background: "#0D0F12EE" }}>
-          <div className="flex-1 cursor-pointer" onClick={() => { setPickerTarget(null); setPickerSearch(""); }} />
+          <div className="flex-1 cursor-pointer" onClick={() => { setPickerOpen(false); setPickerSearch(""); }} />
           <div className="bg-brand-card border-t border-brand-border rounded-t-2xl px-5 pt-4 pb-6 max-h-[80vh] flex flex-col">
             <div className="w-9 h-1 bg-gray-700 rounded-full mx-auto mb-4" />
             <h2 className="text-base font-semibold mb-3" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
@@ -2219,10 +2301,12 @@ export default function Brain() {
                   .filter(it => it.id !== editingId)
                   .filter(it => {
                     if (!q) return true;
+                    const entryHit = (it.noteEntries || []).some(e => e.body?.toLowerCase().includes(q));
                     return (
                       it.title.toLowerCase().includes(q) ||
                       it.content.toLowerCase().includes(q) ||
                       it.notes.toLowerCase().includes(q) ||
+                      entryHit ||
                       it.tags.some(t => t.toLowerCase().includes(q))
                     );
                   })
@@ -2232,7 +2316,8 @@ export default function Brain() {
                 }
                 return matches.map(it => {
                   const t = TYPES[it.type];
-                  const preview = (it.content || it.notes || "").slice(0, 120);
+                  const firstEntry = (it.noteEntries || []).map(e => e.body).find(Boolean) || "";
+                  const preview = (it.content || firstEntry || it.notes || "").slice(0, 120);
                   return (
                     <button
                       key={it.id}
@@ -2256,7 +2341,7 @@ export default function Brain() {
               })()}
             </div>
             <button
-              onClick={() => { setPickerTarget(null); setPickerSearch(""); }}
+              onClick={() => { setPickerOpen(false); setPickerSearch(""); }}
               className="mt-3 py-2.5 rounded-xl bg-brand-muted border border-brand-border text-gray-400 text-sm font-medium active:scale-[0.99] transition"
             >
               Cancel

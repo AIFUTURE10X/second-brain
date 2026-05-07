@@ -405,8 +405,13 @@ export default function Brain() {
       popup = null;
     }
     if (popup === null) {
-      showToast("Popup blocked — allow popups for this site to pop out cards", "error");
+      window.location.href = absoluteUrl;
     }
+  }, []);
+
+  const openCardInCurrentTab = useCallback((id: string) => {
+    if (typeof window === "undefined") return;
+    window.location.href = new URL(`/card/${id}`, window.location.origin).toString();
   }, []);
 
   // Open the add form when launched via PWA shortcut (?new=1)
@@ -2086,7 +2091,7 @@ export default function Brain() {
                               >
                                 <button
                                   type="button"
-                                  onClick={e => { e.stopPropagation(); popOutCard(related.id); }}
+                                  onClick={e => { e.stopPropagation(); openCardInCurrentTab(related.id); }}
                                   className="flex items-center gap-1.5 min-w-0 text-left hover:text-white transition"
                                   title="Open related card"
                                 >

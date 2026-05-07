@@ -277,7 +277,7 @@ export default function CardPopoutPage() {
 
   const openRelatedCard = (relatedId: string) => {
     const absoluteUrl = new URL(`/card/${relatedId}`, window.location.origin).toString();
-    window.open(absoluteUrl, `card-${relatedId}`, "popup,width=720,height=900");
+    window.location.href = absoluteUrl;
   };
 
   useEffect(() => {

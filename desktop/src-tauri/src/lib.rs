@@ -1,4 +1,5 @@
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_deep_link::DeepLinkExt;
 
 // Injected into every page load. Intercepts clicks on anchors with
 // target="_blank" (and any cross-origin link) and reroutes them through
@@ -6,6 +7,8 @@ use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 // this, target="_blank" clicks inside the WebView2 webview do nothing.
 const EXTERNAL_LINK_INTERCEPTOR: &str = r#"
 (function () {
+  window.__SECOND_BRAIN_DESKTOP__ = true;
+
   function log() { try { console.log.apply(console, ["[sb-desktop]"].concat([].slice.call(arguments))); } catch (e) {} }
 
   function isExternal(href) {
@@ -102,12 +105,31 @@ fn close_card_window(app: tauri::AppHandle, label: String) -> Result<(), String>
     Ok(())
 }
 
+fn focus_main_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            focus_main_window(app);
+        }))
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_deep_link::init())
         .invoke_handler(tauri::generate_handler![pop_out_card, close_card_window])
         .setup(|app| {
+            #[cfg(any(windows, target_os = "linux"))]
+            app.deep_link().register_all()?;
+
+            let app_handle = app.handle().clone();
+            app.deep_link().on_open_url(move |_event| {
+                focus_main_window(&app_handle);
+            });
+
             let url: tauri::Url = "https://second-brain-bice-two.vercel.app/"
                 .parse()
                 .expect("hardcoded URL is valid");

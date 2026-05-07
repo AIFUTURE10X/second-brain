@@ -4,6 +4,13 @@ A native Windows `.exe` wrapper for the Second Brain web app, built with Tauri v
 The app loads `https://second-brain-bice-two.vercel.app/` in a dedicated window
 using the system's WebView2 runtime — no Chrome dependency.
 
+## Opening from Vercel
+
+The Windows installer registers the `secondbrain://` deep link. When the Vercel
+site opens in a normal browser, the web app attempts to launch
+`secondbrain://open` once per tab. Browsers may ask for confirmation before
+opening the installed desktop app.
+
 ## How builds work
 
 Builds run on GitHub Actions (`.github/workflows/build-desktop.yml`). On every

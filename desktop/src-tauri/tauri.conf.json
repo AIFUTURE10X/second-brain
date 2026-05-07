@@ -27,5 +27,12 @@
         "installMode": "currentUser"
       }
     }
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["secondbrain"]
+      }
+    }
   }
 }

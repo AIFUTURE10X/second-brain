@@ -275,9 +275,22 @@ export default function CardPopoutPage() {
     fetchItem();
   };
 
-  const openRelatedCard = (relatedId: string) => {
-    const absoluteUrl = new URL(`/card/${relatedId}`, window.location.origin).toString();
-    window.location.href = absoluteUrl;
+  const openRelatedCard = (related: RelatedItemSummary) => {
+    window.location.href = new URL(`/card/${related.id}`, window.location.origin).toString();
+  };
+
+  const closeCardPage = async () => {
+    const tauri = (window as unknown as { __TAURI_INTERNALS__?: { invoke?: (cmd: string, args?: unknown) => Promise<unknown> } }).__TAURI_INTERNALS__;
+    if (tauri?.invoke && id) {
+      try {
+        await tauri.invoke("close_card_window", { label: `card-${id}` });
+        return;
+      } catch (err) {
+        console.error("[card] close failed:", err);
+      }
+    }
+
+    window.location.href = "/";
   };
 
   useEffect(() => {
@@ -477,25 +490,32 @@ export default function CardPopoutPage() {
                   key={related.id}
                   className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-brand-muted border border-brand-border max-w-full"
                 >
-                  <button
-                    type="button"
-                    onClick={() => openRelatedCard(related.id)}
-                    className="flex items-center gap-1.5 min-w-0 text-left hover:text-white transition"
-                    title="Open related card"
-                  >
-                    <span className="text-[10px] shrink-0" style={{ color: relatedType.color }}>{relatedType.icon}</span>
-                    <span className="text-[11px] text-gray-300 truncate max-w-[220px]">
-                      {related.title || related.ogTitle || related.url || "Untitled"}
-                    </span>
-                  </button>
-                  {related.url && (
+                  {related.url ? (
                     <a
                       href={related.url}
                       target="_blank"
                       rel="noreferrer"
-                      className="text-[10px] text-type-link hover:underline shrink-0"
+                      className="flex items-center gap-1.5 min-w-0 text-left hover:text-white transition"
                       title="Open source URL"
-                    >↗</a>
+                    >
+                      <span className="text-[10px] shrink-0" style={{ color: relatedType.color }}>{relatedType.icon}</span>
+                      <span className="text-[11px] text-gray-300 truncate max-w-[220px]">
+                        {related.title || related.ogTitle || related.url || "Untitled"}
+                      </span>
+                      <span className="text-[10px] text-type-link shrink-0">↗</span>
+                    </a>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => openRelatedCard(related)}
+                      className="flex items-center gap-1.5 min-w-0 text-left hover:text-white transition"
+                      title="Open related card"
+                    >
+                      <span className="text-[10px] shrink-0" style={{ color: relatedType.color }}>{relatedType.icon}</span>
+                      <span className="text-[11px] text-gray-300 truncate max-w-[220px]">
+                        {related.title || related.ogTitle || "Untitled"}
+                      </span>
+                    </button>
                   )}
                 </div>
               );
@@ -516,16 +536,7 @@ export default function CardPopoutPage() {
 
       <div className="flex gap-2">
         <button
-          onClick={() => {
-            // window.close() doesn't work in Tauri windows — use the custom command
-            const tauri = (window as unknown as { __TAURI_INTERNALS__?: { invoke?: (cmd: string, args?: unknown) => Promise<unknown> } }).__TAURI_INTERNALS__;
-            if (tauri?.invoke && id) {
-              tauri.invoke("close_card_window", { label: `card-${id}` })
-                .catch((err: unknown) => console.error("[card] close failed:", err));
-              return;
-            }
-            window.close();
-          }}
+          onClick={closeCardPage}
           className="py-3 px-4 rounded-xl bg-brand-muted border border-brand-border text-gray-500 text-sm font-medium active:scale-95 transition"
         >Close</button>
         <button

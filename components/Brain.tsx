@@ -2089,26 +2089,33 @@ export default function Brain() {
                                 key={related.id}
                                 className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-brand-muted border border-brand-border max-w-full"
                               >
-                                <button
-                                  type="button"
-                                  onClick={e => { e.stopPropagation(); openCardInCurrentTab(related.id); }}
-                                  className="flex items-center gap-1.5 min-w-0 text-left hover:text-white transition"
-                                  title="Open related card"
-                                >
-                                  <span className="text-[10px] shrink-0" style={{ color: relatedType.color }}>{relatedType.icon}</span>
-                                  <span className="text-[11px] text-gray-300 truncate max-w-[180px]">
-                                    {related.title || related.ogTitle || related.url || "Untitled"}
-                                  </span>
-                                </button>
-                                {related.url && (
+                                {related.url ? (
                                   <a
                                     href={related.url}
                                     target="_blank"
                                     rel="noreferrer"
                                     onClick={e => e.stopPropagation()}
-                                    className="text-[10px] text-type-link hover:underline shrink-0"
+                                    className="flex items-center gap-1.5 min-w-0 text-left hover:text-white transition"
                                     title="Open source URL"
-                                  >↗</a>
+                                  >
+                                    <span className="text-[10px] shrink-0" style={{ color: relatedType.color }}>{relatedType.icon}</span>
+                                    <span className="text-[11px] text-gray-300 truncate max-w-[180px]">
+                                      {related.title || related.ogTitle || related.url || "Untitled"}
+                                    </span>
+                                    <span className="text-[10px] text-type-link shrink-0">↗</span>
+                                  </a>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={e => { e.stopPropagation(); openCardInCurrentTab(related.id); }}
+                                    className="flex items-center gap-1.5 min-w-0 text-left hover:text-white transition"
+                                    title="Open related card"
+                                  >
+                                    <span className="text-[10px] shrink-0" style={{ color: relatedType.color }}>{relatedType.icon}</span>
+                                    <span className="text-[11px] text-gray-300 truncate max-w-[180px]">
+                                      {related.title || related.ogTitle || "Untitled"}
+                                    </span>
+                                  </button>
                                 )}
                               </div>
                             );
@@ -2466,18 +2473,43 @@ export default function Brain() {
                 form.relatedItemIds.map(id => {
                   const related = items.find(it => it.id === id);
                   const relatedType = related ? TYPES[related.type] : TYPES.note;
+                  const label = related?.title || related?.ogTitle || related?.url || "Related card";
                   return (
-                    <button
+                    <div
                       key={id}
-                      type="button"
-                      onClick={() => toggleRelatedSelection(id)}
-                      className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-brand-muted border border-brand-border text-[11px] text-gray-300 hover:border-red-500/40 hover:text-red-300 transition max-w-full"
-                      title="Remove related card"
+                      className="flex items-center gap-1.5 rounded-md bg-brand-muted border border-brand-border text-[11px] text-gray-300 transition max-w-full overflow-hidden"
                     >
-                      <span style={{ color: relatedType.color }}>{relatedType.icon}</span>
-                      <span className="truncate max-w-[180px]">{related?.title || related?.ogTitle || related?.url || "Related card"}</span>
-                      <span className="text-gray-600">×</span>
-                    </button>
+                      {related?.url ? (
+                        <a
+                          href={related.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex items-center gap-1.5 min-w-0 pl-2 py-1 hover:text-white transition"
+                          title="Open source URL"
+                        >
+                          <span className="shrink-0" style={{ color: relatedType.color }}>{relatedType.icon}</span>
+                          <span className="truncate max-w-[180px]">{label}</span>
+                          <span className="text-type-link shrink-0">↗</span>
+                        </a>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => openCardInCurrentTab(id)}
+                          className="flex items-center gap-1.5 min-w-0 pl-2 py-1 hover:text-white transition"
+                          title="Open related card"
+                        >
+                          <span className="shrink-0" style={{ color: relatedType.color }}>{relatedType.icon}</span>
+                          <span className="truncate max-w-[180px]">{label}</span>
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => toggleRelatedSelection(id)}
+                        className="px-2 py-1 text-gray-600 hover:text-red-300 hover:bg-red-500/10 transition shrink-0"
+                        title="Remove related card"
+                        aria-label={`Remove ${label}`}
+                      >×</button>
+                    </div>
                   );
                 })
               )}

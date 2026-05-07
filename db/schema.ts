@@ -59,3 +59,14 @@ export const items = pgTable("items", {
   index("items_category_idx").on(table.category),
   index("items_pinned_created_idx").on(table.pinned, table.createdAt),
 ]);
+
+export const itemRelations = pgTable("item_relations", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  itemAId: uuid("item_a_id").notNull().references(() => items.id, { onDelete: "cascade" }),
+  itemBId: uuid("item_b_id").notNull().references(() => items.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("item_relations_pair_idx").on(table.itemAId, table.itemBId),
+  index("item_relations_item_a_idx").on(table.itemAId),
+  index("item_relations_item_b_idx").on(table.itemBId),
+]);

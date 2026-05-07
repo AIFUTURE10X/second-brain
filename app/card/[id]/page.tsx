@@ -43,6 +43,25 @@ interface Item {
   updatedAt: string;
 }
 
+interface RelatedItemSummary {
+  id: string;
+  type: ItemType;
+  title: string;
+  url: string;
+  category: string;
+  tags: string[];
+  ogTitle: string;
+  siteName: string;
+  favicon: string;
+}
+
+interface ItemRelation {
+  itemAId: string;
+  itemBId: string;
+  itemA: RelatedItemSummary;
+  itemB: RelatedItemSummary;
+}
+
 const newEntryId = () =>
   (typeof crypto !== "undefined" && "randomUUID" in crypto)
     ? crypto.randomUUID()
@@ -75,6 +94,7 @@ export default function CardPopoutPage() {
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [dirty, setDirty] = useState(false);
   const [remoteUpdate, setRemoteUpdate] = useState<number | null>(null);
+  const [relatedItems, setRelatedItems] = useState<RelatedItemSummary[]>([]);
 
   const [form, setForm] = useState({
     type: "note" as ItemType,
@@ -172,6 +192,20 @@ export default function CardPopoutPage() {
 
   useEffect(() => { fetchItem(); }, [fetchItem]);
 
+  const fetchRelations = useCallback(async () => {
+    if (!id) return;
+    try {
+      const res = await fetch(`/api/item-relations?itemId=${encodeURIComponent(id)}`);
+      if (!res.ok) return;
+      const rows: ItemRelation[] = await res.json();
+      setRelatedItems(rows
+        .map(rel => rel.itemAId === id ? rel.itemB : rel.itemA)
+        .filter(Boolean));
+    } catch {}
+  }, [id]);
+
+  useEffect(() => { fetchRelations(); }, [fetchRelations]);
+
   useEffect(() => {
     if (typeof window === "undefined" || typeof BroadcastChannel === "undefined") return;
     clientIdRef.current = getSyncClientId();
@@ -182,6 +216,10 @@ export default function CardPopoutPage() {
       if (!msg || msg.source === clientIdRef.current) return;
       if (msg.type === "item-deleted" && msg.id === id) {
         setDeleted(true);
+        return;
+      }
+      if (msg.type === "relations-updated" && msg.itemId === id) {
+        fetchRelations();
         return;
       }
       if ((msg.type === "item-updated" || msg.type === "item-created")) {
@@ -195,7 +233,7 @@ export default function CardPopoutPage() {
       }
     };
     return () => { ch.close(); channelRef.current = null; };
-  }, [id, applyItem]);
+  }, [id, applyItem, fetchRelations]);
 
   const broadcast = (msg: SyncPayload) => {
     const ch = channelRef.current;
@@ -235,6 +273,11 @@ export default function CardPopoutPage() {
   const reloadFromRemote = () => {
     setRemoteUpdate(null);
     fetchItem();
+  };
+
+  const openRelatedCard = (relatedId: string) => {
+    const absoluteUrl = new URL(`/card/${relatedId}`, window.location.origin).toString();
+    window.open(absoluteUrl, `card-${relatedId}`, "popup,width=720,height=900");
   };
 
   useEffect(() => {
@@ -423,6 +466,43 @@ export default function CardPopoutPage() {
         + Add entry
       </button>
 
+      {relatedItems.length > 0 && (
+        <div className="mb-4">
+          <p className="text-[11px] font-mono text-gray-400 mb-1.5 tracking-wide">Related cards</p>
+          <div className="flex flex-wrap gap-1.5">
+            {relatedItems.map(related => {
+              const relatedType = TYPES[related.type] || TYPES.note;
+              return (
+                <div
+                  key={related.id}
+                  className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-brand-muted border border-brand-border max-w-full"
+                >
+                  <button
+                    type="button"
+                    onClick={() => openRelatedCard(related.id)}
+                    className="flex items-center gap-1.5 min-w-0 text-left hover:text-white transition"
+                    title="Open related card"
+                  >
+                    <span className="text-[10px] shrink-0" style={{ color: relatedType.color }}>{relatedType.icon}</span>
+                    <span className="text-[11px] text-gray-300 truncate max-w-[220px]">
+                      {related.title || related.ogTitle || related.url || "Untitled"}
+                    </span>
+                  </button>
+                  {related.url && (
+                    <a
+                      href={related.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[10px] text-type-link hover:underline shrink-0"
+                      title="Open source URL"
+                    >↗</a>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
       <label className="block text-[11px] font-mono text-gray-400 mb-1.5 tracking-wide">
         Tags <span className="text-gray-600 font-normal">(comma-separated)</span>
       </label>

@@ -3,7 +3,8 @@ export const SYNC_CHANNEL = "second-brain-sync";
 export type SyncPayload =
   | { type: "item-updated"; item: unknown }
   | { type: "item-created"; item: unknown }
-  | { type: "item-deleted"; id: string };
+  | { type: "item-deleted"; id: string }
+  | { type: "relations-updated"; itemId: string };
 
 export type SyncMessage = SyncPayload & { source: string };
 

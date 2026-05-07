@@ -45,6 +45,27 @@ interface Item {
   updatedAt: string;
 }
 
+interface RelatedItemSummary {
+  id: string;
+  type: ItemType;
+  title: string;
+  url: string;
+  category: string;
+  tags: string[];
+  ogTitle: string;
+  siteName: string;
+  favicon: string;
+}
+
+interface ItemRelation {
+  id?: string;
+  itemAId: string;
+  itemBId: string;
+  itemA: RelatedItemSummary;
+  itemB: RelatedItemSummary;
+  createdAt?: string;
+}
+
 const newEntryId = () =>
   (typeof crypto !== "undefined" && "randomUUID" in crypto)
     ? crypto.randomUUID()
@@ -141,6 +162,7 @@ function timeAgo(dateStr: string) {
 
 export default function Brain() {
   const [items, setItems] = useState<Item[]>([]);
+  const [relations, setRelations] = useState<ItemRelation[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<"all" | ItemType>("all");
@@ -172,6 +194,7 @@ export default function Brain() {
     attachments: [] as Attachment[],
     favourite: false,
     actionRequired: false,
+    relatedItemIds: [] as string[],
   });
   const focusEntryIdRef = useRef<string | null>(null);
   const entryRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
@@ -201,6 +224,8 @@ export default function Brain() {
   const [customCatColors, setCustomCatColors] = useState<string[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerSearch, setPickerSearch] = useState("");
+  const [relatedPickerOpen, setRelatedPickerOpen] = useState(false);
+  const [relatedPickerSearch, setRelatedPickerSearch] = useState("");
   const contentRef = useRef<HTMLTextAreaElement>(null);
 
   // Persist density preference across reloads
@@ -297,6 +322,13 @@ export default function Brain() {
     setLoading(false);
   }, []);
 
+  const fetchRelations = useCallback(async () => {
+    try {
+      const res = await fetch("/api/item-relations");
+      if (res.ok) setRelations(await res.json());
+    } catch {}
+  }, []);
+
   const fetchCategories = useCallback(async () => {
     try {
       const res = await fetch("/api/categories");
@@ -307,7 +339,7 @@ export default function Brain() {
     }
   }, []);
 
-  useEffect(() => { fetchItems(); fetchCategories(); }, [fetchItems, fetchCategories]);
+  useEffect(() => { fetchItems(); fetchCategories(); fetchRelations(); }, [fetchItems, fetchCategories, fetchRelations]);
 
   // Live sync across windows (main app + pop-out card windows)
   useEffect(() => {
@@ -330,10 +362,13 @@ export default function Brain() {
         fetchCategories();
       } else if (msg.type === "item-deleted") {
         setItems(prev => prev.filter(i => i.id !== msg.id));
+        fetchRelations();
+      } else if (msg.type === "relations-updated") {
+        fetchRelations();
       }
     };
     return () => { ch.close(); syncChannelRef.current = null; };
-  }, [fetchCategories]);
+  }, [fetchCategories, fetchRelations]);
 
   const broadcastSync = useCallback((msg: SyncPayload) => {
     const ch = syncChannelRef.current;
@@ -390,6 +425,7 @@ export default function Brain() {
       if (document.visibilityState === "visible") {
         fetchItems(search.trim() || undefined);
         fetchCategories();
+        fetchRelations();
       }
     };
     document.addEventListener("visibilitychange", onVisible);
@@ -398,7 +434,7 @@ export default function Brain() {
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", onVisible);
     };
-  }, [fetchItems, fetchCategories, search]);
+  }, [fetchItems, fetchCategories, fetchRelations, search]);
 
   // Reset pagination when filters change
   useEffect(() => { setVisibleCount(50); }, [view, catFilter, search, sortBy, sourceFilter, withNotesOnly, favouritesOnly, actionOnly, reviewMode]);
@@ -407,7 +443,8 @@ export default function Brain() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        if (pickerOpen) { setPickerOpen(false); setPickerSearch(""); }
+        if (relatedPickerOpen) { setRelatedPickerOpen(false); setRelatedPickerSearch(""); }
+        else if (pickerOpen) { setPickerOpen(false); setPickerSearch(""); }
         else if (showAdd) closeForm();
         else if (showCatManager) setShowCatManager(false);
         else if (showTagManager) { setShowTagManager(false); setMergingTag(null); }
@@ -421,7 +458,7 @@ export default function Brain() {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [showAdd, showCatManager, showTagManager, tagMenuOpen, pickerOpen]);
+  }, [showAdd, showCatManager, showTagManager, tagMenuOpen, pickerOpen, relatedPickerOpen]);
 
   // Paste image from clipboard while the add/edit modal is open
   useEffect(() => {
@@ -580,7 +617,7 @@ export default function Brain() {
   const resetForm = (keepOpen = false) => {
     const lastCategory = form.category;
     const lastType = form.type;
-    setForm({ type: lastType, title: "", content: "", url: "", noteEntries: [], tags: "", category: lastCategory, attachments: [], favourite: false, actionRequired: false });
+    setForm({ type: lastType, title: "", content: "", url: "", noteEntries: [], tags: "", category: lastCategory, attachments: [], favourite: false, actionRequired: false, relatedItemIds: [] });
     if (!keepOpen) {
       setShowAdd(false);
     }
@@ -588,7 +625,7 @@ export default function Brain() {
   };
 
   const closeForm = () => {
-    setForm({ type: "note", title: "", content: "", url: "", noteEntries: [], tags: "", category: "", attachments: [], favourite: false, actionRequired: false });
+    setForm({ type: "note", title: "", content: "", url: "", noteEntries: [], tags: "", category: "", attachments: [], favourite: false, actionRequired: false, relatedItemIds: [] });
     setShowAdd(false);
     setEditingId(null);
   };
@@ -642,6 +679,47 @@ export default function Brain() {
     });
     setPickerOpen(false);
     setPickerSearch("");
+  };
+
+  const relatedItemsForId = useCallback((itemId: string): RelatedItemSummary[] => {
+    return relations
+      .filter(rel => rel.itemAId === itemId || rel.itemBId === itemId)
+      .map(rel => rel.itemAId === itemId ? rel.itemB : rel.itemA)
+      .filter(Boolean);
+  }, [relations]);
+
+  const toggleRelatedSelection = (itemId: string) => {
+    setForm(f => ({
+      ...f,
+      relatedItemIds: f.relatedItemIds.includes(itemId)
+        ? f.relatedItemIds.filter(id => id !== itemId)
+        : [...f.relatedItemIds, itemId],
+    }));
+  };
+
+  const syncRelatedItems = async (itemId: string, nextIds: string[], previousIds: string[]) => {
+    const next = new Set(nextIds.filter(id => id && id !== itemId));
+    const previous = new Set(previousIds.filter(id => id && id !== itemId));
+    const additions = [...next].filter(id => !previous.has(id));
+    const removals = [...previous].filter(id => !next.has(id));
+
+    await Promise.all([
+      ...additions.map(targetItemId => fetch("/api/item-relations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourceItemId: itemId, targetItemId }),
+      })),
+      ...removals.map(targetItemId => fetch("/api/item-relations", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourceItemId: itemId, targetItemId }),
+      })),
+    ]);
+
+    if (additions.length > 0 || removals.length > 0) {
+      await fetchRelations();
+      broadcastSync({ type: "relations-updated", itemId });
+    }
   };
 
   const handleFileUpload = async (files: FileList | File[] | null) => {
@@ -736,12 +814,14 @@ export default function Brain() {
     setSaving(true);
     const tags = form.tags.split(",").map(t => t.trim()).filter(Boolean);
     const noteEntries = form.noteEntries.filter(e => e.body.trim().length > 0);
+    const { relatedItemIds, ...itemForm } = form;
+    const previousRelatedIds = editingId ? relatedItemsForId(editingId).map(item => item.id) : [];
     // Once entries exist, clear the legacy single-blob field on the server so
     // we don't double-render after the migration on next load.
     const legacyClear = noteEntries.length > 0 && editingId ? { notes: "" } : {};
     const payload = editingId
-      ? { id: editingId, ...form, tags, noteEntries, ...legacyClear }
-      : { ...form, tags, noteEntries };
+      ? { id: editingId, ...itemForm, tags, noteEntries, ...legacyClear }
+      : { ...itemForm, tags, noteEntries };
     try {
       const res = await fetch(editingId ? "/api/items" : "/api/items", {
         method: editingId ? "PUT" : "POST",
@@ -756,6 +836,7 @@ export default function Brain() {
       try {
         const saved = await res.clone().json();
         if (saved && saved.id) {
+          await syncRelatedItems(saved.id, relatedItemIds, previousRelatedIds);
           broadcastSync({ type: editingId ? "item-updated" : "item-created", item: saved });
         }
       } catch {}
@@ -872,6 +953,7 @@ export default function Brain() {
         return;
       }
       setItems(prev => prev.filter(i => i.id !== id));
+      await fetchRelations();
       broadcastSync({ type: "item-deleted", id });
     } catch {
       showToast("Failed to complete task", "error");
@@ -888,6 +970,7 @@ export default function Brain() {
       }
       setItems(prev => prev.filter(i => i.id !== id));
       if (expandedId === id) setExpandedId(null);
+      await fetchRelations();
       broadcastSync({ type: "item-deleted", id });
     } catch {
       showToast("Failed to delete item", "error");
@@ -980,6 +1063,7 @@ export default function Brain() {
       attachments: item.attachments || [],
       favourite: !!item.favourite,
       actionRequired: !!item.actionRequired,
+      relatedItemIds: relatedItemsForId(item.id).map(related => related.id),
     });
     setEditingId(item.id);
     setShowAdd(true);
@@ -1771,6 +1855,7 @@ export default function Brain() {
             : (item.attachments || []);
           const isYouTube = item.siteName === "YouTube";
           const isCompact = density === "compact" && !expanded;
+          const relatedItems = relatedItemsForId(item.id);
 
           const isDragTarget = dragOverCardId === item.id;
           return (
@@ -1987,6 +2072,45 @@ export default function Brain() {
                       }
                       return null;
                     })()}
+
+                    {expanded && relatedItems.length > 0 && !isCompact && (
+                      <div className="mt-2.5 pt-2.5 border-t border-brand-border">
+                        <p className="text-[10px] text-gray-600 font-mono mb-1.5">Related</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {relatedItems.map(related => {
+                            const relatedType = TYPES[related.type] || TYPES.note;
+                            return (
+                              <div
+                                key={related.id}
+                                className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-brand-muted border border-brand-border max-w-full"
+                              >
+                                <button
+                                  type="button"
+                                  onClick={e => { e.stopPropagation(); popOutCard(related.id); }}
+                                  className="flex items-center gap-1.5 min-w-0 text-left hover:text-white transition"
+                                  title="Open related card"
+                                >
+                                  <span className="text-[10px] shrink-0" style={{ color: relatedType.color }}>{relatedType.icon}</span>
+                                  <span className="text-[11px] text-gray-300 truncate max-w-[180px]">
+                                    {related.title || related.ogTitle || related.url || "Untitled"}
+                                  </span>
+                                </button>
+                                {related.url && (
+                                  <a
+                                    href={related.url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    onClick={e => e.stopPropagation()}
+                                    className="text-[10px] text-type-link hover:underline shrink-0"
+                                    title="Open source URL"
+                                  >↗</a>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
 
                     <div className={`flex items-center gap-2 ${isCompact ? "mt-1" : "mt-2"} flex-wrap`}>
                       {item.category && (
@@ -2328,6 +2452,39 @@ export default function Brain() {
               + Add entry
             </button>
             <label className="block text-[11px] font-mono text-gray-400 mb-1.5 tracking-wide">
+              Related cards
+            </label>
+            <div className="mb-2 flex flex-wrap gap-1.5">
+              {form.relatedItemIds.length === 0 ? (
+                <span className="text-[11px] text-gray-600 font-mono">No related cards yet</span>
+              ) : (
+                form.relatedItemIds.map(id => {
+                  const related = items.find(it => it.id === id);
+                  const relatedType = related ? TYPES[related.type] : TYPES.note;
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => toggleRelatedSelection(id)}
+                      className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-brand-muted border border-brand-border text-[11px] text-gray-300 hover:border-red-500/40 hover:text-red-300 transition max-w-full"
+                      title="Remove related card"
+                    >
+                      <span style={{ color: relatedType.color }}>{relatedType.icon}</span>
+                      <span className="truncate max-w-[180px]">{related?.title || related?.ogTitle || related?.url || "Related card"}</span>
+                      <span className="text-gray-600">×</span>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => { setRelatedPickerOpen(true); setRelatedPickerSearch(""); }}
+              className="mb-2.5 text-[11px] font-mono text-gray-500 hover:text-gray-300 transition"
+            >
+              + Link related cards
+            </button>
+            <label className="block text-[11px] font-mono text-gray-400 mb-1.5 tracking-wide">
               Tags <span className="text-gray-600 font-normal">(comma-separated)</span>
             </label>
             <input
@@ -2493,6 +2650,86 @@ export default function Brain() {
               className="mt-3 py-2.5 rounded-xl bg-brand-muted border border-brand-border text-gray-400 text-sm font-medium active:scale-[0.99] transition"
             >
               Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Related Card Picker — create explicit two-way card links */}
+      {relatedPickerOpen && (
+        <div className="fixed inset-0 z-[215] flex flex-col justify-end" style={{ background: "#0D0F12EE" }}>
+          <div className="flex-1 cursor-pointer" onClick={() => { setRelatedPickerOpen(false); setRelatedPickerSearch(""); }} />
+          <div className="bg-brand-card border-t border-brand-border rounded-t-2xl px-5 pt-4 pb-6 max-h-[80vh] flex flex-col">
+            <div className="w-9 h-1 bg-gray-700 rounded-full mx-auto mb-4" />
+            <h2 className="text-base font-semibold mb-3" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+              Link related cards
+            </h2>
+            <input
+              autoFocus
+              value={relatedPickerSearch}
+              onChange={e => setRelatedPickerSearch(e.target.value)}
+              placeholder="Search cards to link..."
+              aria-label="Search related cards"
+              className="w-full px-3 py-2.5 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none mb-3 placeholder:text-gray-500"
+            />
+            <div className="flex-1 overflow-y-auto flex flex-col gap-1.5">
+              {(() => {
+                const q = relatedPickerSearch.trim().toLowerCase();
+                const matches = items
+                  .filter(it => it.id !== editingId)
+                  .filter(it => {
+                    if (!q) return true;
+                    const entryHit = (it.noteEntries || []).some(e => e.body?.toLowerCase().includes(q));
+                    return (
+                      it.title.toLowerCase().includes(q) ||
+                      it.content.toLowerCase().includes(q) ||
+                      it.notes.toLowerCase().includes(q) ||
+                      it.url.toLowerCase().includes(q) ||
+                      it.category.toLowerCase().includes(q) ||
+                      entryHit ||
+                      it.tags.some(t => t.toLowerCase().includes(q))
+                    );
+                  })
+                  .slice(0, 100);
+                if (matches.length === 0) {
+                  return <div className="text-xs text-gray-500 font-mono py-6 text-center">No cards found</div>;
+                }
+                return matches.map(it => {
+                  const t = TYPES[it.type];
+                  const selected = form.relatedItemIds.includes(it.id);
+                  const preview = (it.content || it.url || it.notes || "").slice(0, 120);
+                  return (
+                    <button
+                      key={it.id}
+                      type="button"
+                      onClick={() => toggleRelatedSelection(it.id)}
+                      className="text-left px-3 py-2 rounded-lg bg-brand-muted border transition"
+                      style={{ borderColor: selected ? "#E8A83880" : "#252830", background: selected ? "#E8A83812" : undefined }}
+                    >
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <span style={{ color: t.color }} className="text-xs">{t.icon}</span>
+                        <span className="text-sm text-gray-200 truncate flex-1">{it.title || it.ogTitle || "(untitled)"}</span>
+                        {it.category && (
+                          <span className="text-[10px] font-mono text-gray-500">{it.category}</span>
+                        )}
+                        <span className="text-[11px] font-mono" style={{ color: selected ? "#E8A838" : "#555" }}>
+                          {selected ? "linked" : "link"}
+                        </span>
+                      </div>
+                      {preview && (
+                        <div className="text-[11px] text-gray-500 line-clamp-2">{preview}</div>
+                      )}
+                    </button>
+                  );
+                });
+              })()}
+            </div>
+            <button
+              onClick={() => { setRelatedPickerOpen(false); setRelatedPickerSearch(""); }}
+              className="mt-3 py-2.5 rounded-xl text-sm font-medium active:scale-[0.99] transition"
+              style={{ background: "linear-gradient(135deg, #F2C94C, #E8A838)", color: "#fff" }}
+            >
+              Done
             </button>
           </div>
         </div>

@@ -5,6 +5,7 @@ import { upload } from "@vercel/blob/client";
 import { showToast } from "./Toast";
 import { VoiceButton } from "./VoiceButton";
 import { SYNC_CHANNEL, getSyncClientId, type SyncMessage, type SyncPayload } from "@/lib/sync";
+import { mergeReminderDateTimeParts, splitReminderDateTime } from "@/lib/reminders.mjs";
 
 type ItemType = "note" | "link" | "clip" | "thought" | "task" | "memory";
 
@@ -147,6 +148,13 @@ const SOURCE_LABELS: Record<string, string> = {
   "anthropic.com": "Anthropic",
   "vercel.com": "Vercel",
 };
+
+const REMINDER_TIME_OPTIONS = Array.from({ length: 31 }, (_, i) => {
+  const totalMinutes = 7 * 60 + i * 30;
+  const hour = Math.floor(totalMinutes / 60);
+  const minute = totalMinutes % 60;
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+});
 
 function sourceFromUrl(url: string): { key: string; label: string } | null {
   if (!url) return null;
@@ -896,6 +904,34 @@ export default function Brain() {
       return;
     }
     broadcastSync({ type: "reminders-updated", itemId });
+  };
+
+  const updateReminderDate = (date: string) => {
+    setForm(f => {
+      const parts = splitReminderDateTime(f.reminderDueAt);
+      return { ...f, reminderDueAt: mergeReminderDateTimeParts(date, parts.time) };
+    });
+  };
+
+  const updateReminderTime = (time: string) => {
+    setForm(f => {
+      const parts = splitReminderDateTime(f.reminderDueAt);
+      return { ...f, reminderDueAt: mergeReminderDateTimeParts(parts.date, time) };
+    });
+  };
+
+  const setReminderPreset = (daysFromNow: number) => {
+    const date = new Date();
+    date.setDate(date.getDate() + daysFromNow);
+    const datePart = [
+      date.getFullYear(),
+      String(date.getMonth() + 1).padStart(2, "0"),
+      String(date.getDate()).padStart(2, "0"),
+    ].join("-");
+    setForm(f => {
+      const parts = splitReminderDateTime(f.reminderDueAt);
+      return { ...f, reminderDueAt: mergeReminderDateTimeParts(datePart, parts.time) };
+    });
   };
 
   const handleSave = async (andAddAnother = false) => {
@@ -2469,6 +2505,10 @@ export default function Brain() {
             </div>
 
             <div className="mb-4 rounded-lg border border-brand-border bg-brand-muted/40 p-3">
+              {(() => {
+                const reminderParts = splitReminderDateTime(form.reminderDueAt);
+                return (
+                  <>
               <div className="flex items-center justify-between gap-2 mb-2">
                 <label className="text-[11px] font-mono text-gray-400 tracking-wide" htmlFor="reminder-due">
                   Telegram reminder
@@ -2483,13 +2523,42 @@ export default function Brain() {
                   </button>
                 )}
               </div>
-              <input
-                id="reminder-due"
-                type="datetime-local"
-                value={form.reminderDueAt}
-                onChange={e => setForm(f => ({ ...f, reminderDueAt: e.target.value }))}
-                className="w-full px-3 py-2 bg-[#101318] border border-brand-border rounded-lg text-sm text-gray-300 outline-none mb-2"
-              />
+              <div className="grid grid-cols-1 sm:grid-cols-[1fr_150px] gap-2 mb-2">
+                <input
+                  id="reminder-due"
+                  type="date"
+                  value={reminderParts.date}
+                  onChange={e => updateReminderDate(e.target.value)}
+                  className="w-full px-3 py-2 bg-[#101318] border border-brand-border rounded-lg text-sm text-gray-300 outline-none"
+                />
+                <select
+                  value={reminderParts.time}
+                  onChange={e => updateReminderTime(e.target.value)}
+                  className="w-full px-3 py-2 bg-[#101318] border border-brand-border rounded-lg text-sm text-gray-300 outline-none"
+                  aria-label="Reminder time"
+                >
+                  {REMINDER_TIME_OPTIONS.map(time => (
+                    <option key={time} value={time}>{time}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {[
+                  ["Today", 0],
+                  ["Tomorrow", 1],
+                  ["Next week", 7],
+                  ["30 days", 30],
+                ].map(([label, days]) => (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => setReminderPreset(days as number)}
+                    className="px-2 py-1 rounded-md text-[11px] font-mono border border-brand-border text-gray-500 hover:text-[#56CCF2] hover:border-[#56CCF260] transition"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
               <input
                 value={form.reminderMessage}
                 onChange={e => setForm(f => ({ ...f, reminderMessage: e.target.value }))}
@@ -2497,6 +2566,9 @@ export default function Brain() {
                 aria-label="Reminder message"
                 className="w-full px-3 py-2 bg-[#101318] border border-brand-border rounded-lg text-sm text-gray-300 outline-none placeholder:text-gray-500"
               />
+                  </>
+                );
+              })()}
             </div>
 
             {/* Category selector — pick existing, type new, or auto */}

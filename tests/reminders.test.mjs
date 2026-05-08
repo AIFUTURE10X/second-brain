@@ -4,7 +4,9 @@ import test from "node:test";
 import {
   duePendingReminders,
   formatReminderTelegramMessage,
+  mergeReminderDateTimeParts,
   normalizeReminderInput,
+  splitReminderDateTime,
 } from "../lib/reminders.mjs";
 
 test("normalizeReminderInput trims message and rejects invalid due dates", () => {
@@ -72,4 +74,22 @@ test("formatReminderTelegramMessage can display due time in a configured timezon
   });
 
   assert.match(text, /Due: 2026-05-15 16:00/);
+});
+
+test("splitReminderDateTime separates date and time for picker controls", () => {
+  assert.deepEqual(splitReminderDateTime("2026-05-15T14:30"), {
+    date: "2026-05-15",
+    time: "14:30",
+  });
+
+  assert.deepEqual(splitReminderDateTime(""), {
+    date: "",
+    time: "09:00",
+  });
+});
+
+test("mergeReminderDateTimeParts builds the local datetime value used by reminder saves", () => {
+  assert.equal(mergeReminderDateTimeParts("2026-05-15", "14:30"), "2026-05-15T14:30");
+  assert.equal(mergeReminderDateTimeParts("2026-05-15", ""), "2026-05-15T09:00");
+  assert.equal(mergeReminderDateTimeParts("", "14:30"), "");
 });

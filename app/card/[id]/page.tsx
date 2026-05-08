@@ -43,6 +43,17 @@ interface Item {
   updatedAt: string;
 }
 
+interface Reminder {
+  id: string;
+  itemId: string;
+  message: string;
+  dueAt: string;
+  status: "pending" | "sent" | "done";
+  sentAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 interface RelatedItemSummary {
   id: string;
   type: ItemType;
@@ -73,6 +84,14 @@ const formatStamp = (iso: string) => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 };
 
+function toDateTimeLocal(value?: string | null): string {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 16);
+}
+
 const TYPES: Record<ItemType, { icon: string; label: string; color: string }> = {
   note: { icon: "✎", label: "Note", color: "#E8A838" },
   link: { icon: "◈", label: "Link", color: "#5B8DEF" },
@@ -95,6 +114,7 @@ export default function CardPopoutPage() {
   const [dirty, setDirty] = useState(false);
   const [remoteUpdate, setRemoteUpdate] = useState<number | null>(null);
   const [relatedItems, setRelatedItems] = useState<RelatedItemSummary[]>([]);
+  const [reminder, setReminder] = useState<Reminder | null>(null);
 
   const [form, setForm] = useState({
     type: "note" as ItemType,
@@ -106,6 +126,9 @@ export default function CardPopoutPage() {
     category: "",
     favourite: false,
     actionRequired: false,
+    reminderId: "",
+    reminderDueAt: "",
+    reminderMessage: "",
   });
 
   const channelRef = useRef<BroadcastChannel | null>(null);
@@ -167,9 +190,12 @@ export default function CardPopoutPage() {
       category: next.category || "",
       favourite: !!next.favourite,
       actionRequired: !!next.actionRequired,
+      reminderId: reminder?.id || "",
+      reminderDueAt: toDateTimeLocal(reminder?.dueAt),
+      reminderMessage: reminder?.message || "",
     });
     setDirty(false);
-  }, []);
+  }, [reminder]);
 
   const fetchItem = useCallback(async () => {
     if (!id) return;
@@ -206,6 +232,27 @@ export default function CardPopoutPage() {
 
   useEffect(() => { fetchRelations(); }, [fetchRelations]);
 
+  const fetchReminder = useCallback(async () => {
+    if (!id) return;
+    try {
+      const res = await fetch(`/api/reminders?itemId=${encodeURIComponent(id)}`);
+      if (!res.ok) return;
+      const rows: Reminder[] = await res.json();
+      const active = rows
+        .filter(row => row.status !== "done")
+        .sort((a, b) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime())[0] || null;
+      setReminder(active);
+      setForm(f => ({
+        ...f,
+        reminderId: active?.id || "",
+        reminderDueAt: toDateTimeLocal(active?.dueAt),
+        reminderMessage: active?.message || "",
+      }));
+    } catch {}
+  }, [id]);
+
+  useEffect(() => { fetchReminder(); }, [fetchReminder]);
+
   useEffect(() => {
     if (typeof window === "undefined" || typeof BroadcastChannel === "undefined") return;
     clientIdRef.current = getSyncClientId();
@@ -222,6 +269,10 @@ export default function CardPopoutPage() {
         fetchRelations();
         return;
       }
+      if (msg.type === "reminders-updated" && (!msg.itemId || msg.itemId === id)) {
+        fetchReminder();
+        return;
+      }
       if ((msg.type === "item-updated" || msg.type === "item-created")) {
         const incoming = msg.item as Item;
         if (incoming.id !== id) return;
@@ -233,7 +284,7 @@ export default function CardPopoutPage() {
       }
     };
     return () => { ch.close(); channelRef.current = null; };
-  }, [id, applyItem, fetchRelations]);
+  }, [id, applyItem, fetchRelations, fetchReminder]);
 
   const broadcast = (msg: SyncPayload) => {
     const ch = channelRef.current;
@@ -246,10 +297,42 @@ export default function CardPopoutPage() {
     setDirty(true);
   };
 
+  const syncReminder = async () => {
+    if (!id) return;
+    const reminderId = form.reminderId.trim();
+    const dueInput = form.reminderDueAt.trim();
+    const message = form.reminderMessage.trim();
+
+    if (!dueInput) {
+      if (reminderId) {
+        await fetch(`/api/reminders?id=${encodeURIComponent(reminderId)}`, { method: "DELETE" });
+        setReminder(null);
+        broadcast({ type: "reminders-updated", itemId: id });
+      }
+      return;
+    }
+
+    const dueAt = new Date(dueInput);
+    if (Number.isNaN(dueAt.getTime())) return;
+
+    const payload = { itemId: id, message, dueAt: dueAt.toISOString(), status: "pending" };
+    const res = await fetch("/api/reminders", {
+      method: reminderId ? "PUT" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(reminderId ? { id: reminderId, ...payload } : payload),
+    });
+    if (!res.ok) return;
+    const savedReminder: Reminder = await res.json();
+    setReminder(savedReminder);
+    setForm(f => ({ ...f, reminderId: savedReminder.id }));
+    broadcast({ type: "reminders-updated", itemId: id });
+  };
+
   const save = async () => {
     if (!id || saving) return;
     setSaving(true);
     const tags = form.tags.split(",").map(t => t.trim()).filter(Boolean);
+    const { reminderId, reminderDueAt, reminderMessage, ...itemForm } = form;
     // Drop entries whose body is entirely empty so we don't persist accidental blanks.
     const entries = form.noteEntries.filter(e => e.body.trim().length > 0);
     // Once entries exist, retire the legacy single-blob `notes` field so it
@@ -259,13 +342,14 @@ export default function CardPopoutPage() {
       const res = await fetch("/api/items", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, ...form, tags, noteEntries: entries, ...legacyClear }),
+        body: JSON.stringify({ id, ...itemForm, tags, noteEntries: entries, ...legacyClear }),
       });
       if (!res.ok) { setSaving(false); return; }
       const saved: Item = await res.json();
       applyItem(saved);
       setSavedAt(Date.now());
       broadcast({ type: "item-updated", item: saved });
+      await syncReminder();
     } catch {}
     setSaving(false);
   };
@@ -402,6 +486,40 @@ export default function CardPopoutPage() {
             color: "#EB5757",
           }}
         >{form.actionRequired ? "⚡ Action needed" : "⚡ Flag for action"}</button>
+      </div>
+
+      <div className="mb-4 rounded-lg border border-brand-border bg-brand-muted/40 p-3">
+        <div className="flex items-center justify-between gap-2 mb-2">
+          <label className="text-[11px] font-mono text-gray-400 tracking-wide" htmlFor="card-reminder-due">
+            Telegram reminder
+          </label>
+          {form.reminderDueAt && (
+            <button
+              type="button"
+              onClick={() => {
+                onField("reminderDueAt", "");
+                onField("reminderMessage", "");
+              }}
+              className="text-[11px] font-mono text-gray-500 hover:text-red-300 transition"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+        <input
+          id="card-reminder-due"
+          type="datetime-local"
+          value={form.reminderDueAt}
+          onChange={e => onField("reminderDueAt", e.target.value)}
+          className="w-full px-3 py-2 bg-[#101318] border border-brand-border rounded-lg text-sm text-gray-300 outline-none mb-2"
+        />
+        <input
+          value={form.reminderMessage}
+          onChange={e => onField("reminderMessage", e.target.value)}
+          placeholder="What should Telegram remind you about?"
+          aria-label="Reminder message"
+          className="w-full px-3 py-2 bg-[#101318] border border-brand-border rounded-lg text-sm text-gray-300 outline-none placeholder:text-gray-500"
+        />
       </div>
 
       <input

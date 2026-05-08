@@ -45,6 +45,17 @@ interface Item {
   updatedAt: string;
 }
 
+interface Reminder {
+  id: string;
+  itemId: string;
+  message: string;
+  dueAt: string;
+  status: "pending" | "sent" | "done";
+  sentAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 interface RelatedItemSummary {
   id: string;
   type: ItemType;
@@ -160,9 +171,29 @@ function timeAgo(dateStr: string) {
   return new Date(dateStr).toLocaleDateString();
 }
 
+function toDateTimeLocal(value?: string | null): string {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 16);
+}
+
+function formatReminderDue(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 export default function Brain() {
   const [items, setItems] = useState<Item[]>([]);
   const [relations, setRelations] = useState<ItemRelation[]>([]);
+  const [reminders, setReminders] = useState<Reminder[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<"all" | ItemType>("all");
@@ -171,6 +202,7 @@ export default function Brain() {
   const [withNotesOnly, setWithNotesOnly] = useState(false);
   const [favouritesOnly, setFavouritesOnly] = useState(false);
   const [actionOnly, setActionOnly] = useState(false);
+  const [remindersOnly, setRemindersOnly] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [tagMenuOpen, setTagMenuOpen] = useState(false);
   const [tagMenuSearch, setTagMenuSearch] = useState("");
@@ -194,6 +226,9 @@ export default function Brain() {
     attachments: [] as Attachment[],
     favourite: false,
     actionRequired: false,
+    reminderId: "",
+    reminderDueAt: "",
+    reminderMessage: "",
     relatedItemIds: [] as string[],
   });
   const focusEntryIdRef = useRef<string | null>(null);
@@ -329,6 +364,13 @@ export default function Brain() {
     } catch {}
   }, []);
 
+  const fetchReminders = useCallback(async () => {
+    try {
+      const res = await fetch("/api/reminders");
+      if (res.ok) setReminders(await res.json());
+    } catch {}
+  }, []);
+
   const fetchCategories = useCallback(async () => {
     try {
       const res = await fetch("/api/categories");
@@ -339,7 +381,7 @@ export default function Brain() {
     }
   }, []);
 
-  useEffect(() => { fetchItems(); fetchCategories(); fetchRelations(); }, [fetchItems, fetchCategories, fetchRelations]);
+  useEffect(() => { fetchItems(); fetchCategories(); fetchRelations(); fetchReminders(); }, [fetchItems, fetchCategories, fetchRelations, fetchReminders]);
 
   // Live sync across windows (main app + pop-out card windows)
   useEffect(() => {
@@ -350,8 +392,8 @@ export default function Brain() {
     ch.onmessage = (ev: MessageEvent<SyncMessage>) => {
       const msg = ev.data;
       if (!msg || msg.source === syncClientIdRef.current) return;
-      if (msg.type === "item-updated" || msg.type === "item-created") {
-        const incoming = msg.item as Item;
+        if (msg.type === "item-updated" || msg.type === "item-created") {
+          const incoming = msg.item as Item;
         setItems(prev => {
           const idx = prev.findIndex(i => i.id === incoming.id);
           if (idx === -1) return [incoming, ...prev];
@@ -365,10 +407,12 @@ export default function Brain() {
         fetchRelations();
       } else if (msg.type === "relations-updated") {
         fetchRelations();
+      } else if (msg.type === "reminders-updated") {
+        fetchReminders();
       }
     };
     return () => { ch.close(); syncChannelRef.current = null; };
-  }, [fetchCategories, fetchRelations]);
+  }, [fetchCategories, fetchRelations, fetchReminders]);
 
   const broadcastSync = useCallback((msg: SyncPayload) => {
     const ch = syncChannelRef.current;
@@ -431,6 +475,7 @@ export default function Brain() {
         fetchItems(search.trim() || undefined);
         fetchCategories();
         fetchRelations();
+        fetchReminders();
       }
     };
     document.addEventListener("visibilitychange", onVisible);
@@ -439,10 +484,10 @@ export default function Brain() {
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", onVisible);
     };
-  }, [fetchItems, fetchCategories, fetchRelations, search]);
+  }, [fetchItems, fetchCategories, fetchRelations, fetchReminders, search]);
 
   // Reset pagination when filters change
-  useEffect(() => { setVisibleCount(50); }, [view, catFilter, search, sortBy, sourceFilter, withNotesOnly, favouritesOnly, actionOnly, reviewMode]);
+  useEffect(() => { setVisibleCount(50); }, [view, catFilter, search, sortBy, sourceFilter, withNotesOnly, favouritesOnly, actionOnly, remindersOnly, reviewMode]);
 
   // Close modals on Escape, focus search on Cmd/Ctrl+K
   useEffect(() => {
@@ -622,7 +667,7 @@ export default function Brain() {
   const resetForm = (keepOpen = false) => {
     const lastCategory = form.category;
     const lastType = form.type;
-    setForm({ type: lastType, title: "", content: "", url: "", noteEntries: [], tags: "", category: lastCategory, attachments: [], favourite: false, actionRequired: false, relatedItemIds: [] });
+    setForm({ type: lastType, title: "", content: "", url: "", noteEntries: [], tags: "", category: lastCategory, attachments: [], favourite: false, actionRequired: false, reminderId: "", reminderDueAt: "", reminderMessage: "", relatedItemIds: [] });
     if (!keepOpen) {
       setShowAdd(false);
     }
@@ -630,7 +675,7 @@ export default function Brain() {
   };
 
   const closeForm = () => {
-    setForm({ type: "note", title: "", content: "", url: "", noteEntries: [], tags: "", category: "", attachments: [], favourite: false, actionRequired: false, relatedItemIds: [] });
+    setForm({ type: "note", title: "", content: "", url: "", noteEntries: [], tags: "", category: "", attachments: [], favourite: false, actionRequired: false, reminderId: "", reminderDueAt: "", reminderMessage: "", relatedItemIds: [] });
     setShowAdd(false);
     setEditingId(null);
   };
@@ -692,6 +737,13 @@ export default function Brain() {
       .map(rel => rel.itemAId === itemId ? rel.itemB : rel.itemA)
       .filter(Boolean);
   }, [relations]);
+
+  const activeReminderForId = useCallback((itemId: string): Reminder | null => {
+    const rows = reminders
+      .filter(reminder => reminder.itemId === itemId && reminder.status !== "done")
+      .sort((a, b) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime());
+    return rows[0] || null;
+  }, [reminders]);
 
   const toggleRelatedSelection = (itemId: string) => {
     setForm(f => ({
@@ -814,12 +866,44 @@ export default function Brain() {
     setUploading(false);
   };
 
+  const syncReminder = async (itemId: string) => {
+    const reminderId = form.reminderId.trim();
+    const dueInput = form.reminderDueAt.trim();
+    const message = form.reminderMessage.trim();
+
+    if (!dueInput) {
+      if (reminderId) {
+        await fetch(`/api/reminders?id=${encodeURIComponent(reminderId)}`, { method: "DELETE" });
+        broadcastSync({ type: "reminders-updated", itemId });
+      }
+      return;
+    }
+
+    const dueAt = new Date(dueInput);
+    if (Number.isNaN(dueAt.getTime())) {
+      showToast("Reminder date is invalid", "error");
+      return;
+    }
+
+    const payload = { itemId, message, dueAt: dueAt.toISOString(), status: "pending" };
+    const res = await fetch("/api/reminders", {
+      method: reminderId ? "PUT" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(reminderId ? { id: reminderId, ...payload } : payload),
+    });
+    if (!res.ok) {
+      showToast("Failed to save reminder", "error");
+      return;
+    }
+    broadcastSync({ type: "reminders-updated", itemId });
+  };
+
   const handleSave = async (andAddAnother = false) => {
     if (!form.title.trim() && !form.content.trim() && !form.url.trim()) return;
     setSaving(true);
     const tags = form.tags.split(",").map(t => t.trim()).filter(Boolean);
     const noteEntries = form.noteEntries.filter(e => e.body.trim().length > 0);
-    const { relatedItemIds, ...itemForm } = form;
+    const { relatedItemIds, reminderId, reminderDueAt, reminderMessage, ...itemForm } = form;
     const previousRelatedIds = editingId ? relatedItemsForId(editingId).map(item => item.id) : [];
     // Once entries exist, clear the legacy single-blob field on the server so
     // we don't double-render after the migration on next load.
@@ -842,11 +926,13 @@ export default function Brain() {
         const saved = await res.clone().json();
         if (saved && saved.id) {
           await syncRelatedItems(saved.id, relatedItemIds, previousRelatedIds);
+          await syncReminder(saved.id);
           broadcastSync({ type: editingId ? "item-updated" : "item-created", item: saved });
         }
       } catch {}
       showToast(editingId ? "Item updated" : "Item saved", "success");
       await fetchItems();
+      await fetchReminders();
       if (editingId) {
         await fetchCategories();
         if (andAddAnother) resetForm(true);
@@ -958,6 +1044,7 @@ export default function Brain() {
         return;
       }
       setItems(prev => prev.filter(i => i.id !== id));
+      setReminders(prev => prev.filter(r => r.itemId !== id));
       await fetchRelations();
       broadcastSync({ type: "item-deleted", id });
     } catch {
@@ -974,6 +1061,7 @@ export default function Brain() {
         return;
       }
       setItems(prev => prev.filter(i => i.id !== id));
+      setReminders(prev => prev.filter(r => r.itemId !== id));
       if (expandedId === id) setExpandedId(null);
       await fetchRelations();
       broadcastSync({ type: "item-deleted", id });
@@ -1057,6 +1145,7 @@ export default function Brain() {
       const stamp = item.createdAt || new Date().toISOString();
       entries = [{ id: newEntryId(), body: item.notes, createdAt: stamp, updatedAt: stamp }];
     }
+    const reminder = activeReminderForId(item.id);
     setForm({
       type: item.type,
       title: item.title,
@@ -1068,6 +1157,9 @@ export default function Brain() {
       attachments: item.attachments || [],
       favourite: !!item.favourite,
       actionRequired: !!item.actionRequired,
+      reminderId: reminder?.id || "",
+      reminderDueAt: toDateTimeLocal(reminder?.dueAt),
+      reminderMessage: reminder?.message || "",
       relatedItemIds: relatedItemsForId(item.id).map(related => related.id),
     });
     setEditingId(item.id);
@@ -1214,6 +1306,7 @@ export default function Brain() {
     })
     .filter(i => !favouritesOnly || !!i.favourite)
     .filter(i => !actionOnly || !!i.actionRequired)
+    .filter(i => !remindersOnly || reminders.some(r => r.itemId === i.id && r.status === "pending"))
     .filter(i => {
       if (!reviewMode) return true;
       const noCategory = !i.category?.trim();
@@ -1241,6 +1334,7 @@ export default function Brain() {
   }).length;
   const favouriteCount = items.filter(i => i.favourite).length;
   const actionCount = items.filter(i => i.actionRequired).length;
+  const reminderCount = reminders.filter(r => r.status === "pending").length;
   const reviewCount = items.filter(i => {
     const noCategory = !i.category?.trim();
     const noTags = (i.tags?.length ?? 0) === 0;
@@ -1411,7 +1505,7 @@ export default function Brain() {
                 if (isRefreshing) return;
                 setIsRefreshing(true);
                 try {
-                  await Promise.all([fetchItems(search.trim() || undefined), fetchCategories()]);
+                  await Promise.all([fetchItems(search.trim() || undefined), fetchCategories(), fetchReminders()]);
                   showToast("Refreshed", "success");
                 } finally {
                   setIsRefreshing(false);
@@ -1528,6 +1622,20 @@ export default function Brain() {
               ⚡ Needs action <span className="opacity-50 text-[10px]">{actionCount}</span>
             </button>
           )}
+          {reminderCount > 0 && (
+            <button
+              onClick={() => setRemindersOnly(v => !v)}
+              className="px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-mono font-medium transition-all shrink-0 ml-1"
+              style={{
+                border: remindersOnly ? "1px solid #56CCF290" : "1px solid #56CCF230",
+                background: remindersOnly ? "#56CCF225" : "transparent",
+                color: remindersOnly ? "#56CCF2" : "#56CCF290",
+              }}
+              title="Show cards with pending reminders"
+            >
+              ⏰ Reminders <span className="opacity-50 text-[10px]">{reminderCount}</span>
+            </button>
+          )}
           {reviewCount > 0 && (
             <button
               onClick={() => setReviewMode(v => !v)}
@@ -1548,6 +1656,9 @@ export default function Brain() {
               catFilter !== "all",
               sourceFilter !== null,
               withNotesOnly,
+              favouritesOnly,
+              actionOnly,
+              remindersOnly,
               reviewMode,
               search.trim().length > 0,
             ].filter(Boolean).length;
@@ -1560,6 +1671,9 @@ export default function Brain() {
                   setCatFilter("all");
                   setSourceFilter(null);
                   setWithNotesOnly(false);
+                  setFavouritesOnly(false);
+                  setActionOnly(false);
+                  setRemindersOnly(false);
                   setReviewMode(false);
                   setSearch("");
                 }}
@@ -1861,6 +1975,7 @@ export default function Brain() {
           const isYouTube = item.siteName === "YouTube";
           const isCompact = density === "compact" && !expanded;
           const relatedItems = relatedItemsForId(item.id);
+          const reminder = activeReminderForId(item.id);
 
           const isDragTarget = dragOverCardId === item.id;
           return (
@@ -2009,6 +2124,7 @@ export default function Brain() {
                       {item.pinned && <span className="text-[10px]" title="Pinned">📌</span>}
                       {item.favourite && <span className="text-[10px]" style={{ color: "#F2C94C" }} title="Favourite">★</span>}
                       {item.actionRequired && <span className="text-[10px]" style={{ color: "#EB5757" }} title="Needs action">⚡</span>}
+                      {reminder && <span className="text-[10px]" style={{ color: "#56CCF2" }} title={`Reminder: ${formatReminderDue(reminder.dueAt)}`}>⏰</span>}
                       {hasPreview && !isCompact && (
                         <div
                           className="w-5 h-5 rounded flex items-center justify-center text-[10px] shrink-0"
@@ -2130,6 +2246,13 @@ export default function Brain() {
                           className="text-[10px] font-mono px-1.5 py-0.5 rounded"
                           style={{ background: getCatColor(item.category) + "15", color: getCatColor(item.category), border: `1px solid ${getCatColor(item.category)}30` }}
                         >{item.category}</span>
+                      )}
+                      {reminder && (
+                        <span
+                          className="text-[10px] font-mono px-1.5 py-0.5 rounded"
+                          style={{ background: "#56CCF215", color: "#56CCF2", border: "1px solid #56CCF230" }}
+                          title={reminder.message || "Reminder"}
+                        >⏰ {formatReminderDue(reminder.dueAt)}</span>
                       )}
                       {(item.tags || []).slice(0, isCompact ? 3 : undefined).map((tag, ti) => (
                         <span key={ti} className="text-[10px] font-mono px-1 py-0.5 rounded" style={{ color: TAG_COLORS[ti % TAG_COLORS.length], background: TAG_COLORS[ti % TAG_COLORS.length] + "10" }}>#{tag}</span>
@@ -2343,6 +2466,37 @@ export default function Brain() {
                   color: "#EB5757",
                 }}
               >{form.actionRequired ? "⚡ Action needed" : "⚡ Flag for action"}</button>
+            </div>
+
+            <div className="mb-4 rounded-lg border border-brand-border bg-brand-muted/40 p-3">
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <label className="text-[11px] font-mono text-gray-400 tracking-wide" htmlFor="reminder-due">
+                  Telegram reminder
+                </label>
+                {form.reminderDueAt && (
+                  <button
+                    type="button"
+                    onClick={() => setForm(f => ({ ...f, reminderDueAt: "", reminderMessage: "" }))}
+                    className="text-[11px] font-mono text-gray-500 hover:text-red-300 transition"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+              <input
+                id="reminder-due"
+                type="datetime-local"
+                value={form.reminderDueAt}
+                onChange={e => setForm(f => ({ ...f, reminderDueAt: e.target.value }))}
+                className="w-full px-3 py-2 bg-[#101318] border border-brand-border rounded-lg text-sm text-gray-300 outline-none mb-2"
+              />
+              <input
+                value={form.reminderMessage}
+                onChange={e => setForm(f => ({ ...f, reminderMessage: e.target.value }))}
+                placeholder="What should Telegram remind you about?"
+                aria-label="Reminder message"
+                className="w-full px-3 py-2 bg-[#101318] border border-brand-border rounded-lg text-sm text-gray-300 outline-none placeholder:text-gray-500"
+              />
             </div>
 
             {/* Category selector — pick existing, type new, or auto */}

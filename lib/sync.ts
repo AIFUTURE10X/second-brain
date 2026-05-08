@@ -4,7 +4,8 @@ export type SyncPayload =
   | { type: "item-updated"; item: unknown }
   | { type: "item-created"; item: unknown }
   | { type: "item-deleted"; id: string }
-  | { type: "relations-updated"; itemId: string };
+  | { type: "relations-updated"; itemId: string }
+  | { type: "reminders-updated"; itemId?: string };
 
 export type SyncMessage = SyncPayload & { source: string };
 

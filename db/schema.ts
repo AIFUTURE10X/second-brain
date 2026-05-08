@@ -70,3 +70,17 @@ export const itemRelations = pgTable("item_relations", {
   index("item_relations_item_a_idx").on(table.itemAId),
   index("item_relations_item_b_idx").on(table.itemBId),
 ]);
+
+export const reminders = pgTable("reminders", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  itemId: uuid("item_id").notNull().references(() => items.id, { onDelete: "cascade" }),
+  message: text("message").notNull().default(""),
+  dueAt: timestamp("due_at", { mode: "date" }).notNull(),
+  status: text("status").notNull().default("pending"), // pending | sent | done
+  sentAt: timestamp("sent_at", { mode: "date" }),
+  createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
+}, (table) => [
+  index("reminders_item_idx").on(table.itemId),
+  index("reminders_status_due_idx").on(table.status, table.dueAt),
+]);

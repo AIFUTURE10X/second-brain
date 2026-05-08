@@ -253,6 +253,7 @@ export default function Brain() {
   const syncChannelRef = useRef<BroadcastChannel | null>(null);
   const syncClientIdRef = useRef<string>("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [failedPreviewUrls, setFailedPreviewUrls] = useState<Set<string>>(new Set());
   const [sortBy, setSortBy] = useState<"newest" | "oldest">("newest");
   const [saving, setSaving] = useState(false);
   const [summarizing, setSummarizing] = useState<string | null>(null);
@@ -424,6 +425,16 @@ export default function Brain() {
       return false;
     }
   }, [clearRuntimeCaches]);
+
+  const markPreviewImageFailed = useCallback((src?: string) => {
+    if (!src) return;
+    setFailedPreviewUrls(prev => {
+      if (prev.has(src)) return prev;
+      const next = new Set(prev);
+      next.add(src);
+      return next;
+    });
+  }, []);
 
   useEffect(() => { fetchItems(); fetchCategories(); fetchRelations(); fetchReminders(); }, [fetchItems, fetchCategories, fetchRelations, fetchReminders]);
 
@@ -2044,8 +2055,8 @@ export default function Brain() {
         {visibleItems.map((item, idx) => {
           const t = TYPES[item.type] || TYPES.note;
           const expanded = expandedId === item.id;
-          const firstImageAttachment = (item.attachments || []).find(a => a.contentType?.startsWith("image/"));
-          const hasOgPreview = !!(item.ogImage && (item.type === "link" || item.type === "clip"));
+          const firstImageAttachment = (item.attachments || []).find(a => a.contentType?.startsWith("image/") && !failedPreviewUrls.has(a.url));
+          const hasOgPreview = !!(item.ogImage && !failedPreviewUrls.has(item.ogImage) && (item.type === "link" || item.type === "clip"));
           const hasAttachmentPreview = !hasOgPreview && !!firstImageAttachment;
           const hasPreview = hasOgPreview || hasAttachmentPreview;
           const previewImageSrc = hasOgPreview ? item.ogImage : firstImageAttachment?.url;
@@ -2142,6 +2153,7 @@ export default function Brain() {
                     src={previewImageSrc}
                     alt=""
                     loading="lazy"
+                    onError={() => markPreviewImageFailed(previewImageSrc)}
                     className="w-full h-full object-cover"
                   />
                   {isYouTube && (
@@ -2169,6 +2181,7 @@ export default function Brain() {
                     alt=""
                     className="w-full h-full object-cover"
                     loading="lazy"
+                    onError={() => markPreviewImageFailed(previewImageSrc)}
                   />
                   {isYouTube && (
                     <div className="absolute inset-0 flex items-center justify-center">

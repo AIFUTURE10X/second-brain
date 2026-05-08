@@ -5,7 +5,7 @@
 //   Static assets (icons, manifest)      → cache-first
 //   Everything else                      → pass through (no caching)
 
-const CACHE_VERSION = "sb-v2";
+const CACHE_VERSION = "sb-v3";
 const DATA_CACHE = `${CACHE_VERSION}-data`;
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const PAGE_CACHE = `${CACHE_VERSION}-pages`;
@@ -33,6 +33,17 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+self.addEventListener("message", (event) => {
+  if (event.data?.type !== "CLEAR_RUNTIME_CACHES") return;
+  event.waitUntil(
+    caches.keys().then((keys) => Promise.all(
+      keys
+        .filter((key) => key.startsWith("sb-"))
+        .map((key) => caches.delete(key))
+    ))
+  );
+});
+
 function isCacheableApi(url) {
   if (url.origin !== self.location.origin) return false;
   return (
@@ -46,6 +57,8 @@ self.addEventListener("fetch", (event) => {
   if (req.method !== "GET") return; // pass through — writes always hit network
 
   const url = new URL(req.url);
+
+  if (req.cache === "reload" || req.cache === "no-store") return;
 
   // Stale-while-revalidate for read-only API data
   if (isCacheableApi(url)) {

@@ -8,6 +8,8 @@ import Vault from "./Vault";
 import { SYNC_CHANNEL, getSyncClientId, type SyncMessage, type SyncPayload } from "@/lib/sync";
 import { mergeReminderDateTimeParts, splitReminderDateTime } from "@/lib/reminders.mjs";
 
+const CLIENT_APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "dev";
+
 type ItemType = "note" | "link" | "clip" | "thought" | "task" | "memory";
 
 interface Attachment {
@@ -358,7 +360,7 @@ export default function Brain() {
   const fetchItems = useCallback(async (query?: string) => {
     try {
       const url = query ? `/api/items?q=${encodeURIComponent(query)}` : "/api/items";
-      const res = await fetch(url);
+      const res = await fetch(url, { cache: "no-store" });
       if (res.ok) setItems(await res.json());
       else showToast("Failed to load items", "error");
     } catch {
@@ -369,27 +371,59 @@ export default function Brain() {
 
   const fetchRelations = useCallback(async () => {
     try {
-      const res = await fetch("/api/item-relations");
+      const res = await fetch("/api/item-relations", { cache: "no-store" });
       if (res.ok) setRelations(await res.json());
     } catch {}
   }, []);
 
   const fetchReminders = useCallback(async () => {
     try {
-      const res = await fetch("/api/reminders");
+      const res = await fetch("/api/reminders", { cache: "no-store" });
       if (res.ok) setReminders(await res.json());
     } catch {}
   }, []);
 
   const fetchCategories = useCallback(async () => {
     try {
-      const res = await fetch("/api/categories");
+      const res = await fetch("/api/categories", { cache: "no-store" });
       if (res.ok) setCategories(await res.json());
       else showToast("Failed to load categories", "error");
     } catch {
       showToast("Failed to load categories", "error");
     }
   }, []);
+
+  const clearRuntimeCaches = useCallback(async () => {
+    if (typeof window === "undefined") return;
+
+    if ("caches" in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.filter(key => key.startsWith("sb-")).map(key => caches.delete(key)));
+    }
+
+    if ("serviceWorker" in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registrations.map(registration => registration.update().catch(() => undefined)));
+      navigator.serviceWorker.controller?.postMessage({ type: "CLEAR_RUNTIME_CACHES" });
+    }
+  }, []);
+
+  const reloadForAppUpdate = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/app-version?t=${Date.now()}`, { cache: "no-store" });
+      if (!res.ok) return false;
+      const data = await res.json() as { version?: string };
+      const serverVersion = typeof data.version === "string" ? data.version : "";
+      if (!serverVersion || serverVersion === CLIENT_APP_VERSION) return false;
+
+      showToast("New app version found. Reloading...", "success");
+      await clearRuntimeCaches();
+      window.location.reload();
+      return true;
+    } catch {
+      return false;
+    }
+  }, [clearRuntimeCaches]);
 
   useEffect(() => { fetchItems(); fetchCategories(); fetchRelations(); fetchReminders(); }, [fetchItems, fetchCategories, fetchRelations, fetchReminders]);
 
@@ -1550,7 +1584,9 @@ export default function Brain() {
                 if (isRefreshing) return;
                 setIsRefreshing(true);
                 try {
-                  await Promise.all([fetchItems(search.trim() || undefined), fetchCategories(), fetchReminders()]);
+                  const reloading = await reloadForAppUpdate();
+                  if (reloading) return;
+                  await Promise.all([fetchItems(search.trim() || undefined), fetchCategories(), fetchRelations(), fetchReminders()]);
                   showToast("Refreshed", "success");
                 } finally {
                   setIsRefreshing(false);
@@ -1558,8 +1594,8 @@ export default function Brain() {
               }}
               disabled={isRefreshing}
               className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl text-gray-500 text-sm flex items-center justify-center border border-brand-border hover:text-gray-300 hover:border-gray-600 active:scale-95 transition disabled:opacity-60"
-              aria-label="Refresh items"
-              title="Refresh"
+              aria-label="Refresh app and items"
+              title="Refresh app and items"
             >
               <span style={{ display: "inline-block", animation: isRefreshing ? "spin 0.8s linear infinite" : undefined }}>↻</span>
             </button>

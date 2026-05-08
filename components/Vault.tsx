@@ -71,6 +71,49 @@ function EyeIcon({ hidden }: { hidden: boolean }) {
   );
 }
 
+function PasswordField({
+  value,
+  onChange,
+  placeholder,
+  visible,
+  onToggle,
+  className = "",
+  autoFocus = false,
+  onEnter,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  visible: boolean;
+  onToggle: () => void;
+  className?: string;
+  autoFocus?: boolean;
+  onEnter?: () => void;
+}) {
+  return (
+    <div className={`relative ${className}`}>
+      <input
+        type={visible ? "text" : "password"}
+        autoFocus={autoFocus}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        onKeyDown={e => { if (e.key === "Enter") onEnter?.(); }}
+        placeholder={placeholder}
+        className="w-full px-3 py-2.5 pr-10 rounded-lg bg-brand-muted border border-brand-border text-sm outline-none"
+      />
+      <button
+        type="button"
+        onClick={onToggle}
+        className="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 inline-flex items-center justify-center rounded-md text-gray-500 hover:text-white hover:bg-white/5 transition"
+        aria-label={visible ? "Hide password" : "Show password"}
+        title={visible ? "Hide password" : "Show password"}
+      >
+        <EyeIcon hidden={!visible} />
+      </button>
+    </div>
+  );
+}
+
 export default function Vault({ onClose }: VaultProps) {
   const [loading, setLoading] = useState(true);
   const [config, setConfig] = useState<VaultConfigRow | null>(null);
@@ -89,6 +132,10 @@ export default function Vault({ onClose }: VaultProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({ ...EMPTY_SECRET, tags: "" });
   const [showFormPassword, setShowFormPassword] = useState(false);
+  const [showMasterPassword, setShowMasterPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [showNewMasterPassword, setShowNewMasterPassword] = useState(false);
+  const [showNewMasterConfirm, setShowNewMasterConfirm] = useState(false);
   const [visiblePasswords, setVisiblePasswords] = useState<Set<string>>(new Set());
   const lockTimer = useRef<number | null>(null);
 
@@ -163,6 +210,8 @@ export default function Vault({ onClose }: VaultProps) {
       setEntries([]);
       setMasterPassword("");
       setConfirmPassword("");
+      setShowMasterPassword(false);
+      setShowConfirmPassword(false);
       showToast("Vault created", "success");
     } catch {
       showToast("Failed to create vault", "error");
@@ -178,6 +227,7 @@ export default function Vault({ onClose }: VaultProps) {
       const key = await unlockVault(config, masterPassword);
       setVaultKey(key);
       setMasterPassword("");
+      setShowMasterPassword(false);
       await decryptItems(key, encryptedItems);
       showToast("Vault unlocked", "success");
     } catch {
@@ -213,6 +263,8 @@ export default function Vault({ onClose }: VaultProps) {
       setRecoveryInput("");
       setNewMasterPassword("");
       setNewMasterConfirm("");
+      setShowNewMasterPassword(false);
+      setShowNewMasterConfirm(false);
       await decryptItems(recovered.vaultKey, encryptedItems);
       showToast("Master password reset", "success");
     } catch {
@@ -228,6 +280,10 @@ export default function Vault({ onClose }: VaultProps) {
     setEditingId(null);
     setForm({ ...EMPTY_SECRET, tags: "" });
     setShowFormPassword(false);
+    setShowMasterPassword(false);
+    setShowConfirmPassword(false);
+    setShowNewMasterPassword(false);
+    setShowNewMasterConfirm(false);
     setVisiblePasswords(new Set());
     setRecoveryKey("");
   };
@@ -357,19 +413,21 @@ export default function Vault({ onClose }: VaultProps) {
             <p className="text-xs text-gray-500 mb-4 leading-relaxed">
               Your master password never leaves this browser. If you lose the master password and recovery key, the vault cannot be recovered.
             </p>
-            <input
-              type="password"
+            <PasswordField
               value={masterPassword}
-              onChange={e => setMasterPassword(e.target.value)}
+              onChange={setMasterPassword}
               placeholder="Master password"
-              className="w-full mb-2 px-3 py-2.5 rounded-lg bg-brand-muted border border-brand-border text-sm outline-none"
+              visible={showMasterPassword}
+              onToggle={() => setShowMasterPassword(show => !show)}
+              className="mb-2"
             />
-            <input
-              type="password"
+            <PasswordField
               value={confirmPassword}
-              onChange={e => setConfirmPassword(e.target.value)}
+              onChange={setConfirmPassword}
               placeholder="Confirm master password"
-              className="w-full mb-3 px-3 py-2.5 rounded-lg bg-brand-muted border border-brand-border text-sm outline-none"
+              visible={showConfirmPassword}
+              onToggle={() => setShowConfirmPassword(show => !show)}
+              className="mb-3"
             />
             <button disabled={busy} onClick={setupVault} className="px-4 py-2.5 rounded-lg text-sm font-semibold text-[#0D0F12] disabled:opacity-50" style={{ background: "#E8A838" }}>
               {busy ? "Creating..." : "Create vault"}
@@ -380,14 +438,15 @@ export default function Vault({ onClose }: VaultProps) {
             {mode === "unlock" ? (
               <>
                 <h3 className="text-sm font-semibold mb-2">Unlock vault</h3>
-                <input
-                  type="password"
+                <PasswordField
                   autoFocus
                   value={masterPassword}
-                  onChange={e => setMasterPassword(e.target.value)}
-                  onKeyDown={e => { if (e.key === "Enter") unlock(); }}
+                  onChange={setMasterPassword}
                   placeholder="Master password"
-                  className="w-full mb-3 px-3 py-2.5 rounded-lg bg-brand-muted border border-brand-border text-sm outline-none"
+                  visible={showMasterPassword}
+                  onToggle={() => setShowMasterPassword(show => !show)}
+                  onEnter={unlock}
+                  className="mb-3"
                 />
                 <div className="flex gap-2">
                   <button disabled={busy || !masterPassword} onClick={unlock} className="px-4 py-2.5 rounded-lg text-sm font-semibold text-[#0D0F12] disabled:opacity-50" style={{ background: "#E8A838" }}>
@@ -406,19 +465,21 @@ export default function Vault({ onClose }: VaultProps) {
                   placeholder="Recovery key"
                   className="w-full mb-2 px-3 py-2.5 rounded-lg bg-brand-muted border border-brand-border text-sm outline-none font-mono"
                 />
-                <input
-                  type="password"
+                <PasswordField
                   value={newMasterPassword}
-                  onChange={e => setNewMasterPassword(e.target.value)}
+                  onChange={setNewMasterPassword}
                   placeholder="New master password"
-                  className="w-full mb-2 px-3 py-2.5 rounded-lg bg-brand-muted border border-brand-border text-sm outline-none"
+                  visible={showNewMasterPassword}
+                  onToggle={() => setShowNewMasterPassword(show => !show)}
+                  className="mb-2"
                 />
-                <input
-                  type="password"
+                <PasswordField
                   value={newMasterConfirm}
-                  onChange={e => setNewMasterConfirm(e.target.value)}
+                  onChange={setNewMasterConfirm}
                   placeholder="Confirm new master password"
-                  className="w-full mb-3 px-3 py-2.5 rounded-lg bg-brand-muted border border-brand-border text-sm outline-none"
+                  visible={showNewMasterConfirm}
+                  onToggle={() => setShowNewMasterConfirm(show => !show)}
+                  className="mb-3"
                 />
                 <div className="flex gap-2">
                   <button disabled={busy} onClick={recover} className="px-4 py-2.5 rounded-lg text-sm font-semibold text-[#0D0F12] disabled:opacity-50" style={{ background: "#E8A838" }}>

@@ -5,6 +5,7 @@ import { eq, desc, asc } from "drizzle-orm";
 import { enrichUrl } from "@/lib/enrich";
 import { checkApiKey } from "@/lib/api-key";
 import { aiTagAndCategorize } from "@/lib/ai-tagger";
+import { shouldEnrichUrlOnUpdate } from "@/lib/item-updates.mjs";
 
 // GET all items — supports ?q= for full-text search
 export async function GET(req: NextRequest) {
@@ -150,7 +151,10 @@ export async function PUT(req: NextRequest) {
   const { id, ...updates } = body;
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
 
-  if (updates.url && !updates.ogTitle) {
+  const [current] = await db.select().from(items).where(eq(items.id, id));
+  if (!current) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  if (shouldEnrichUrlOnUpdate({ currentUrl: current.url, nextUrl: updates.url, nextOgTitle: updates.ogTitle })) {
     const og = await enrichUrl(updates.url);
     updates.ogTitle = og.ogTitle;
     updates.ogDescription = og.ogDescription;

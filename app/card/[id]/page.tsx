@@ -188,7 +188,7 @@ export default function CardPopoutPage() {
       const stamp = next.createdAt || new Date().toISOString();
       entries = [{ id: newEntryId(), body: next.notes, createdAt: stamp, updatedAt: stamp }];
     }
-    setForm({
+    setForm(f => ({
       type: next.type,
       title: next.title || "",
       content: next.content || "",
@@ -198,12 +198,12 @@ export default function CardPopoutPage() {
       category: next.category || "",
       favourite: !!next.favourite,
       actionRequired: !!next.actionRequired,
-      reminderId: reminder?.id || "",
-      reminderDueAt: toDateTimeLocal(reminder?.dueAt),
-      reminderMessage: reminder?.message || "",
-    });
+      reminderId: f.reminderId,
+      reminderDueAt: f.reminderDueAt,
+      reminderMessage: f.reminderMessage,
+    }));
     setDirty(false);
-  }, [reminder]);
+  }, []);
 
   const fetchItem = useCallback(async () => {
     if (!id) return;

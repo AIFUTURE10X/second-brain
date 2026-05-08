@@ -61,6 +61,16 @@ function displayDate(value: string): string {
   return date.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
+function EyeIcon({ hidden }: { hidden: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" />
+      <path d="M12 9.2a2.8 2.8 0 1 1 0 5.6 2.8 2.8 0 0 1 0-5.6Z" />
+      {hidden && <path d="M4 4l16 16" />}
+    </svg>
+  );
+}
+
 export default function Vault({ onClose }: VaultProps) {
   const [loading, setLoading] = useState(true);
   const [config, setConfig] = useState<VaultConfigRow | null>(null);
@@ -78,6 +88,8 @@ export default function Vault({ onClose }: VaultProps) {
   const [query, setQuery] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({ ...EMPTY_SECRET, tags: "" });
+  const [showFormPassword, setShowFormPassword] = useState(false);
+  const [visiblePasswords, setVisiblePasswords] = useState<Set<string>>(new Set());
   const lockTimer = useRef<number | null>(null);
 
   const loadVault = async () => {
@@ -215,6 +227,8 @@ export default function Vault({ onClose }: VaultProps) {
     setEntries([]);
     setEditingId(null);
     setForm({ ...EMPTY_SECRET, tags: "" });
+    setShowFormPassword(false);
+    setVisiblePasswords(new Set());
     setRecoveryKey("");
   };
 
@@ -254,6 +268,12 @@ export default function Vault({ onClose }: VaultProps) {
       await decryptItems(vaultKey, nextEncrypted);
       setEditingId(null);
       setForm({ ...EMPTY_SECRET, tags: "" });
+      setShowFormPassword(false);
+      setVisiblePasswords(prev => {
+        const next = new Set(prev);
+        if (editingId) next.delete(editingId);
+        return next;
+      });
       showToast("Secret saved", "success");
     } catch {
       showToast("Failed to save secret", "error");
@@ -265,6 +285,7 @@ export default function Vault({ onClose }: VaultProps) {
   const editEntry = (entry: VaultEntry) => {
     setEditingId(entry.id);
     setForm({ ...entry.secret, tags: joinTags(entry.secret.tags || []) });
+    setShowFormPassword(false);
   };
 
   const deleteEntry = async (id: string) => {
@@ -275,6 +296,11 @@ export default function Vault({ onClose }: VaultProps) {
       const next = encryptedItems.filter(item => item.id !== id);
       setEncryptedItems(next);
       setEntries(prev => prev.filter(entry => entry.id !== id));
+      setVisiblePasswords(prev => {
+        const nextVisible = new Set(prev);
+        nextVisible.delete(id);
+        return nextVisible;
+      });
       showToast("Secret deleted", "success");
     } catch {
       showToast("Failed to delete secret", "error");
@@ -288,6 +314,15 @@ export default function Vault({ onClose }: VaultProps) {
     } catch {
       showToast(`Could not copy ${label.toLowerCase()}`, "error");
     }
+  };
+
+  const toggleVisiblePassword = (id: string) => {
+    setVisiblePasswords(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   };
 
   const visibleEntries = useMemo(() => {
@@ -401,8 +436,34 @@ export default function Vault({ onClose }: VaultProps) {
               <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="Title" className="w-full mb-2 px-3 py-2 rounded-lg bg-brand-muted border border-brand-border text-sm outline-none" />
               <input value={form.username} onChange={e => setForm(f => ({ ...f, username: e.target.value }))} placeholder="Username / email" className="w-full mb-2 px-3 py-2 rounded-lg bg-brand-muted border border-brand-border text-sm outline-none" />
               <div className="flex gap-2 mb-2">
-                <input value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} placeholder="Password / secret" className="flex-1 px-3 py-2 rounded-lg bg-brand-muted border border-brand-border text-sm outline-none" />
-                <button type="button" onClick={() => setForm(f => ({ ...f, password: makePassword() }))} className="px-3 rounded-lg border border-brand-border text-xs text-gray-400 hover:text-white transition">Generate</button>
+                <div className="relative flex-1">
+                  <input
+                    type={showFormPassword ? "text" : "password"}
+                    value={form.password}
+                    onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+                    placeholder="Password / secret"
+                    className="w-full px-3 py-2 pr-10 rounded-lg bg-brand-muted border border-brand-border text-sm outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowFormPassword(show => !show)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-md text-xs text-gray-500 hover:text-white hover:bg-white/5 transition"
+                    aria-label={showFormPassword ? "Hide password" : "Show password"}
+                    title={showFormPassword ? "Hide password" : "Show password"}
+                  >
+                    <EyeIcon hidden={!showFormPassword} />
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setForm(f => ({ ...f, password: makePassword() }));
+                    setShowFormPassword(true);
+                  }}
+                  className="px-3 rounded-lg border border-brand-border text-xs text-gray-400 hover:text-white transition"
+                >
+                  Generate
+                </button>
               </div>
               <input value={form.url} onChange={e => setForm(f => ({ ...f, url: e.target.value }))} placeholder="URL" className="w-full mb-2 px-3 py-2 rounded-lg bg-brand-muted border border-brand-border text-sm outline-none" />
               <input value={form.tags} onChange={e => setForm(f => ({ ...f, tags: e.target.value }))} placeholder="Tags, comma separated" className="w-full mb-2 px-3 py-2 rounded-lg bg-brand-muted border border-brand-border text-sm outline-none" />
@@ -412,7 +473,7 @@ export default function Vault({ onClose }: VaultProps) {
                   {busy ? "Saving..." : editingId ? "Save changes" : "Add secret"}
                 </button>
                 {editingId && (
-                  <button onClick={() => { setEditingId(null); setForm({ ...EMPTY_SECRET, tags: "" }); }} className="px-3 py-2.5 rounded-lg border border-brand-border text-sm text-gray-400">Cancel</button>
+                  <button onClick={() => { setEditingId(null); setForm({ ...EMPTY_SECRET, tags: "" }); setShowFormPassword(false); }} className="px-3 py-2.5 rounded-lg border border-brand-border text-sm text-gray-400">Cancel</button>
                 )}
               </div>
             </div>
@@ -449,6 +510,11 @@ export default function Vault({ onClose }: VaultProps) {
                         </div>
                         {entry.secret.url && <a href={entry.secret.url} target="_blank" rel="noreferrer" className="block text-xs text-[#5B8DEF] truncate mb-1">{entry.secret.url}</a>}
                         {entry.secret.username && <p className="text-xs text-gray-400 truncate">{entry.secret.username}</p>}
+                        {entry.secret.password && (
+                          <p className="mt-2 text-xs font-mono text-gray-400 break-all">
+                            {visiblePasswords.has(entry.id) ? entry.secret.password : "************"}
+                          </p>
+                        )}
                         {entry.secret.notes && <p className="text-xs text-gray-500 mt-2 whitespace-pre-wrap">{entry.secret.notes}</p>}
                         {(entry.secret.tags || []).length > 0 && (
                           <div className="flex flex-wrap gap-1 mt-2">
@@ -459,6 +525,16 @@ export default function Vault({ onClose }: VaultProps) {
                       <div className="flex flex-wrap justify-end gap-1.5">
                         {entry.secret.username && <button onClick={() => copyText(entry.secret.username, "Username")} className="px-2 py-1 rounded-md border border-brand-border text-[11px] text-gray-400 hover:text-white">Copy user</button>}
                         {entry.secret.password && <button onClick={() => copyText(entry.secret.password, "Password")} className="px-2 py-1 rounded-md border border-brand-border text-[11px] text-gray-400 hover:text-white">Copy pass</button>}
+                        {entry.secret.password && (
+                          <button
+                            onClick={() => toggleVisiblePassword(entry.id)}
+                            className="w-7 h-7 inline-flex items-center justify-center rounded-md border border-brand-border text-gray-400 hover:text-white"
+                            aria-label={visiblePasswords.has(entry.id) ? "Hide password" : "Show password"}
+                            title={visiblePasswords.has(entry.id) ? "Hide password" : "Show password"}
+                          >
+                            <EyeIcon hidden={!visiblePasswords.has(entry.id)} />
+                          </button>
+                        )}
                         <button onClick={() => editEntry(entry)} className="px-2 py-1 rounded-md border border-brand-border text-[11px] text-gray-400 hover:text-white">Edit</button>
                         <button onClick={() => deleteEntry(entry.id)} className="px-2 py-1 rounded-md border border-red-500/30 text-[11px] text-red-300 hover:text-red-200">Delete</button>
                       </div>

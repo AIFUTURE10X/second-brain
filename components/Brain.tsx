@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { upload } from "@vercel/blob/client";
 import { showToast } from "./Toast";
 import { VoiceButton } from "./VoiceButton";
+import Vault from "./Vault";
 import { SYNC_CHANNEL, getSyncClientId, type SyncMessage, type SyncPayload } from "@/lib/sync";
 import { mergeReminderDateTimeParts, splitReminderDateTime } from "@/lib/reminders.mjs";
 
@@ -219,6 +220,7 @@ export default function Brain() {
   const [quickMemoryText, setQuickMemoryText] = useState("");
   const [quickMemorySaving, setQuickMemorySaving] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [vaultOpen, setVaultOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [showCatManager, setShowCatManager] = useState(false);
@@ -501,7 +503,8 @@ export default function Brain() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        if (relatedPickerOpen) { setRelatedPickerOpen(false); setRelatedPickerSearch(""); }
+        if (vaultOpen) setVaultOpen(false);
+        else if (relatedPickerOpen) { setRelatedPickerOpen(false); setRelatedPickerSearch(""); }
         else if (pickerOpen) { setPickerOpen(false); setPickerSearch(""); }
         else if (showAdd) closeForm();
         else if (showCatManager) setShowCatManager(false);
@@ -516,7 +519,7 @@ export default function Brain() {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [showAdd, showCatManager, showTagManager, tagMenuOpen, pickerOpen, relatedPickerOpen]);
+  }, [showAdd, showCatManager, showTagManager, tagMenuOpen, pickerOpen, relatedPickerOpen, vaultOpen]);
 
   // Paste image from clipboard while the add/edit modal is open
   useEffect(() => {
@@ -1531,6 +1534,12 @@ export default function Brain() {
               )}
             </div>
             <button
+              onClick={() => setVaultOpen(true)}
+              className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl text-gray-500 text-sm flex items-center justify-center border border-brand-border hover:text-[#E8A838] hover:border-[#E8A83860] active:scale-95 transition"
+              aria-label="Open encrypted vault"
+              title="Encrypted vault"
+            >▣</button>
+            <button
               onClick={() => setDensity(d => d === "compact" ? "comfortable" : "compact")}
               className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl text-gray-500 text-sm flex items-center justify-center border border-brand-border hover:text-gray-300 hover:border-gray-600 active:scale-95 transition"
               aria-label={density === "compact" ? "Switch to comfortable view" : "Switch to compact view"}
@@ -2407,6 +2416,8 @@ export default function Brain() {
           </button>
         )}
       </div>
+
+      {vaultOpen && <Vault onClose={() => setVaultOpen(false)} />}
 
       {/* Add/Edit Modal */}
       {showAdd && (

@@ -71,6 +71,32 @@ export const itemRelations = pgTable("item_relations", {
   index("item_relations_item_b_idx").on(table.itemBId),
 ]);
 
+export const vaultConfigs = pgTable("vault_configs", {
+  id: text("id").primaryKey().default("default"),
+  version: integer("version").notNull().default(1),
+  kdf: text("kdf").notNull().default("PBKDF2-SHA256"),
+  kdfSalt: text("kdf_salt").notNull(),
+  kdfIterations: integer("kdf_iterations").notNull(),
+  masterKeyNonce: text("master_key_nonce").notNull(),
+  masterKeyCiphertext: text("master_key_ciphertext").notNull(),
+  recoveryKeySalt: text("recovery_key_salt").notNull(),
+  recoveryKeyNonce: text("recovery_key_nonce").notNull(),
+  recoveryKeyCiphertext: text("recovery_key_ciphertext").notNull(),
+  createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
+});
+
+export const vaultItems = pgTable("vault_items", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  version: integer("version").notNull().default(1),
+  nonce: text("nonce").notNull(),
+  ciphertext: text("ciphertext").notNull(),
+  createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
+}, (table) => [
+  index("vault_items_created_idx").on(table.createdAt),
+]);
+
 export const reminders = pgTable("reminders", {
   id: uuid("id").primaryKey().defaultRandom(),
   itemId: uuid("item_id").notNull().references(() => items.id, { onDelete: "cascade" }),

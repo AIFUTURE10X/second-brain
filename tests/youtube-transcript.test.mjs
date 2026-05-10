@@ -58,3 +58,50 @@ test("extractApifyTranscriptText supports plain text and segment outputs", () =>
     "First part second part",
   );
 });
+
+test("extractYouTubeDescriptionLinksFromHtml reads links from video descriptions", () => {
+  const html = `
+    <script>
+      var ytInitialPlayerResponse = {
+        "videoDetails": {
+          "shortDescription": "Main app: https://example.com/app\\nDocs https://docs.example.com/start."
+        }
+      };
+    </script>
+  `;
+
+  assert.deepEqual(youtube.extractYouTubeDescriptionLinksFromHtml(html), [
+    { url: "https://example.com/app", label: "Main app" },
+    { url: "https://docs.example.com/start", label: "Docs" },
+  ]);
+});
+
+test("extractLinksFromYouTubeDescription unwraps YouTube redirect links and dedupes", () => {
+  const description = [
+    "Official app: https://www.youtube.com/redirect?event=video_description&q=https%3A%2F%2Fapp.example.com%2Fdownload&redir_token=abc",
+    "Again https://app.example.com/download",
+  ].join("\n");
+
+  assert.deepEqual(youtube.extractLinksFromYouTubeDescription(description), [
+    { url: "https://app.example.com/download", label: "Official app" },
+  ]);
+});
+
+test("appendYouTubeDescriptionLinksToNotes preserves user notes and avoids duplicate blocks", () => {
+  const links = [
+    { url: "https://example.com", label: "Website" },
+    { url: "https://apps.apple.com/app/example", label: "" },
+  ];
+
+  const note = youtube.appendYouTubeDescriptionLinksToNotes("My saved note", links);
+
+  assert.equal(note, [
+    "My saved note",
+    "",
+    "Links from YouTube description:",
+    "- Website: https://example.com",
+    "- https://apps.apple.com/app/example",
+  ].join("\n"));
+
+  assert.equal(youtube.appendYouTubeDescriptionLinksToNotes(note, links), note);
+});

@@ -4,6 +4,7 @@ import { items, categories } from "@/db/schema";
 import { enrichUrl } from "@/lib/enrich";
 import { checkApiKey } from "@/lib/api-key";
 import { aiTagAndCategorize } from "@/lib/ai-tagger";
+import { appendYouTubeDescriptionLinksToNotes, fetchYouTubeDescriptionLinks, type YouTubeDescriptionLink } from "@/lib/youtube";
 import { asc } from "drizzle-orm";
 
 /**
@@ -64,8 +65,10 @@ export async function POST(req: NextRequest) {
 
   // Auto-enrich URL
   let og = { ogTitle: "", ogDescription: "", ogImage: "", siteName: "", favicon: "" };
+  let descriptionLinks: YouTubeDescriptionLink[] = [];
   if (url) {
     og = await enrichUrl(url);
+    descriptionLinks = await fetchYouTubeDescriptionLinks(url);
   }
 
   // AI auto-tag + auto-categorize when no tags/category provided
@@ -104,7 +107,7 @@ export async function POST(req: NextRequest) {
       title: title || og.ogTitle || "",
       content: type === "thought" ? content : (body.content as string || ""),
       url,
-      notes,
+      notes: appendYouTubeDescriptionLinksToNotes(notes, descriptionLinks),
       tags,
       category,
       pinned: false,

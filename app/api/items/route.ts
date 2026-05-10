@@ -7,6 +7,7 @@ import { checkApiKey } from "@/lib/api-key";
 import { aiTagAndCategorize } from "@/lib/ai-tagger";
 import { shouldEnrichUrlOnUpdate } from "@/lib/item-updates.mjs";
 import { buildItemSearchTsQuery } from "@/lib/item-search";
+import { appendYouTubeDescriptionLinksToNotes, fetchYouTubeDescriptionLinks, type YouTubeDescriptionLink } from "@/lib/youtube";
 
 // GET all items — supports ?q= for full-text search
 export async function GET(req: NextRequest) {
@@ -77,8 +78,12 @@ export async function POST(req: NextRequest) {
 
   // Auto-enrich if URL is provided and no og data was passed
   let og = { ogTitle: "", ogDescription: "", ogImage: "", siteName: "", favicon: "" };
-  if (url && !body.ogTitle) {
-    og = await enrichUrl(url);
+  let descriptionLinks: YouTubeDescriptionLink[] = [];
+  if (url) {
+    if (!body.ogTitle) {
+      og = await enrichUrl(url);
+    }
+    descriptionLinks = await fetchYouTubeDescriptionLinks(url);
   }
 
   let itemTags: string[] = body.tags || [];
@@ -123,7 +128,7 @@ export async function POST(req: NextRequest) {
       title: body.title || og.ogTitle || "",
       content: body.content || "",
       url,
-      notes: body.notes || "",
+      notes: appendYouTubeDescriptionLinksToNotes(body.notes || "", descriptionLinks),
       tags: itemTags,
       category: itemCategory,
       pinned: body.pinned || false,

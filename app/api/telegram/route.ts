@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { items, categories } from "@/db/schema";
+import { items, categories, settings } from "@/db/schema";
 import { enrichUrl } from "@/lib/enrich";
 import { aiTagAndCategorize } from "@/lib/ai-tagger";
 import { sendTelegram, allowedTelegramIds } from "@/lib/telegram";
-import { asc } from "drizzle-orm";
+import {
+  isMemoryOfWeekEnabled,
+  MEMORY_OF_WEEK_ENABLED_KEY,
+  parseMemoryToggleCommand,
+} from "@/lib/telegram-memory-settings.mjs";
+import { asc, eq } from "drizzle-orm";
 
 /**
  * POST /api/telegram
@@ -40,6 +45,7 @@ export async function POST(req: NextRequest) {
 
   const chatId = message.chat.id;
   const rawText = message.text || message.caption || "";
+  const memoryToggleCommand = parseMemoryToggleCommand(rawText);
 
   // Detect slash prefixes:
   //   /t or /task <text>     → task
@@ -60,6 +66,12 @@ export async function POST(req: NextRequest) {
   const senderId = message.from?.id?.toString();
   if (allowedIds.length > 0 && (!senderId || !allowedIds.includes(senderId))) {
     await sendTelegram(botToken, chatId, "This bot is private.");
+    return NextResponse.json({ ok: true });
+  }
+
+  if (memoryToggleCommand) {
+    const statusText = await handleMemoryToggleCommand(memoryToggleCommand.action);
+    await sendTelegram(botToken, chatId, statusText);
     return NextResponse.json({ ok: true });
   }
 
@@ -161,3 +173,29 @@ export async function POST(req: NextRequest) {
   }
 }
 
+async function handleMemoryToggleCommand(action: string): Promise<string> {
+  if (action === "on" || action === "off") {
+    const enabled = action === "on";
+    await db
+      .insert(settings)
+      .values({ key: MEMORY_OF_WEEK_ENABLED_KEY, value: enabled })
+      .onConflictDoUpdate({
+        target: settings.key,
+        set: { value: enabled, updatedAt: new Date() },
+      });
+
+    return enabled
+      ? "Memories are on. I will send Memory of the week in Telegram."
+      : "Memories are off. I will stop sending Memory of the week in Telegram.";
+  }
+
+  const rows = await db
+    .select({ value: settings.value })
+    .from(settings)
+    .where(eq(settings.key, MEMORY_OF_WEEK_ENABLED_KEY))
+    .limit(1);
+  const enabled = isMemoryOfWeekEnabled(rows[0]?.value);
+  return enabled
+    ? "Memories are on. Use /memories_off to turn them off."
+    : "Memories are off. Use /memories_on to turn them on.";
+}

@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { items } from "@/db/schema";
+import { items, settings } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { sendTelegram, allowedTelegramIds, verifyCronAuth } from "@/lib/telegram";
+import { isMemoryOfWeekEnabled, MEMORY_OF_WEEK_ENABLED_KEY } from "@/lib/telegram-memory-settings.mjs";
 
 /**
  * GET /api/cron/memory-of-week
@@ -20,6 +21,15 @@ export async function GET(req: NextRequest) {
   const userIds = allowedTelegramIds();
   if (!botToken || userIds.length === 0) {
     return NextResponse.json({ ok: false, error: "Telegram not configured" }, { status: 500 });
+  }
+
+  const settingRows = await db
+    .select({ value: settings.value })
+    .from(settings)
+    .where(eq(settings.key, MEMORY_OF_WEEK_ENABLED_KEY))
+    .limit(1);
+  if (!isMemoryOfWeekEnabled(settingRows[0]?.value)) {
+    return NextResponse.json({ ok: true, sent: 0, reason: "memories disabled" });
   }
 
   const memories = await db.select().from(items).where(eq(items.type, "memory"));

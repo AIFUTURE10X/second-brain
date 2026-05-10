@@ -8,6 +8,7 @@ import Vault from "./Vault";
 import { itemMatchesCardSearch } from "@/lib/card-search";
 import { SYNC_CHANNEL, getSyncClientId, type SyncMessage, type SyncPayload } from "@/lib/sync";
 import { mergeReminderDateTimeParts, splitReminderDateTime } from "@/lib/reminders.mjs";
+import { isMemoryOfWeekEnabled, MEMORY_OF_WEEK_ENABLED_KEY } from "@/lib/telegram-memory-settings.mjs";
 
 const CLIENT_APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "dev";
 
@@ -223,6 +224,8 @@ export default function Brain() {
   const [quickMemoryText, setQuickMemoryText] = useState("");
   const [quickMemorySaving, setQuickMemorySaving] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [memoryOfWeekEnabled, setMemoryOfWeekEnabled] = useState(true);
+  const [memoryOfWeekSaving, setMemoryOfWeekSaving] = useState(false);
   const [vaultOpen, setVaultOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [showAdd, setShowAdd] = useState(false);
@@ -285,6 +288,35 @@ export default function Brain() {
   useEffect(() => {
     if (typeof window !== "undefined") window.localStorage.setItem("sb_density", density);
   }, [density]);
+
+  useEffect(() => {
+    fetch(`/api/settings?key=${MEMORY_OF_WEEK_ENABLED_KEY}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        setMemoryOfWeekEnabled(isMemoryOfWeekEnabled(data?.[MEMORY_OF_WEEK_ENABLED_KEY]));
+      })
+      .catch(() => {});
+  }, []);
+
+  const updateMemoryOfWeekEnabled = async (enabled: boolean) => {
+    const previous = memoryOfWeekEnabled;
+    setMemoryOfWeekEnabled(enabled);
+    setMemoryOfWeekSaving(true);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: MEMORY_OF_WEEK_ENABLED_KEY, value: enabled }),
+      });
+      if (!res.ok) throw new Error("Failed to save setting");
+      showToast(enabled ? "Memory of the week is on" : "Memory of the week is off", "success");
+    } catch {
+      setMemoryOfWeekEnabled(previous);
+      showToast("Failed to update memory setting", "error");
+    } finally {
+      setMemoryOfWeekSaving(false);
+    }
+  };
 
   // Custom category colors — synced to server via /api/settings, with
   // localStorage acting as an instant cache so the palette renders before
@@ -1576,6 +1608,38 @@ export default function Brain() {
                   <p className="text-[10px] text-gray-600 font-mono mt-3 pt-3 border-t border-brand-border">
                     Long-press any message in any chat, tap Forward, pick the bot.
                   </p>
+                  <div className="mt-3 pt-3 border-t border-brand-border">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-mono text-gray-300">Memory of the week</p>
+                        <p className="text-[10px] font-mono text-gray-600">
+                          {memoryOfWeekEnabled ? "Telegram reminder is on" : "Telegram reminder is off"}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={memoryOfWeekEnabled}
+                        aria-label={memoryOfWeekEnabled ? "Turn off Memory of the week" : "Turn on Memory of the week"}
+                        disabled={memoryOfWeekSaving}
+                        onClick={() => updateMemoryOfWeekEnabled(!memoryOfWeekEnabled)}
+                        className="relative h-7 w-12 shrink-0 rounded-full border transition disabled:opacity-60"
+                        style={{
+                          borderColor: memoryOfWeekEnabled ? "#F2C94C80" : "#333842",
+                          background: memoryOfWeekEnabled ? "#F2C94C28" : "#181B21",
+                        }}
+                      >
+                        <span
+                          className="absolute top-1 h-5 w-5 rounded-full transition-all"
+                          style={{
+                            left: memoryOfWeekEnabled ? "22px" : "4px",
+                            background: memoryOfWeekEnabled ? "#F2C94C" : "#5B616D",
+                            boxShadow: memoryOfWeekEnabled ? "0 0 12px rgba(242, 201, 76, 0.35)" : "none",
+                          }}
+                        />
+                      </button>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>

@@ -5,6 +5,7 @@ import { upload } from "@vercel/blob/client";
 import { showToast } from "./Toast";
 import { VoiceButton } from "./VoiceButton";
 import Vault from "./Vault";
+import { itemMatchesCardSearch } from "@/lib/card-search";
 import { SYNC_CHANNEL, getSyncClientId, type SyncMessage, type SyncPayload } from "@/lib/sync";
 import { mergeReminderDateTimeParts, splitReminderDateTime } from "@/lib/reminders.mjs";
 
@@ -2927,17 +2928,7 @@ export default function Brain() {
                 const q = pickerSearch.trim().toLowerCase();
                 const matches = items
                   .filter(it => it.id !== editingId)
-                  .filter(it => {
-                    if (!q) return true;
-                    const entryHit = (it.noteEntries || []).some(e => e.body?.toLowerCase().includes(q));
-                    return (
-                      it.title.toLowerCase().includes(q) ||
-                      it.content.toLowerCase().includes(q) ||
-                      it.notes.toLowerCase().includes(q) ||
-                      entryHit ||
-                      it.tags.some(t => t.toLowerCase().includes(q))
-                    );
-                  })
+                  .filter(it => itemMatchesCardSearch(it, q))
                   .slice(0, 100);
                 if (matches.length === 0) {
                   return <div className="text-xs text-gray-500 font-mono py-6 text-center">No cards found</div>;
@@ -3000,19 +2991,7 @@ export default function Brain() {
                 const q = relatedPickerSearch.trim().toLowerCase();
                 const matches = items
                   .filter(it => it.id !== editingId)
-                  .filter(it => {
-                    if (!q) return true;
-                    const entryHit = (it.noteEntries || []).some(e => e.body?.toLowerCase().includes(q));
-                    return (
-                      it.title.toLowerCase().includes(q) ||
-                      it.content.toLowerCase().includes(q) ||
-                      it.notes.toLowerCase().includes(q) ||
-                      it.url.toLowerCase().includes(q) ||
-                      it.category.toLowerCase().includes(q) ||
-                      entryHit ||
-                      it.tags.some(t => t.toLowerCase().includes(q))
-                    );
-                  })
+                  .filter(it => itemMatchesCardSearch(it, q))
                   .slice(0, 100);
                 if (matches.length === 0) {
                   return <div className="text-xs text-gray-500 font-mono py-6 text-center">No cards found</div>;

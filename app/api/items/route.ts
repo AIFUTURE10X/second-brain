@@ -6,6 +6,7 @@ import { enrichUrl } from "@/lib/enrich";
 import { checkApiKey } from "@/lib/api-key";
 import { aiTagAndCategorize } from "@/lib/ai-tagger";
 import { shouldEnrichUrlOnUpdate } from "@/lib/item-updates.mjs";
+import { buildItemSearchTsQuery } from "@/lib/item-search";
 
 // GET all items — supports ?q= for full-text search
 export async function GET(req: NextRequest) {
@@ -24,14 +25,8 @@ export async function GET(req: NextRequest) {
 
   if (q) {
     // Full-text search across card text, link-preview metadata, source, and URL.
-    // Sanitize special PostgreSQL tsquery characters to prevent injection.
-    const sanitized = q.replace(/[!|&():*<>'\\]/g, " ").trim();
-    if (!sanitized) return NextResponse.json([]);
-    // OR each term with prefix matching so "claude code" finds cards
-    // containing "claude" OR anything starting with "code" — handy while
-    // typing. Each term gets :* (prefix), joined with | (OR).
-    const terms = sanitized.split(/\s+/).filter(Boolean);
-    const tsquery = terms.map(t => `${t}:*`).join(" | ");
+    const tsquery = buildItemSearchTsQuery(q);
+    if (!tsquery) return NextResponse.json([]);
     // ts_rank_cd ranks matches so cards hitting more of the terms float up.
     // Alias snake_case columns to camelCase so search results match the
     // Drizzle-select shape the frontend expects.

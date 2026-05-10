@@ -1,4 +1,10 @@
 import { extractYouTubeId } from "./youtube";
+import {
+  buildYouTubeOwnerSearchText,
+  isYouTubeChannelUrl,
+  isYouTubeUrl,
+  extractYouTubeOwnerNameFromTitle,
+} from "./youtube-owner";
 
 export function isPrivateUrl(urlStr: string): boolean {
   try {
@@ -35,14 +41,27 @@ export interface EnrichResult {
 
 const EMPTY: EnrichResult = { ogTitle: "", ogDescription: "", ogImage: "", siteName: "", favicon: "" };
 
+function youtubeChannelFallback(url: string): EnrichResult {
+  const owner = buildYouTubeOwnerSearchText("", url);
+  if (!owner) return EMPTY;
+  return {
+    ogTitle: owner,
+    ogDescription: owner,
+    ogImage: "",
+    siteName: "YouTube",
+    favicon: "https://www.youtube.com/favicon.ico",
+  };
+}
+
 async function enrichYouTube(url: string, videoId: string): Promise<EnrichResult> {
   try {
     const res = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`);
     if (!res.ok) return EMPTY;
     const data = await res.json();
+    const owner = buildYouTubeOwnerSearchText(data.author_name || "", url);
     return {
       ogTitle: data.title || "",
-      ogDescription: `${data.author_name || ""}`,
+      ogDescription: owner,
       ogImage: data.thumbnail_url || `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
       siteName: "YouTube",
       favicon: "https://www.youtube.com/favicon.ico",
@@ -80,6 +99,7 @@ export async function enrichUrl(url: string): Promise<EnrichResult> {
     // YouTube shortcut — use oEmbed (no HTML fetch needed)
     const ytId = extractYouTubeId(url);
     if (ytId) return enrichYouTube(url, ytId);
+    const channelFallback = isYouTubeChannelUrl(url) ? youtubeChannelFallback(url) : EMPTY;
 
     // Generic: fetch the page HTML and parse OG tags
     const controller = new AbortController();
@@ -97,11 +117,11 @@ export async function enrichUrl(url: string): Promise<EnrichResult> {
     });
     clearTimeout(timeout);
 
-    if (!res.ok) return EMPTY;
+    if (!res.ok) return channelFallback;
 
     // Only read first 50KB to avoid loading huge pages
     const reader = res.body?.getReader();
-    if (!reader) return EMPTY;
+    if (!reader) return channelFallback;
     let html = "";
     const decoder = new TextDecoder();
     while (html.length < 50_000) {
@@ -113,14 +133,30 @@ export async function enrichUrl(url: string): Promise<EnrichResult> {
 
     const origin = new URL(url).origin;
 
-    return {
+    const result = {
       ogTitle: meta(html, "og:title") || meta(html, "twitter:title") || extractTitle(html),
       ogDescription: meta(html, "og:description") || meta(html, "twitter:description") || meta(html, "description"),
       ogImage: meta(html, "og:image") || meta(html, "twitter:image"),
       siteName: meta(html, "og:site_name") || new URL(url).hostname.replace(/^www\./, ""),
       favicon: `${origin}/favicon.ico`,
     };
+
+    if (isYouTubeUrl(url)) {
+      const owner = isYouTubeChannelUrl(url)
+        ? buildYouTubeOwnerSearchText(result.ogTitle, url)
+        : "";
+
+      return {
+        ...result,
+        ogTitle: result.ogTitle ? extractYouTubeOwnerNameFromTitle(result.ogTitle) : result.ogTitle,
+        ogDescription: owner || result.ogDescription,
+        siteName: "YouTube",
+        favicon: "https://www.youtube.com/favicon.ico",
+      };
+    }
+
+    return result;
   } catch {
-    return EMPTY;
+    return isYouTubeChannelUrl(url) ? youtubeChannelFallback(url) : EMPTY;
   }
 }

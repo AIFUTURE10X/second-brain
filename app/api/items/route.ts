@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
   }
 
   if (q) {
-    // Full-text search across title, content, notes, og_title, og_description.
+    // Full-text search across card text, link-preview metadata, source, and URL.
     // Sanitize special PostgreSQL tsquery characters to prevent injection.
     const sanitized = q.replace(/[!|&():*<>'\\]/g, " ").trim();
     if (!sanitized) return NextResponse.json([]);
@@ -55,6 +55,8 @@ export async function GET(req: NextRequest) {
                     coalesce(notes,'') || ' ' ||
                     coalesce(og_title,'') || ' ' ||
                     coalesce(og_description,'') || ' ' ||
+                    coalesce(site_name,'') || ' ' ||
+                    coalesce(url,'') || ' ' ||
                     coalesce(category,'') || ' ' ||
                     coalesce(tags::text, '') AS haystack
            ) h

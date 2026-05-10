@@ -38,6 +38,7 @@ cp .env.example .env.local
 Fill in your values:
 ```
 DATABASE_URL=your-neon-connection-string
+BLOB_READ_WRITE_TOKEN=your-vercel-blob-read-write-token
 NEXTAUTH_URL=http://localhost:3000
 NEXTAUTH_SECRET=run-openssl-rand-base64-32
 GITHUB_CLIENT_ID=your-github-client-id
@@ -83,6 +84,7 @@ git push -u origin main
 2. Import `AIFUTURE10X/second-brain`
 3. Add environment variables:
    - `DATABASE_URL`
+   - `BLOB_READ_WRITE_TOKEN` (created by linking a Vercel Blob store to the project)
    - `NEXTAUTH_URL` → your Vercel URL (e.g. `https://second-brain.vercel.app`)
    - `NEXTAUTH_SECRET`
    - `GITHUB_CLIENT_ID`

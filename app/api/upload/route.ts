@@ -16,6 +16,11 @@ const ALLOWED_CONTENT_TYPES = [
   "image/jpeg",
   "image/gif",
   "image/webp",
+  "image/avif",
+  "image/bmp",
+  "image/heic",
+  "image/heif",
+  "image/svg+xml",
 ];
 
 const MAX_SIZE = 50 * 1024 * 1024; // 50 MB (Vercel Pro plan — plenty of blob storage)
@@ -23,6 +28,13 @@ const MAX_SIZE = 50 * 1024 * 1024; // 50 MB (Vercel Pro plan — plenty of blob 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const denied = checkApiKey(request);
   if (denied) return denied;
+
+  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+    return NextResponse.json(
+      { error: "File uploads are not configured: missing BLOB_READ_WRITE_TOKEN." },
+      { status: 500 },
+    );
+  }
 
   const body = (await request.json()) as HandleUploadBody;
 

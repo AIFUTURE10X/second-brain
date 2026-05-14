@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { upload } from "@vercel/blob/client";
 import { showToast } from "./Toast";
 import { VoiceButton } from "./VoiceButton";
+import { LinkifiedText } from "./LinkifiedText";
 import Vault from "./Vault";
 import { itemMatchesCardSearch } from "@/lib/card-search";
 import { SYNC_CHANNEL, getSyncClientId, type SyncMessage, type SyncPayload } from "@/lib/sync";
@@ -2320,9 +2321,10 @@ export default function Brain() {
                     )}
 
                     {item.content && !isCompact && (
-                      <p className={`text-xs text-gray-500 mt-1.5 leading-relaxed ${expanded ? "whitespace-pre-wrap" : "line-clamp-2"}`}>
-                        {item.content}
-                      </p>
+                      <LinkifiedText
+                        text={item.content}
+                        className={`text-xs text-gray-500 mt-1.5 leading-relaxed ${expanded ? "whitespace-pre-wrap" : "line-clamp-2"}`}
+                      />
                     )}
 
                     {/* Notes section (separate from content) — entries first, legacy fallback */}
@@ -2333,9 +2335,11 @@ export default function Brain() {
                         return (
                           <div className="mt-2 pl-2.5 border-l-2 flex flex-col gap-1" style={{ borderColor: t.color + "40" }}>
                             {visible.map(e => (
-                              <p key={e.id} className={`text-[11px] text-gray-400 italic leading-relaxed ${expanded ? "whitespace-pre-wrap" : "line-clamp-2"}`}>
-                                {e.body}
-                              </p>
+                              <LinkifiedText
+                                key={e.id}
+                                text={e.body}
+                                className={`text-[11px] text-gray-400 italic leading-relaxed ${expanded ? "whitespace-pre-wrap" : "line-clamp-2"}`}
+                              />
                             ))}
                             {!expanded && entries.length > 2 && (
                               <span className="text-[10px] font-mono text-gray-600">+{entries.length - 2} more entries</span>
@@ -2346,7 +2350,7 @@ export default function Brain() {
                       if (item.notes) {
                         return (
                           <div className={`mt-2 pl-2.5 border-l-2 ${expanded ? "" : "line-clamp-2"}`} style={{ borderColor: t.color + "40" }}>
-                            <p className="text-[11px] text-gray-400 italic leading-relaxed">{item.notes}</p>
+                            <LinkifiedText text={item.notes} className="text-[11px] text-gray-400 italic leading-relaxed" />
                           </div>
                         );
                       }

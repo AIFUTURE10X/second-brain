@@ -10,6 +10,7 @@ import { itemMatchesCardSearch } from "@/lib/card-search";
 import { SYNC_CHANNEL, getSyncClientId, type SyncMessage, type SyncPayload } from "@/lib/sync";
 import { mergeReminderDateTimeParts, splitReminderDateTime } from "@/lib/reminders.mjs";
 import { isMemoryOfWeekEnabled, MEMORY_OF_WEEK_ENABLED_KEY } from "@/lib/telegram-memory-settings.mjs";
+import { nextViewMode, parseViewMode, type ViewMode } from "@/lib/view-mode";
 
 const CLIENT_APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "dev";
 
@@ -137,6 +138,18 @@ const TYPES: Record<ItemType, { icon: string; label: string; color: string }> = 
 
 const TAG_COLORS = ["#E8A838", "#5B8DEF", "#6FCF97", "#BB6BD9", "#EB5757", "#56CCF2", "#F2994A", "#9B51E0"];
 const CAT_COLORS = ["#E8A838", "#5B8DEF", "#6FCF97", "#BB6BD9", "#EB5757", "#56CCF2", "#F2994A", "#9B51E0", "#27AE60", "#F2C94C"];
+
+function viewModeIcon(mode: ViewMode): string {
+  if (mode === "comfortable") return "▦";
+  if (mode === "list") return "☰";
+  return "≡";
+}
+
+function viewModeLabel(mode: ViewMode): string {
+  if (mode === "comfortable") return "Comfortable";
+  if (mode === "list") return "List";
+  return "Compact";
+}
 
 const SOURCE_LABELS: Record<string, string> = {
   "youtube.com": "YouTube",
@@ -269,7 +282,7 @@ export default function Brain() {
   const [draggingCatId, setDraggingCatId] = useState<string | null>(null);
   const [collapsedCats, setCollapsedCats] = useState<Set<string>>(new Set());
   const [visibleCount, setVisibleCount] = useState(50);
-  const [density, setDensity] = useState<"comfortable" | "compact">("comfortable");
+  const [density, setDensity] = useState<ViewMode>("comfortable");
   const [showTagManager, setShowTagManager] = useState(false);
   const [mergingTag, setMergingTag] = useState<{ from: string[]; to: string } | null>(null);
   const [tagMergeLoading, setTagMergeLoading] = useState(false);
@@ -284,7 +297,8 @@ export default function Brain() {
   // Persist density preference across reloads
   useEffect(() => {
     const saved = typeof window !== "undefined" ? window.localStorage.getItem("sb_density") : null;
-    if (saved === "compact" || saved === "comfortable") setDensity(saved);
+    const parsed = parseViewMode(saved);
+    if (parsed) setDensity(parsed);
   }, []);
   useEffect(() => {
     if (typeof window !== "undefined") window.localStorage.setItem("sb_density", density);
@@ -1651,11 +1665,11 @@ export default function Brain() {
               title="Encrypted vault"
             >▣</button>
             <button
-              onClick={() => setDensity(d => d === "compact" ? "comfortable" : "compact")}
+              onClick={() => setDensity(nextViewMode)}
               className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl text-gray-500 text-sm flex items-center justify-center border border-brand-border hover:text-gray-300 hover:border-gray-600 active:scale-95 transition"
-              aria-label={density === "compact" ? "Switch to comfortable view" : "Switch to compact view"}
-              title={density === "compact" ? "Comfortable view" : "Compact view"}
-            >{density === "compact" ? "▦" : "≡"}</button>
+              aria-label={`Switch to ${viewModeLabel(nextViewMode(density))} view`}
+              title={`${viewModeLabel(density)} view`}
+            >{viewModeIcon(density)}</button>
             <button
               onClick={async () => {
                 if (isRefreshing) return;
@@ -2090,7 +2104,7 @@ export default function Brain() {
       </div>
 
       {/* Items */}
-      <div className={`px-4 ${density === "compact" ? "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2" : ""}`}>
+      <div className={`px-4 ${density === "compact" ? "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2" : density === "list" ? "flex flex-col gap-1.5" : ""}`}>
         {filtered.length === 0 && (
           <div className={`text-center py-16 text-gray-700 ${density === "compact" ? "col-span-full" : ""}`}>
             <div className="text-4xl mb-3">◇</div>
@@ -2132,6 +2146,7 @@ export default function Brain() {
             : (item.attachments || []);
           const isYouTube = item.siteName === "YouTube";
           const isCompact = density === "compact" && !expanded;
+          const isList = density === "list" && !expanded;
           const relatedItems = relatedItemsForId(item.id);
           const reminder = activeReminderForId(item.id);
 
@@ -2167,7 +2182,7 @@ export default function Brain() {
                 setDragOverCardId(null);
                 attachFilesToItem(item.id, e.dataTransfer.files);
               }}
-              className={`bg-brand-card rounded-xl ${density === "compact" ? "" : "mb-2.5"} cursor-pointer transition-all overflow-hidden relative group`}
+              className={`bg-brand-card ${isList ? "rounded-lg" : "rounded-xl"} ${density === "compact" ? "" : density === "list" ? "" : "mb-2.5"} cursor-pointer transition-all overflow-hidden relative group`}
               style={{
                 border: `1px solid ${isDragTarget ? "#E8A838" : item.pinned ? "#E8A83850" : "#1E2128"}`,
                 background: isDragTarget ? "#E8A83820" : item.pinned ? "#E8A83808" : undefined,
@@ -2233,7 +2248,7 @@ export default function Brain() {
               )}
 
               {/* Thumbnail preview for links */}
-              {hasPreview && !isCompact && (
+              {hasPreview && !isCompact && !isList && (
                 <a
                   href={previewLinkUrl}
                   target="_blank"
@@ -2270,11 +2285,32 @@ export default function Brain() {
                 </a>
               )}
 
-              <div className={isCompact ? "px-3 py-2" : "p-4"}>
-                <div className={`flex ${isCompact ? "gap-2" : "gap-3"}`}>
+              <div className={isCompact ? "px-3 py-2" : isList ? "px-3 py-2.5" : "p-4"}>
+                <div className={`flex ${isCompact ? "gap-2" : isList ? "gap-2.5 items-center" : "gap-3"}`}>
+                  {hasPreview && isList && (
+                    <a
+                      href={previewLinkUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={e => e.stopPropagation()}
+                      className="relative w-12 h-12 rounded-md bg-brand-muted overflow-hidden shrink-0 border border-brand-border"
+                      title={isYouTube ? "Open on YouTube" : hasOgPreview ? "Open link" : "Open image"}
+                    >
+                      <img
+                        src={previewImageSrc}
+                        alt=""
+                        loading="lazy"
+                        onError={() => markPreviewImageFailed(previewImageSrc)}
+                        className="w-full h-full object-cover"
+                      />
+                      {isYouTube && (
+                        <span className="absolute inset-0 flex items-center justify-center text-white text-[10px] bg-black/20">▶</span>
+                      )}
+                    </a>
+                  )}
                   {!hasPreview && (
                     <div
-                      className={`${isCompact ? "w-6 h-6 text-xs" : "w-8 h-8 text-base"} rounded-lg flex items-center justify-center shrink-0`}
+                      className={`${isCompact ? "w-6 h-6 text-xs" : isList ? "w-8 h-8 text-sm" : "w-8 h-8 text-base"} rounded-lg flex items-center justify-center shrink-0`}
                       style={{ background: `${t.color}15`, border: `1px solid ${t.color}30` }}
                     >{t.icon}</div>
                   )}
@@ -2285,13 +2321,13 @@ export default function Brain() {
                       {item.favourite && <span className="text-[10px]" style={{ color: "#F2C94C" }} title="Favourite">★</span>}
                       {item.actionRequired && <span className="text-[10px]" style={{ color: "#EB5757" }} title="Needs action">⚡</span>}
                       {reminder && <span className="text-[10px]" style={{ color: "#56CCF2" }} title={`Reminder: ${formatReminderDue(reminder.dueAt)}`}>⏰</span>}
-                      {hasPreview && !isCompact && (
+                      {hasPreview && !isCompact && !isList && (
                         <div
                           className="w-5 h-5 rounded flex items-center justify-center text-[10px] shrink-0"
                           style={{ background: `${t.color}15`, border: `1px solid ${t.color}30` }}
                         >{t.icon}</div>
                       )}
-                      <p className={`${isCompact ? "text-[13px]" : "text-sm"} font-semibold text-gray-100 ${expanded ? "" : "truncate"}`} style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                      <p className={`${isCompact ? "text-[13px]" : isList ? "text-[13px]" : "text-sm"} font-semibold text-gray-100 ${expanded ? "" : "truncate"}`} style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
                         {item.title || item.ogTitle || "Untitled"}
                       </p>
                     </div>
@@ -2307,7 +2343,7 @@ export default function Brain() {
                     {/* OG description for links (when no user content) — skip for YouTube since
                         ogDescription holds the channel name shown above */}
                     {item.ogDescription && !item.content && !isCompact && !isYouTube && (
-                      <p className="text-xs text-gray-500 mt-1 line-clamp-2">{item.ogDescription}</p>
+                      <p className={`text-xs text-gray-500 mt-1 ${isList ? "line-clamp-1" : "line-clamp-2"}`}>{item.ogDescription}</p>
                     )}
 
                     {item.url && !isCompact && (
@@ -2316,19 +2352,19 @@ export default function Brain() {
                         target="_blank"
                         rel="noreferrer"
                         onClick={e => e.stopPropagation()}
-                        className="text-[11px] text-type-link font-mono block mt-1 truncate hover:underline"
+                        className={`${isList ? "text-[10px] mt-0.5" : "text-[11px] mt-1"} text-type-link font-mono block truncate hover:underline`}
                       >↗ {item.url.replace(/^https?:\/\/(www\.)?/, "").slice(0, 50)}</a>
                     )}
 
                     {item.content && !isCompact && (
                       <LinkifiedText
                         text={item.content}
-                        className={`text-xs text-gray-500 mt-1.5 leading-relaxed ${expanded ? "whitespace-pre-wrap" : "line-clamp-2"}`}
+                        className={`${isList ? "text-[11px] mt-0.5 line-clamp-1" : "text-xs mt-1.5"} text-gray-500 leading-relaxed ${expanded ? "whitespace-pre-wrap" : isList ? "line-clamp-1" : "line-clamp-2"}`}
                       />
                     )}
 
                     {/* Notes section (separate from content) — entries first, legacy fallback */}
-                    {!isCompact && (() => {
+                    {!isCompact && !isList && (() => {
                       const entries = (item.noteEntries || []).filter(e => e.body?.trim().length > 0);
                       if (entries.length > 0) {
                         const visible = expanded ? entries : entries.slice(0, 2);
@@ -2357,7 +2393,7 @@ export default function Brain() {
                       return null;
                     })()}
 
-                    {expanded && relatedItems.length > 0 && !isCompact && (
+                    {expanded && relatedItems.length > 0 && !isCompact && !isList && (
                       <div className="mt-2.5 pt-2.5 border-t border-brand-border">
                         <p className="text-[10px] text-gray-600 font-mono mb-1.5">Related</p>
                         <div className="flex flex-wrap gap-1.5">
@@ -2446,7 +2482,7 @@ export default function Brain() {
                     </div>
 
                     {/* Attachments */}
-                    {displayedAttachments.length > 0 && !isCompact && (
+                    {displayedAttachments.length > 0 && !isCompact && !isList && (
                       <div className="flex flex-wrap gap-1.5 mt-2">
                         {displayedAttachments.map(att => (
                           <a
@@ -2467,7 +2503,7 @@ export default function Brain() {
                     )}
 
                     {/* Action buttons — hidden in compact view unless expanded */}
-                    {!isCompact && (
+                    {!isCompact && !isList && (
                     <div className="flex flex-wrap gap-2 mt-3 pt-2.5 border-t border-brand-border">
                       {item.type === "task" && (
                         <button

@@ -3,6 +3,7 @@
 import { upload } from "@vercel/blob/client";
 import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { compressImageForUpload } from "@/lib/image-compression";
 
 const SHARE_TARGET_CACHE = "sb-share-target";
 const SHARE_TARGET_METADATA_URL = "/__share-target/metadata.json";
@@ -122,15 +123,16 @@ async function uploadSharedFiles(files: File[]): Promise<Attachment[]> {
   const attachments: Attachment[] = [];
 
   for (const [index, file] of files.entries()) {
-    if (file.size > MAX_SHARE_FILE_SIZE) {
-      throw new Error(`${file.name || "Shared photo"} exceeds 50 MB`);
+    const uploadFile = await compressImageForUpload(file);
+    if (uploadFile.size > MAX_SHARE_FILE_SIZE) {
+      throw new Error(`${uploadFile.name || "Shared photo"} exceeds 50 MB`);
     }
 
-    const contentType = resolveContentType(file);
-    const name = file.name || fallbackFileName(index, contentType);
-    const body = file.type === contentType && file.name
-      ? file
-      : new File([file], name, { type: contentType });
+    const contentType = resolveContentType(uploadFile);
+    const name = uploadFile.name || fallbackFileName(index, contentType);
+    const body = uploadFile.type === contentType && uploadFile.name
+      ? uploadFile
+      : new File([uploadFile], name, { type: contentType });
     const blob = await upload(name, body, {
       access: "public",
       handleUploadUrl: "/api/upload",
@@ -140,7 +142,7 @@ async function uploadSharedFiles(files: File[]): Promise<Attachment[]> {
       url: blob.url,
       name,
       contentType,
-      size: file.size,
+      size: uploadFile.size,
     });
   }
 

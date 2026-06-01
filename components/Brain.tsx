@@ -11,6 +11,7 @@ import { SYNC_CHANNEL, getSyncClientId, type SyncMessage, type SyncPayload } fro
 import { mergeReminderDateTimeParts, splitReminderDateTime } from "@/lib/reminders.mjs";
 import { isMemoryOfWeekEnabled, MEMORY_OF_WEEK_ENABLED_KEY } from "@/lib/telegram-memory-settings.mjs";
 import { nextViewMode, parseViewMode, type ViewMode } from "@/lib/view-mode";
+import { compressImageForUpload } from "@/lib/image-compression";
 
 const CLIENT_APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "dev";
 
@@ -889,21 +890,22 @@ export default function Brain() {
     const uploaded: Attachment[] = [];
     try {
       for (const file of Array.from(files)) {
-        if (file.size > 50 * 1024 * 1024) {
-          showToast(`${file.name} exceeds 50 MB`, "error");
+        const uploadFile = await compressImageForUpload(file);
+        if (uploadFile.size > 50 * 1024 * 1024) {
+          showToast(`${uploadFile.name} exceeds 50 MB`, "error");
           continue;
         }
-        const contentType = resolveContentType(file);
-        const body = file.type === contentType ? file : new File([file], file.name, { type: contentType });
-        const blob = await upload(file.name, body, {
+        const contentType = resolveContentType(uploadFile);
+        const body = uploadFile.type === contentType ? uploadFile : new File([uploadFile], uploadFile.name, { type: contentType });
+        const blob = await upload(uploadFile.name, body, {
           access: "public",
           handleUploadUrl: "/api/upload",
         });
         uploaded.push({
           url: blob.url,
-          name: file.name,
+          name: uploadFile.name,
           contentType,
-          size: file.size,
+          size: uploadFile.size,
         });
       }
       if (uploaded.length > 0) {
@@ -931,21 +933,22 @@ export default function Brain() {
     try {
       const uploaded: Attachment[] = [];
       for (const file of fileArr) {
-        if (file.size > 50 * 1024 * 1024) {
-          showToast(`${file.name} exceeds 50 MB`, "error");
+        const uploadFile = await compressImageForUpload(file);
+        if (uploadFile.size > 50 * 1024 * 1024) {
+          showToast(`${uploadFile.name} exceeds 50 MB`, "error");
           continue;
         }
-        const contentType = resolveContentType(file);
-        const body = file.type === contentType ? file : new File([file], file.name, { type: contentType });
-        const blob = await upload(file.name, body, {
+        const contentType = resolveContentType(uploadFile);
+        const body = uploadFile.type === contentType ? uploadFile : new File([uploadFile], uploadFile.name, { type: contentType });
+        const blob = await upload(uploadFile.name, body, {
           access: "public",
           handleUploadUrl: "/api/upload",
         });
         uploaded.push({
           url: blob.url,
-          name: file.name,
+          name: uploadFile.name,
           contentType,
-          size: file.size,
+          size: uploadFile.size,
         });
       }
       if (uploaded.length === 0) { setUploading(false); return; }

@@ -2106,41 +2106,44 @@ export default function Brain() {
                   className="mb-2 w-full rounded-lg border border-brand-border bg-[#13161B] px-3 py-2 text-sm text-gray-200 outline-none focus:border-gray-500"
                 />
                 <div className="max-h-72 overflow-y-auto no-scrollbar">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCatFilter("all");
-                      setView("all");
-                      setCatMenuOpen(false);
-                      setCatMenuSearch("");
-                    }}
-                    className="mb-2 flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left transition"
-                    style={{
-                      borderColor: catFilter === "all" ? "#E8A83860" : "#343842",
-                      background: catFilter === "all" ? "#E8A83815" : "#13161B",
-                      color: catFilter === "all" ? "#E8A838" : "#ddd",
-                    }}
-                  >
-                    <span className="font-mono text-[11px]">All categories</span>
-                    <span className="text-[10px] opacity-60">{items.length}</span>
-                  </button>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCatFilter("all");
+                        setView("all");
+                        setCatMenuOpen(false);
+                        setCatMenuSearch("");
+                      }}
+                      className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-left transition"
+                      style={{
+                        borderColor: catFilter === "all" ? "#E8A83860" : "#343842",
+                        background: catFilter === "all" ? "#E8A83815" : "#13161B",
+                        color: catFilter === "all" ? "#E8A838" : "#ddd",
+                      }}
+                    >
+                      <span className="font-mono text-[11px] whitespace-nowrap">All categories</span>
+                      <span className="text-[10px] opacity-60">{items.length}</span>
+                    </button>
 
-                  {categoryMenuGroups.length === 0 ? (
-                    <div className="p-4 text-center text-xs text-gray-500">No categories match &ldquo;{catMenuSearch}&rdquo;</div>
-                  ) : (
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                      {categoryMenuGroups.map(({ parent, children }) => {
+                    {categoryMenuGroups.length === 0 ? (
+                      <div className="w-full p-4 text-center text-xs text-gray-500">No categories match &ldquo;{catMenuSearch}&rdquo;</div>
+                    ) : (
+                      categoryMenuGroups.map(({ parent, children }) => {
                         const parentActive = catFilter === parent.name;
-                        return (
-                          <div key={parent.id} className="rounded-xl border border-brand-border bg-[#13161B] p-2.5">
+                        const parentCount = getCatNamesUnderParent(parent.name).filter(name => usedCatNames.has(name)).length;
+
+                        if (children.length === 0) {
+                          return (
                             <button
+                              key={parent.id}
                               type="button"
                               onClick={() => {
                                 setCatFilter(parentActive ? "all" : parent.name);
                                 setCatMenuOpen(false);
                                 setCatMenuSearch("");
                               }}
-                              className="mb-2 flex w-full items-center justify-between rounded-lg border px-2.5 py-2 text-left transition"
+                              className="inline-flex max-w-full items-center gap-2 rounded-full border px-3 py-1.5 text-left transition"
                               style={{
                                 borderColor: `${parent.color}${parentActive ? "70" : "35"}`,
                                 background: parentActive ? `${parent.color}20` : `${parent.color}10`,
@@ -2148,39 +2151,59 @@ export default function Brain() {
                               }}
                             >
                               <span className="truncate font-mono text-[11px]">{parent.name}</span>
-                              <span className="ml-2 shrink-0 text-[10px] opacity-60">{getCatNamesUnderParent(parent.name).filter(name => usedCatNames.has(name)).length}</span>
+                              <span className="shrink-0 text-[10px] opacity-60">{parentCount}</span>
                             </button>
-                            {children.length > 0 && (
-                              <div className="flex flex-wrap gap-1.5">
-                                {children.map(child => {
-                                  const childActive = catFilter === child.name;
-                                  return (
-                                    <button
-                                      key={child.id}
-                                      type="button"
-                                      onClick={() => {
-                                        setCatFilter(child.name);
-                                        setCatMenuOpen(false);
-                                        setCatMenuSearch("");
-                                      }}
-                                      className="rounded-md border px-2 py-1 text-[10px] font-mono transition"
-                                      style={{
-                                        borderColor: childActive ? `${child.color}60` : `${child.color}25`,
-                                        background: childActive ? `${child.color}15` : "transparent",
-                                        color: childActive ? child.color : "#7b8190",
-                                      }}
-                                    >
-                                      {child.name}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            )}
+                          );
+                        }
+
+                        return (
+                          <div key={parent.id} className="inline-flex max-w-full flex-col gap-1.5 rounded-2xl border border-brand-border bg-[#13161B] px-2.5 py-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCatFilter(parentActive ? "all" : parent.name);
+                                setCatMenuOpen(false);
+                                setCatMenuSearch("");
+                              }}
+                              className="inline-flex max-w-full items-center gap-2 self-start rounded-full border px-3 py-1.5 text-left transition"
+                              style={{
+                                borderColor: `${parent.color}${parentActive ? "70" : "35"}`,
+                                background: parentActive ? `${parent.color}20` : `${parent.color}10`,
+                                color: parent.color,
+                              }}
+                            >
+                              <span className="truncate font-mono text-[11px]">{parent.name}</span>
+                              <span className="shrink-0 text-[10px] opacity-60">{parentCount}</span>
+                            </button>
+                            <div className="flex max-w-full flex-wrap gap-1.5">
+                              {children.map(child => {
+                                const childActive = catFilter === child.name;
+                                return (
+                                  <button
+                                    key={child.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setCatFilter(child.name);
+                                      setCatMenuOpen(false);
+                                      setCatMenuSearch("");
+                                    }}
+                                    className="rounded-full border px-2.5 py-1 text-[10px] font-mono transition"
+                                    style={{
+                                      borderColor: childActive ? `${child.color}60` : `${child.color}25`,
+                                      background: childActive ? `${child.color}15` : "transparent",
+                                      color: childActive ? child.color : "#7b8190",
+                                    }}
+                                  >
+                                    {child.name}
+                                  </button>
+                                );
+                              })}
+                            </div>
                           </div>
                         );
-                      })}
-                    </div>
-                  )}
+                      })
+                    )}
+                  </div>
                 </div>
               </div>
             )}
@@ -2228,29 +2251,29 @@ export default function Brain() {
                 className="mb-2 w-full rounded-lg border border-brand-border bg-[#13161B] px-3 py-2 text-sm text-gray-200 outline-none focus:border-gray-500"
               />
               <div className="max-h-72 overflow-y-auto no-scrollbar">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSourceFilter(null);
-                    setSourceMenuOpen(false);
-                    setSourceMenuSearch("");
-                  }}
-                  className="mb-2 flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left transition"
-                  style={{
-                    borderColor: sourceFilter === null ? "#E8A83860" : "#343842",
-                    background: sourceFilter === null ? "#E8A83815" : "#13161B",
-                    color: sourceFilter === null ? "#E8A838" : "#ddd",
-                  }}
-                >
-                  <span className="font-mono text-[11px]">All sources</span>
-                  <span className="text-[10px] opacity-60">{sourceCounts.reduce((sum, src) => sum + src.count, 0)}</span>
-                </button>
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSourceFilter(null);
+                      setSourceMenuOpen(false);
+                      setSourceMenuSearch("");
+                    }}
+                    className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-left transition"
+                    style={{
+                      borderColor: sourceFilter === null ? "#E8A83860" : "#343842",
+                      background: sourceFilter === null ? "#E8A83815" : "#13161B",
+                      color: sourceFilter === null ? "#E8A838" : "#ddd",
+                    }}
+                  >
+                    <span className="font-mono text-[11px] whitespace-nowrap">All sources</span>
+                    <span className="text-[10px] opacity-60">{sourceCounts.reduce((sum, src) => sum + src.count, 0)}</span>
+                  </button>
 
-                {sourceMenuItems.length === 0 ? (
-                  <div className="p-4 text-center text-xs text-gray-500">No sources match &ldquo;{sourceMenuSearch}&rdquo;</div>
-                ) : (
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
-                    {sourceMenuItems.map(src => {
+                  {sourceMenuItems.length === 0 ? (
+                    <div className="w-full p-4 text-center text-xs text-gray-500">No sources match &ldquo;{sourceMenuSearch}&rdquo;</div>
+                  ) : (
+                    sourceMenuItems.map(src => {
                       const active = sourceFilter === src.key;
                       return (
                         <button
@@ -2261,20 +2284,20 @@ export default function Brain() {
                             setSourceMenuOpen(false);
                             setSourceMenuSearch("");
                           }}
-                          className="rounded-lg border px-2.5 py-2 text-left transition"
+                          className="inline-flex max-w-full items-center gap-2 rounded-full border px-2.5 py-1.5 text-left transition"
                           style={{
                             border: `1px solid ${active ? "#E8A83870" : "#44444460"}`,
                             background: active ? "#E8A83820" : "#13161B",
                             color: active ? "#E8A838" : "#aaa",
                           }}
                         >
-                          <div className="truncate text-[11px] font-mono">{src.label}</div>
-                          <div className="mt-0.5 text-[10px] opacity-50">{src.count}</div>
+                          <span className="truncate text-[11px] font-mono">{src.label}</span>
+                          <span className="shrink-0 text-[10px] opacity-50">{src.count}</span>
                         </button>
                       );
-                    })}
-                  </div>
-                )}
+                    })
+                  )}
+                </div>
               </div>
             </div>
           )}

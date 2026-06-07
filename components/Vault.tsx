@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { showToast } from "./Toast";
+import { revealVaultEditForm } from "@/lib/vault-ui";
 import {
   createVaultConfig,
   decryptVaultSecret,
@@ -138,6 +139,8 @@ export default function Vault({ onClose }: VaultProps) {
   const [showNewMasterConfirm, setShowNewMasterConfirm] = useState(false);
   const [visiblePasswords, setVisiblePasswords] = useState<Set<string>>(new Set());
   const lockTimer = useRef<number | null>(null);
+  const editPanelRef = useRef<HTMLDivElement | null>(null);
+  const titleInputRef = useRef<HTMLInputElement | null>(null);
 
   const loadVault = async () => {
     setLoading(true);
@@ -342,6 +345,9 @@ export default function Vault({ onClose }: VaultProps) {
     setEditingId(entry.id);
     setForm({ ...entry.secret, tags: joinTags(entry.secret.tags || []) });
     setShowFormPassword(false);
+    window.requestAnimationFrame(() => {
+      revealVaultEditForm(editPanelRef.current, titleInputRef.current);
+    });
   };
 
   const deleteEntry = async (id: string) => {
@@ -492,9 +498,9 @@ export default function Vault({ onClose }: VaultProps) {
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-[360px_1fr] gap-5">
-            <div className="rounded-xl border border-brand-border bg-brand-card p-4 h-fit">
+            <div ref={editPanelRef} className="rounded-xl border border-brand-border bg-brand-card p-4 h-fit">
               <h3 className="text-sm font-semibold mb-3">{editingId ? "Edit secret" : "Add secret"}</h3>
-              <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="Title" className="w-full mb-2 px-3 py-2 rounded-lg bg-brand-muted border border-brand-border text-sm outline-none" />
+              <input ref={titleInputRef} value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="Title" className="w-full mb-2 px-3 py-2 rounded-lg bg-brand-muted border border-brand-border text-sm outline-none" />
               <input value={form.username} onChange={e => setForm(f => ({ ...f, username: e.target.value }))} placeholder="Username / email" className="w-full mb-2 px-3 py-2 rounded-lg bg-brand-muted border border-brand-border text-sm outline-none" />
               <div className="flex gap-2 mb-2">
                 <div className="relative flex-1">

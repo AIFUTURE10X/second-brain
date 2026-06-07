@@ -10,3 +10,8 @@ test("compact cards use a square shell with cover-cropped header images", () => 
   assert.match(brainSource, /object-cover object-center/);
   assert.doesNotMatch(brainSource, /className="relative block w-full h-20 bg-brand-muted overflow-hidden group"/);
 });
+
+test("compact grid uses auto-fit fixed-width columns instead of a hard four-column ceiling", () => {
+  assert.match(brainSource, /repeat\(auto-fit,minmax\(min\(100%,17rem\),17rem\)\)/);
+  assert.doesNotMatch(brainSource, /lg:grid-cols-4/);
+});

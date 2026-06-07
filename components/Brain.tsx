@@ -2254,7 +2254,9 @@ export default function Brain() {
       </div>
 
       {/* Items */}
-      <div className={`px-4 ${density === "compact" ? "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2" : density === "list" ? "flex flex-col gap-1.5" : ""}`}>
+      <div
+        className={`px-4 ${density === "compact" ? "grid grid-cols-1 gap-2 sm:[grid-template-columns:repeat(auto-fit,minmax(min(100%,17rem),17rem))]" : density === "list" ? "flex flex-col gap-1.5" : ""}`}
+      >
         {filtered.length === 0 && (
           <div className={`text-center py-16 text-gray-700 ${density === "compact" ? "col-span-full" : ""}`}>
             <div className="text-4xl mb-3">◇</div>

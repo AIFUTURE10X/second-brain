@@ -2157,7 +2157,7 @@ export default function Brain() {
                         }
 
                         return (
-                          <div key={parent.id} className="inline-flex max-w-full flex-col gap-1.5 rounded-2xl border border-brand-border bg-[#13161B] px-2.5 py-2">
+                          <div key={parent.id} className="inline-flex max-w-full flex-col gap-1">
                             <button
                               type="button"
                               onClick={() => {
@@ -2175,7 +2175,7 @@ export default function Brain() {
                               <span className="truncate font-mono text-[11px]">{parent.name}</span>
                               <span className="shrink-0 text-[10px] opacity-60">{parentCount}</span>
                             </button>
-                            <div className="flex max-w-full flex-wrap gap-1.5">
+                            <div className="flex max-w-full flex-wrap gap-1.5 pl-2">
                               {children.map(child => {
                                 const childActive = catFilter === child.name;
                                 return (

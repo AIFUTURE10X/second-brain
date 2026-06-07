@@ -25,6 +25,7 @@ test("category and source filters use dense wrap dropdowns instead of wide cards
   assert.match(brainSource, /data-source-menu/);
   assert.match(brainSource, /inline-flex max-w-full items-center gap-2 rounded-full border px-3 py-1\.5 text-left transition/);
   assert.match(brainSource, /className="flex flex-wrap gap-1\.5"/);
+  assert.doesNotMatch(brainSource, /inline-flex max-w-full flex-col gap-1\.5 rounded-2xl border border-brand-border bg/);
   assert.doesNotMatch(brainSource, /Category filters — hierarchical[\s\S]*overflow-x-auto scroll-fade/);
   assert.doesNotMatch(brainSource, /grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3/);
   assert.doesNotMatch(brainSource, /grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4/);

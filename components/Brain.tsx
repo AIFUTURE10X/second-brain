@@ -13,6 +13,7 @@ import { mergeReminderDateTimeParts, splitReminderDateTime } from "@/lib/reminde
 import { isMemoryOfWeekEnabled, MEMORY_OF_WEEK_ENABLED_KEY } from "@/lib/telegram-memory-settings.mjs";
 import { nextViewMode, parseViewMode, type ViewMode } from "@/lib/view-mode";
 import { compressImageForUpload } from "@/lib/image-compression";
+import { draftStorageKey, parseDraftPayload, serializeDraftPayload } from "@/lib/item-draft-autosave";
 import { newChecklistItem, normalizeChecklistItems, type ChecklistItem } from "@/lib/task-checklists";
 
 const CLIENT_APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "dev";
@@ -229,6 +230,34 @@ function checklistProgress(items?: ChecklistItem[]): { completed: number; total:
   return { completed, total };
 }
 
+function hasMeaningfulFormContent(form: {
+  title: string;
+  content: string;
+  url: string;
+  noteEntries: NoteEntry[];
+  checklistItems: ChecklistItem[];
+  tags: string;
+  category: string;
+  attachments: Attachment[];
+  reminderDueAt: string;
+  reminderMessage: string;
+  relatedItemIds: string[];
+}): boolean {
+  return Boolean(
+    form.title.trim() ||
+    form.content.trim() ||
+    form.url.trim() ||
+    form.tags.trim() ||
+    form.category.trim() ||
+    form.reminderDueAt.trim() ||
+    form.reminderMessage.trim() ||
+    form.noteEntries.some(entry => entry.body.trim()) ||
+    form.checklistItems.some(item => item.text.trim()) ||
+    form.attachments.length > 0 ||
+    form.relatedItemIds.length > 0
+  );
+}
+
 export default function Brain() {
   const [items, setItems] = useState<Item[]>([]);
   const [relations, setRelations] = useState<ItemRelation[]>([]);
@@ -306,6 +335,7 @@ export default function Brain() {
   const [relatedPickerOpen, setRelatedPickerOpen] = useState(false);
   const [relatedPickerSearch, setRelatedPickerSearch] = useState("");
   const contentRef = useRef<HTMLTextAreaElement>(null);
+  const restoredDraftKeyRef = useRef<string | null>(null);
 
   // Persist density preference across reloads
   useEffect(() => {
@@ -781,9 +811,54 @@ export default function Brain() {
     return () => clearTimeout(timer);
   }, [search, fetchItems]);
 
+  useEffect(() => {
+    if (!showAdd || typeof window === "undefined") return;
+    const key = draftStorageKey(editingId);
+    const draft = parseDraftPayload<typeof form>(window.localStorage.getItem(key));
+    if (!draft || restoredDraftKeyRef.current === key) return;
+    restoredDraftKeyRef.current = key;
+    setForm(current => ({
+      ...current,
+      ...draft.form,
+      noteEntries: Array.isArray(draft.form.noteEntries) ? draft.form.noteEntries : current.noteEntries,
+      checklistItems: Array.isArray(draft.form.checklistItems) ? normalizeChecklistItems(draft.form.checklistItems) : current.checklistItems,
+      attachments: Array.isArray(draft.form.attachments) ? draft.form.attachments : current.attachments,
+      relatedItemIds: Array.isArray(draft.form.relatedItemIds) ? draft.form.relatedItemIds : current.relatedItemIds,
+    }));
+    showToast("Restored unsaved draft", "success");
+  }, [showAdd, editingId]);
+
+  useEffect(() => {
+    if (!showAdd || typeof window === "undefined") return;
+    const key = draftStorageKey(editingId);
+    const timer = window.setTimeout(() => {
+      if (!hasMeaningfulFormContent(form)) {
+        window.localStorage.removeItem(key);
+        return;
+      }
+      window.localStorage.setItem(key, serializeDraftPayload({ editingId, form }));
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, [showAdd, editingId, form]);
+
+  useEffect(() => {
+    if (!showAdd || typeof window === "undefined") return;
+    const key = draftStorageKey(editingId);
+    const flushDraft = () => {
+      if (!hasMeaningfulFormContent(form)) return;
+      window.localStorage.setItem(key, serializeDraftPayload({ editingId, form }));
+    };
+    window.addEventListener("beforeunload", flushDraft);
+    return () => window.removeEventListener("beforeunload", flushDraft);
+  }, [showAdd, editingId, form]);
+
   const resetForm = (keepOpen = false) => {
     const lastCategory = form.category;
     const lastType = form.type;
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(draftStorageKey(editingId));
+    }
+    restoredDraftKeyRef.current = null;
     setForm({ type: lastType, title: "", content: "", url: "", noteEntries: [], checklistItems: [], tags: "", category: lastCategory, attachments: [], favourite: false, actionRequired: false, reminderId: "", reminderDueAt: "", reminderMessage: "", relatedItemIds: [] });
     if (!keepOpen) {
       setShowAdd(false);
@@ -792,6 +867,10 @@ export default function Brain() {
   };
 
   const closeForm = () => {
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(draftStorageKey(editingId));
+    }
+    restoredDraftKeyRef.current = null;
     setForm({ type: "note", title: "", content: "", url: "", noteEntries: [], checklistItems: [], tags: "", category: "", attachments: [], favourite: false, actionRequired: false, reminderId: "", reminderDueAt: "", reminderMessage: "", relatedItemIds: [] });
     setShowAdd(false);
     setEditingId(null);
@@ -960,6 +1039,13 @@ export default function Brain() {
 
   const removeAttachment = (url: string) => {
     setForm(f => ({ ...f, attachments: f.attachments.filter(a => a.url !== url) }));
+  };
+
+  const renameAttachment = (url: string, name: string) => {
+    setForm(f => ({
+      ...f,
+      attachments: f.attachments.map(att => att.url === url ? { ...att, name } : att),
+    }));
   };
 
   // Attach files directly to an existing card (from drag/drop onto the card)
@@ -1350,6 +1436,7 @@ export default function Brain() {
       relatedItemIds: relatedItemsForId(item.id).map(related => related.id),
     });
     setEditingId(item.id);
+    restoredDraftKeyRef.current = null;
     setShowAdd(true);
   };
 
@@ -3066,16 +3153,27 @@ export default function Brain() {
                     className="flex items-center gap-2 px-3 py-2 bg-brand-muted border border-brand-border rounded-lg text-xs"
                   >
                     <span className="text-sm">{fileIcon(att.contentType, att.name)}</span>
+                    <div className="flex-1 min-w-0">
+                      <input
+                        type="text"
+                        value={att.name}
+                        onChange={e => renameAttachment(att.url, e.target.value)}
+                        placeholder="Attachment name"
+                        aria-label={`Rename ${att.name || "attachment"}`}
+                        className="w-full bg-transparent text-sm text-gray-300 outline-none placeholder:text-gray-500"
+                      />
+                    </div>
+                    <span className="text-gray-600 font-mono text-[10px]">{formatSize(att.size)}</span>
                     <a
                       href={att.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex-1 truncate text-gray-300 hover:text-white"
-                      title={att.name}
+                      className="text-gray-500 hover:text-white w-5 h-5 flex items-center justify-center"
+                      aria-label={`Open ${att.name || "attachment"}`}
+                      title="Open"
                     >
-                      {att.name}
+                      ↗
                     </a>
-                    <span className="text-gray-600 font-mono text-[10px]">{formatSize(att.size)}</span>
                     <button
                       type="button"
                       onClick={() => removeAttachment(att.url)}

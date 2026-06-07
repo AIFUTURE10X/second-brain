@@ -2302,6 +2302,10 @@ export default function Brain() {
           const isYouTube = item.siteName === "YouTube";
           const isCompact = density === "compact" && !expanded;
           const isList = density === "list" && !expanded;
+          const compactCardClass = isCompact ? "aspect-square flex flex-col" : "";
+          const compactPreviewClass = "relative block w-full aspect-[5/4] bg-brand-muted overflow-hidden group shrink-0";
+          const compactBodyClass = isCompact ? "flex flex-1 flex-col justify-between min-h-0 px-3 py-2.5" : isList ? "px-3 py-2.5" : "p-4";
+          const compactTitleClass = isCompact ? "text-[13px] line-clamp-2" : isList ? "text-[13px]" : "text-sm";
           const relatedItems = relatedItemsForId(item.id);
           const reminder = activeReminderForId(item.id);
 
@@ -2337,7 +2341,7 @@ export default function Brain() {
                 setDragOverCardId(null);
                 attachFilesToItem(item.id, e.dataTransfer.files);
               }}
-              className={`bg-brand-card ${isList ? "rounded-lg" : "rounded-xl"} ${density === "compact" ? "" : density === "list" ? "" : "mb-2.5"} cursor-pointer transition-all overflow-hidden relative group`}
+              className={`bg-brand-card ${isList ? "rounded-lg" : "rounded-xl"} ${compactCardClass} ${density === "compact" ? "" : density === "list" ? "" : "mb-2.5"} cursor-pointer transition-all overflow-hidden relative group`}
               style={{
                 border: `1px solid ${isDragTarget ? "#E8A838" : item.pinned ? "#E8A83850" : item.type === "task" && item.completed ? "#56CCF240" : "#1E2128"}`,
                 background: isDragTarget ? "#E8A83820" : item.pinned ? "#E8A83808" : item.type === "task" && item.completed ? "#56CCF208" : undefined,
@@ -2375,7 +2379,7 @@ export default function Brain() {
                   target="_blank"
                   rel="noreferrer"
                   onClick={e => e.stopPropagation()}
-                  className="relative block w-full h-20 bg-brand-muted overflow-hidden group"
+                  className={compactPreviewClass}
                   title={isYouTube ? "Open on YouTube" : hasOgPreview ? "Open link" : "Open image"}
                 >
                   <img
@@ -2383,7 +2387,7 @@ export default function Brain() {
                     alt=""
                     loading="lazy"
                     onError={() => markPreviewImageFailed(previewImageSrc)}
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-cover object-center"
                   />
                   {isYouTube && (
                     <div className="absolute inset-0 flex items-center justify-center">
@@ -2433,7 +2437,7 @@ export default function Brain() {
                 </a>
               )}
 
-              <div className={isCompact ? "px-3 py-2" : isList ? "px-3 py-2.5" : "p-4"}>
+              <div className={compactBodyClass}>
                 <div className={`flex ${isCompact ? "gap-2" : isList ? "gap-2.5 items-center" : "gap-3"}`}>
                   {hasPreview && isList && (
                     <a
@@ -2475,7 +2479,7 @@ export default function Brain() {
                           style={{ background: `${t.color}15`, border: `1px solid ${t.color}30` }}
                         >{itemIcon}</div>
                       )}
-                      <p className={`${isCompact ? "text-[13px]" : isList ? "text-[13px]" : "text-sm"} font-semibold text-gray-100 ${expanded ? "" : "truncate"} ${item.type === "task" && item.completed ? "line-through text-gray-400" : ""}`} style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                      <p className={`${compactTitleClass} font-semibold text-gray-100 ${expanded ? "" : isCompact ? "" : "truncate"} ${item.type === "task" && item.completed ? "line-through text-gray-400" : ""}`} style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
                         {item.title || item.ogTitle || "Untitled"}
                       </p>
                       {hasChecklist && (

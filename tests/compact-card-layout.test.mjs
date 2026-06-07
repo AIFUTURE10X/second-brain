@@ -13,5 +13,15 @@ test("compact cards use a square shell with cover-cropped header images", () => 
 
 test("compact grid uses auto-fit fixed-width columns instead of a hard four-column ceiling", () => {
   assert.match(brainSource, /repeat\(auto-fit,minmax\(min\(100%,17rem\),17rem\)\)/);
-  assert.doesNotMatch(brainSource, /lg:grid-cols-4/);
+  assert.doesNotMatch(brainSource, /grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2/);
+});
+
+test("category and source filters use dropdown grids instead of long chip strips", () => {
+  assert.match(brainSource, /const \[catMenuOpen, setCatMenuOpen\] = useState\(false\)/);
+  assert.match(brainSource, /const \[sourceMenuOpen, setSourceMenuOpen\] = useState\(false\)/);
+  assert.match(brainSource, /placeholder="Search categories…"/);
+  assert.match(brainSource, /placeholder="Search sources…"/);
+  assert.match(brainSource, /data-category-menu/);
+  assert.match(brainSource, /data-source-menu/);
+  assert.doesNotMatch(brainSource, /Category filters — hierarchical[\s\S]*overflow-x-auto scroll-fade/);
 });

@@ -272,6 +272,10 @@ export default function Brain() {
   const [actionOnly, setActionOnly] = useState(false);
   const [remindersOnly, setRemindersOnly] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [catMenuOpen, setCatMenuOpen] = useState(false);
+  const [catMenuSearch, setCatMenuSearch] = useState("");
+  const [sourceMenuOpen, setSourceMenuOpen] = useState(false);
+  const [sourceMenuSearch, setSourceMenuSearch] = useState("");
   const [tagMenuOpen, setTagMenuOpen] = useState(false);
   const [tagMenuSearch, setTagMenuSearch] = useState("");
   const [quickTaskText, setQuickTaskText] = useState("");
@@ -645,7 +649,9 @@ export default function Brain() {
         else if (showAdd) closeForm();
         else if (showCatManager) setShowCatManager(false);
         else if (showTagManager) { setShowTagManager(false); setMergingTag(null); }
-        else if (tagMenuOpen) setTagMenuOpen(false);
+        else if (tagMenuOpen) { setTagMenuOpen(false); setTagMenuSearch(""); }
+        else if (sourceMenuOpen) { setSourceMenuOpen(false); setSourceMenuSearch(""); }
+        else if (catMenuOpen) { setCatMenuOpen(false); setCatMenuSearch(""); }
       }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
@@ -655,7 +661,7 @@ export default function Brain() {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [showAdd, showCatManager, showTagManager, tagMenuOpen, pickerOpen, relatedPickerOpen, vaultOpen]);
+  }, [catMenuOpen, pickerOpen, relatedPickerOpen, showAdd, showCatManager, showTagManager, sourceMenuOpen, tagMenuOpen, vaultOpen]);
 
   // Paste image from clipboard while the add/edit modal is open
   useEffect(() => {
@@ -779,12 +785,43 @@ export default function Brain() {
     }
   }, []);
 
+  // Close category menu when clicking outside
+  useEffect(() => {
+    if (!catMenuOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest("[data-category-menu]")) {
+        setCatMenuOpen(false);
+        setCatMenuSearch("");
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [catMenuOpen]);
+
+  // Close source menu when clicking outside
+  useEffect(() => {
+    if (!sourceMenuOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest("[data-source-menu]")) {
+        setSourceMenuOpen(false);
+        setSourceMenuSearch("");
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [sourceMenuOpen]);
+
   // Close tag menu when clicking outside
   useEffect(() => {
     if (!tagMenuOpen) return;
     const handleClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
-      if (!target.closest("[data-tag-menu]")) setTagMenuOpen(false);
+      if (!target.closest("[data-tag-menu]")) {
+        setTagMenuOpen(false);
+        setTagMenuSearch("");
+      }
     };
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
@@ -1658,6 +1695,17 @@ export default function Brain() {
   const menuTags = tagMenuSearch.trim()
     ? tagsByCount.filter(t => t.toLowerCase().includes(tagMenuSearch.toLowerCase()))
     : tagsByCount;
+  const categoryMenuQuery = catMenuSearch.trim().toLowerCase();
+  const categoryMenuGroups = parentCats
+    .map(parent => {
+      const children = getChildren(parent.id).filter(sub => usedCatNames.has(sub.name));
+      return { parent, children };
+    })
+    .filter(({ parent, children }) => {
+      if (!categoryMenuQuery) return true;
+      return parent.name.toLowerCase().includes(categoryMenuQuery)
+        || children.some(child => child.name.toLowerCase().includes(categoryMenuQuery));
+    });
 
   const sourceCounts = (() => {
     const counts = new Map<string, { label: string; count: number }>();
@@ -1672,6 +1720,10 @@ export default function Brain() {
       .map(([key, v]) => ({ key, label: v.label, count: v.count }))
       .sort((a, b) => b.count - a.count);
   })();
+  const sourceMenuQuery = sourceMenuSearch.trim().toLowerCase();
+  const sourceMenuItems = sourceMenuQuery
+    ? sourceCounts.filter(src => src.label.toLowerCase().includes(sourceMenuQuery) || src.key.toLowerCase().includes(sourceMenuQuery))
+    : sourceCounts;
   const counts: Record<string, number> = {
     all: items.length,
     ...Object.fromEntries(Object.keys(TYPES).map(k => [
@@ -2014,87 +2066,218 @@ export default function Brain() {
           })()}
         </div>
 
-        {/* Category filters — hierarchical */}
+        {/* Category filter dropdown */}
         {categories.length > 0 && (
-          <div className="flex flex-col gap-1 pb-3 pt-1.5">
-            <div className="flex gap-1 items-center overflow-x-auto scroll-fade">
-              {catFilter !== "all" ? (
-                <button
-                  onClick={() => { setCatFilter("all"); setView("all"); }}
-                  className="px-2.5 py-1 rounded-md text-[11px] font-mono transition flex items-center gap-1 shrink-0"
-                  style={{ border: "1px solid #E8A83850", background: "#E8A83815", color: "#E8A838" }}
-                >← All</button>
-              ) : (
-                <button
-                  onClick={() => setCatFilter("all")}
-                  className="px-2.5 py-1 rounded-md text-[11px] font-mono transition shrink-0"
-                  style={{ border: "1px solid #ffffff30", background: "#ffffff10", color: "#fff" }}
-                >All</button>
-              )}
-              {parentCats.map(cat => (
-                <button
-                  key={cat.id}
-                  onClick={() => setCatFilter(catFilter === cat.name ? "all" : cat.name)}
-                  className="px-2.5 py-1 rounded-md text-[11px] font-mono transition whitespace-nowrap shrink-0"
-                  style={{
-                    border: `1px solid ${cat.color}${catFilter === cat.name ? "60" : "40"}`,
-                    background: catFilter === cat.name ? `${cat.color}20` : `${cat.color}10`,
-                    color: cat.color,
-                  }}
-                >{cat.name}</button>
-              ))}
-            </div>
-            {/* Subcategories row — shows when parent is selected */}
-            {catFilter !== "all" && (() => {
-              const parent = categories.find(c => c.name === catFilter && !c.parentId);
-              const subs = parent ? getChildren(parent.id).filter(s => usedCatNames.has(s.name)) : [];
-              return subs.length > 0 ? (
-                <div className="flex gap-1 items-center overflow-x-auto scroll-fade pl-4">
-                  {subs.map(sub => (
-                    <button
-                      key={sub.id}
-                      onClick={() => setCatFilter(sub.name)}
-                      className="px-2 py-0.5 rounded text-[10px] font-mono transition whitespace-nowrap shrink-0"
-                      style={{
-                        border: catFilter === sub.name ? `1px solid ${sub.color}50` : `1px solid ${sub.color}20`,
-                        background: catFilter === sub.name ? `${sub.color}15` : "transparent",
-                        color: catFilter === sub.name ? sub.color : "#555",
-                      }}
-                    >↳ {sub.name}</button>
-                  ))}
+          <div className="relative pb-3 pt-1.5" data-category-menu>
+            <button
+              type="button"
+              onClick={() => {
+                setCatMenuOpen(v => {
+                  const next = !v;
+                  if (next) {
+                    setSourceMenuOpen(false);
+                    setSourceMenuSearch("");
+                    setTagMenuOpen(false);
+                    setTagMenuSearch("");
+                  } else {
+                    setCatMenuSearch("");
+                  }
+                  return next;
+                });
+              }}
+              className="flex w-full items-center justify-between rounded-xl border border-brand-border bg-brand-muted/60 px-3 py-2 text-left transition hover:border-gray-500"
+              aria-expanded={catMenuOpen}
+            >
+              <span className="flex min-w-0 items-center gap-2">
+                <span className="text-[10px] font-mono uppercase tracking-[0.2em] text-gray-500">Categories</span>
+                <span className="truncate text-sm text-gray-200">{catFilter === "all" ? "All categories" : catFilter}</span>
+              </span>
+              <span className="shrink-0 text-xs font-mono text-gray-500">{catMenuOpen ? "▴" : "▾"}</span>
+            </button>
+
+            {catMenuOpen && (
+              <div className="absolute left-0 right-0 top-full z-40 mt-2 rounded-xl border border-brand-border bg-[#0D0F12] p-3 shadow-2xl">
+                <input
+                  type="text"
+                  autoFocus
+                  value={catMenuSearch}
+                  onChange={e => setCatMenuSearch(e.target.value)}
+                  placeholder="Search categories…"
+                  className="mb-2 w-full rounded-lg border border-brand-border bg-[#13161B] px-3 py-2 text-sm text-gray-200 outline-none focus:border-gray-500"
+                />
+                <div className="max-h-72 overflow-y-auto no-scrollbar">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCatFilter("all");
+                      setView("all");
+                      setCatMenuOpen(false);
+                      setCatMenuSearch("");
+                    }}
+                    className="mb-2 flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left transition"
+                    style={{
+                      borderColor: catFilter === "all" ? "#E8A83860" : "#343842",
+                      background: catFilter === "all" ? "#E8A83815" : "#13161B",
+                      color: catFilter === "all" ? "#E8A838" : "#ddd",
+                    }}
+                  >
+                    <span className="font-mono text-[11px]">All categories</span>
+                    <span className="text-[10px] opacity-60">{items.length}</span>
+                  </button>
+
+                  {categoryMenuGroups.length === 0 ? (
+                    <div className="p-4 text-center text-xs text-gray-500">No categories match &ldquo;{catMenuSearch}&rdquo;</div>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                      {categoryMenuGroups.map(({ parent, children }) => {
+                        const parentActive = catFilter === parent.name;
+                        return (
+                          <div key={parent.id} className="rounded-xl border border-brand-border bg-[#13161B] p-2.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCatFilter(parentActive ? "all" : parent.name);
+                                setCatMenuOpen(false);
+                                setCatMenuSearch("");
+                              }}
+                              className="mb-2 flex w-full items-center justify-between rounded-lg border px-2.5 py-2 text-left transition"
+                              style={{
+                                borderColor: `${parent.color}${parentActive ? "70" : "35"}`,
+                                background: parentActive ? `${parent.color}20` : `${parent.color}10`,
+                                color: parent.color,
+                              }}
+                            >
+                              <span className="truncate font-mono text-[11px]">{parent.name}</span>
+                              <span className="ml-2 shrink-0 text-[10px] opacity-60">{getCatNamesUnderParent(parent.name).filter(name => usedCatNames.has(name)).length}</span>
+                            </button>
+                            {children.length > 0 && (
+                              <div className="flex flex-wrap gap-1.5">
+                                {children.map(child => {
+                                  const childActive = catFilter === child.name;
+                                  return (
+                                    <button
+                                      key={child.id}
+                                      type="button"
+                                      onClick={() => {
+                                        setCatFilter(child.name);
+                                        setCatMenuOpen(false);
+                                        setCatMenuSearch("");
+                                      }}
+                                      className="rounded-md border px-2 py-1 text-[10px] font-mono transition"
+                                      style={{
+                                        borderColor: childActive ? `${child.color}60` : `${child.color}25`,
+                                        background: childActive ? `${child.color}15` : "transparent",
+                                        color: childActive ? child.color : "#7b8190",
+                                      }}
+                                    >
+                                      {child.name}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-              ) : null;
-            })()}
+              </div>
+            )}
           </div>
         )}
       </div>
 
       {/* Sources (filter by site) */}
       {sourceCounts.length > 0 && (
-        <div className="flex gap-1.5 px-5 pt-2.5 overflow-x-auto scroll-fade">
-          {[...sourceCounts]
-            .sort((a, b) => {
-              const aActive = sourceFilter === a.key ? 1 : 0;
-              const bActive = sourceFilter === b.key ? 1 : 0;
-              return bActive - aActive;
-            })
-            .map(src => {
-              const active = sourceFilter === src.key;
-              return (
+        <div className="relative px-5 pt-2.5" data-source-menu>
+          <button
+            type="button"
+            onClick={() => {
+              setSourceMenuOpen(v => {
+                const next = !v;
+                if (next) {
+                  setCatMenuOpen(false);
+                  setCatMenuSearch("");
+                  setTagMenuOpen(false);
+                  setTagMenuSearch("");
+                } else {
+                  setSourceMenuSearch("");
+                }
+                return next;
+              });
+            }}
+            className="flex w-full items-center justify-between rounded-xl border border-brand-border bg-brand-muted/60 px-3 py-2 text-left transition hover:border-gray-500"
+            aria-expanded={sourceMenuOpen}
+          >
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="text-[10px] font-mono uppercase tracking-[0.2em] text-gray-500">Sources</span>
+              <span className="truncate text-sm text-gray-200">{sourceFilter ? sourceCounts.find(src => src.key === sourceFilter)?.label || sourceFilter : "All sources"}</span>
+            </span>
+            <span className="shrink-0 text-xs font-mono text-gray-500">{sourceMenuOpen ? "▴" : "▾"}</span>
+          </button>
+
+          {sourceMenuOpen && (
+            <div className="absolute left-5 right-5 top-full z-40 mt-2 rounded-xl border border-brand-border bg-[#0D0F12] p-3 shadow-2xl">
+              <input
+                type="text"
+                autoFocus
+                value={sourceMenuSearch}
+                onChange={e => setSourceMenuSearch(e.target.value)}
+                placeholder="Search sources…"
+                className="mb-2 w-full rounded-lg border border-brand-border bg-[#13161B] px-3 py-2 text-sm text-gray-200 outline-none focus:border-gray-500"
+              />
+              <div className="max-h-72 overflow-y-auto no-scrollbar">
                 <button
-                  key={src.key}
-                  onClick={() => setSourceFilter(active ? null : src.key)}
-                  className="px-2.5 py-0.5 rounded-full text-[11px] font-mono transition whitespace-nowrap shrink-0"
+                  type="button"
+                  onClick={() => {
+                    setSourceFilter(null);
+                    setSourceMenuOpen(false);
+                    setSourceMenuSearch("");
+                  }}
+                  className="mb-2 flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left transition"
                   style={{
-                    border: `1px solid ${active ? "#E8A83870" : "#44444460"}`,
-                    background: active ? "#E8A83820" : "transparent",
-                    color: active ? "#E8A838" : "#aaa",
+                    borderColor: sourceFilter === null ? "#E8A83860" : "#343842",
+                    background: sourceFilter === null ? "#E8A83815" : "#13161B",
+                    color: sourceFilter === null ? "#E8A838" : "#ddd",
                   }}
                 >
-                  {src.label} <span className="opacity-50">{src.count}</span>
+                  <span className="font-mono text-[11px]">All sources</span>
+                  <span className="text-[10px] opacity-60">{sourceCounts.reduce((sum, src) => sum + src.count, 0)}</span>
                 </button>
-              );
-            })}
+
+                {sourceMenuItems.length === 0 ? (
+                  <div className="p-4 text-center text-xs text-gray-500">No sources match &ldquo;{sourceMenuSearch}&rdquo;</div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                    {sourceMenuItems.map(src => {
+                      const active = sourceFilter === src.key;
+                      return (
+                        <button
+                          key={src.key}
+                          type="button"
+                          onClick={() => {
+                            setSourceFilter(active ? null : src.key);
+                            setSourceMenuOpen(false);
+                            setSourceMenuSearch("");
+                          }}
+                          className="rounded-lg border px-2.5 py-2 text-left transition"
+                          style={{
+                            border: `1px solid ${active ? "#E8A83870" : "#44444460"}`,
+                            background: active ? "#E8A83820" : "#13161B",
+                            color: active ? "#E8A838" : "#aaa",
+                          }}
+                        >
+                          <div className="truncate text-[11px] font-mono">{src.label}</div>
+                          <div className="mt-0.5 text-[10px] opacity-50">{src.count}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

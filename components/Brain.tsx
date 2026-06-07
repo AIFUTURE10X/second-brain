@@ -5,6 +5,7 @@ import { upload } from "@vercel/blob/client";
 import { showToast } from "./Toast";
 import { VoiceButton } from "./VoiceButton";
 import { LinkifiedText } from "./LinkifiedText";
+import TaskChecklistEditor from "./TaskChecklistEditor";
 import Vault from "./Vault";
 import { itemMatchesCardSearch } from "@/lib/card-search";
 import { SYNC_CHANNEL, getSyncClientId, type SyncMessage, type SyncPayload } from "@/lib/sync";
@@ -12,6 +13,7 @@ import { mergeReminderDateTimeParts, splitReminderDateTime } from "@/lib/reminde
 import { isMemoryOfWeekEnabled, MEMORY_OF_WEEK_ENABLED_KEY } from "@/lib/telegram-memory-settings.mjs";
 import { nextViewMode, parseViewMode, type ViewMode } from "@/lib/view-mode";
 import { compressImageForUpload } from "@/lib/image-compression";
+import { newChecklistItem, normalizeChecklistItems, type ChecklistItem } from "@/lib/task-checklists";
 
 const CLIENT_APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "dev";
 
@@ -39,9 +41,12 @@ interface Item {
   url: string;
   notes: string;
   noteEntries?: NoteEntry[];
+  checklistItems?: ChecklistItem[];
   tags: string[];
   category: string;
   pinned: boolean;
+  completed?: boolean;
+  completedAt?: string | null;
   favourite?: boolean;
   actionRequired?: boolean;
   attachments?: Attachment[];
@@ -218,6 +223,12 @@ function formatReminderDue(value: string): string {
   });
 }
 
+function checklistProgress(items?: ChecklistItem[]): { completed: number; total: number } {
+  const total = items?.length ?? 0;
+  const completed = (items || []).filter(item => item.completed).length;
+  return { completed, total };
+}
+
 export default function Brain() {
   const [items, setItems] = useState<Item[]>([]);
   const [relations, setRelations] = useState<ItemRelation[]>([]);
@@ -252,6 +263,7 @@ export default function Brain() {
     content: "",
     url: "",
     noteEntries: [] as NoteEntry[],
+    checklistItems: [] as ChecklistItem[],
     tags: "",
     category: "",
     attachments: [] as Attachment[],
@@ -772,7 +784,7 @@ export default function Brain() {
   const resetForm = (keepOpen = false) => {
     const lastCategory = form.category;
     const lastType = form.type;
-    setForm({ type: lastType, title: "", content: "", url: "", noteEntries: [], tags: "", category: lastCategory, attachments: [], favourite: false, actionRequired: false, reminderId: "", reminderDueAt: "", reminderMessage: "", relatedItemIds: [] });
+    setForm({ type: lastType, title: "", content: "", url: "", noteEntries: [], checklistItems: [], tags: "", category: lastCategory, attachments: [], favourite: false, actionRequired: false, reminderId: "", reminderDueAt: "", reminderMessage: "", relatedItemIds: [] });
     if (!keepOpen) {
       setShowAdd(false);
     }
@@ -780,7 +792,7 @@ export default function Brain() {
   };
 
   const closeForm = () => {
-    setForm({ type: "note", title: "", content: "", url: "", noteEntries: [], tags: "", category: "", attachments: [], favourite: false, actionRequired: false, reminderId: "", reminderDueAt: "", reminderMessage: "", relatedItemIds: [] });
+    setForm({ type: "note", title: "", content: "", url: "", noteEntries: [], checklistItems: [], tags: "", category: "", attachments: [], favourite: false, actionRequired: false, reminderId: "", reminderDueAt: "", reminderMessage: "", relatedItemIds: [] });
     setShowAdd(false);
     setEditingId(null);
   };
@@ -802,6 +814,33 @@ export default function Brain() {
 
   const deleteNoteEntry = (id: string) => {
     setForm(f => ({ ...f, noteEntries: f.noteEntries.filter(e => e.id !== id) }));
+  };
+
+  const addChecklistRow = () => {
+    setForm(f => ({ ...f, checklistItems: [...f.checklistItems, newChecklistItem()] }));
+  };
+
+  const updateChecklistRowText = (id: string, text: string) => {
+    setForm(f => ({
+      ...f,
+      checklistItems: f.checklistItems.map(item => item.id === id ? { ...item, text } : item),
+    }));
+  };
+
+  const toggleChecklistRow = (id: string) => {
+    const now = new Date().toISOString();
+    setForm(f => ({
+      ...f,
+      checklistItems: f.checklistItems.map(item => (
+        item.id === id
+          ? { ...item, completed: !item.completed, completedAt: item.completed ? null : now }
+          : item
+      )),
+    }));
+  };
+
+  const deleteChecklistRow = (id: string) => {
+    setForm(f => ({ ...f, checklistItems: f.checklistItems.filter(item => item.id !== id) }));
   };
 
   useEffect(() => {
@@ -1038,14 +1077,15 @@ export default function Brain() {
     setSaving(true);
     const tags = form.tags.split(",").map(t => t.trim()).filter(Boolean);
     const noteEntries = form.noteEntries.filter(e => e.body.trim().length > 0);
+    const checklistItems = normalizeChecklistItems(form.checklistItems);
     const { relatedItemIds, reminderId, reminderDueAt, reminderMessage, ...itemForm } = form;
     const previousRelatedIds = editingId ? relatedItemsForId(editingId).map(item => item.id) : [];
     // Once entries exist, clear the legacy single-blob field on the server so
     // we don't double-render after the migration on next load.
     const legacyClear = noteEntries.length > 0 && editingId ? { notes: "" } : {};
     const payload = editingId
-      ? { id: editingId, ...itemForm, tags, noteEntries, ...legacyClear }
-      : { ...itemForm, tags, noteEntries };
+      ? { id: editingId, ...itemForm, tags, noteEntries, checklistItems, ...legacyClear }
+      : { ...itemForm, tags, noteEntries, checklistItems };
     try {
       const res = await fetch(editingId ? "/api/items" : "/api/items", {
         method: editingId ? "PUT" : "POST",
@@ -1171,19 +1211,30 @@ export default function Brain() {
     }
   };
 
-  const completeTask = async (id: string) => {
+  const toggleChecklistItemOnCard = async (item: Item, checklistId: string) => {
+    const currentRows = item.checklistItems || [];
+    const now = new Date().toISOString();
+    const checklistItems = currentRows.map(row => (
+      row.id === checklistId
+        ? { ...row, completed: !row.completed, completedAt: row.completed ? null : now }
+        : row
+    ));
+
     try {
-      const res = await fetch(`/api/items?id=${id}`, { method: "DELETE" });
+      const res = await fetch("/api/items", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: item.id, checklistItems }),
+      });
       if (!res.ok) {
-        showToast("Failed to complete task", "error");
+        showToast("Failed to update checklist item", "error");
         return;
       }
-      setItems(prev => prev.filter(i => i.id !== id));
-      setReminders(prev => prev.filter(r => r.itemId !== id));
-      await fetchRelations();
-      broadcastSync({ type: "item-deleted", id });
+      const saved: Item = await res.json();
+      setItems(prev => prev.map(existing => existing.id === saved.id ? saved : existing));
+      broadcastSync({ type: "item-updated", item: saved });
     } catch {
-      showToast("Failed to complete task", "error");
+      showToast("Failed to update checklist item", "error");
     }
   };
 
@@ -1287,6 +1338,7 @@ export default function Brain() {
       content: item.content || "",
       url: item.url || "",
       noteEntries: entries,
+      checklistItems: item.checklistItems || [],
       tags: (item.tags || []).join(", "),
       category: item.category || "",
       attachments: item.attachments || [],
@@ -1452,6 +1504,9 @@ export default function Brain() {
     })
     .sort((a, b) => {
       if (a.pinned !== b.pinned) return b.pinned ? 1 : -1;
+      if (a.type === "task" && b.type === "task" && !!a.completed !== !!b.completed) {
+        return a.completed ? 1 : -1;
+      }
       const da = new Date(a.createdAt).getTime();
       const db2 = new Date(b.createdAt).getTime();
       return sortBy === "newest" ? db2 - da : da - db2;
@@ -1532,7 +1587,12 @@ export default function Brain() {
   })();
   const counts: Record<string, number> = {
     all: items.length,
-    ...Object.fromEntries(Object.keys(TYPES).map(k => [k, items.filter(i => i.type === k).length])),
+    ...Object.fromEntries(Object.keys(TYPES).map(k => [
+      k,
+      k === "task"
+        ? items.filter(i => i.type === k && !i.completed).length
+        : items.filter(i => i.type === k).length,
+    ])),
   };
 
   const getCatColor = (name: string) => categories.find(c => c.name === name)?.color || "#666";
@@ -2137,7 +2197,12 @@ export default function Brain() {
 
         {visibleItems.map((item, idx) => {
           const t = TYPES[item.type] || TYPES.note;
+          const itemIcon = item.type === "task" && item.completed ? "☑" : t.icon;
           const expanded = expandedId === item.id;
+          const checklistItems = item.checklistItems || [];
+          const checklist = expanded ? checklistItems : checklistItems.slice(0, 3);
+          const taskProgress = checklistProgress(checklistItems);
+          const hasChecklist = item.type === "task" && checklistItems.length > 0;
           const firstImageAttachment = (item.attachments || []).find(a => a.contentType?.startsWith("image/") && !failedPreviewUrls.has(a.url));
           const hasOgPreview = !!(item.ogImage && !failedPreviewUrls.has(item.ogImage) && (item.type === "link" || item.type === "clip"));
           const hasAttachmentPreview = !hasOgPreview && !!firstImageAttachment;
@@ -2187,22 +2252,15 @@ export default function Brain() {
               }}
               className={`bg-brand-card ${isList ? "rounded-lg" : "rounded-xl"} ${density === "compact" ? "" : density === "list" ? "" : "mb-2.5"} cursor-pointer transition-all overflow-hidden relative group`}
               style={{
-                border: `1px solid ${isDragTarget ? "#E8A838" : item.pinned ? "#E8A83850" : "#1E2128"}`,
-                background: isDragTarget ? "#E8A83820" : item.pinned ? "#E8A83808" : undefined,
+                border: `1px solid ${isDragTarget ? "#E8A838" : item.pinned ? "#E8A83850" : item.type === "task" && item.completed ? "#56CCF240" : "#1E2128"}`,
+                background: isDragTarget ? "#E8A83820" : item.pinned ? "#E8A83808" : item.type === "task" && item.completed ? "#56CCF208" : undefined,
                 animation: `fadeSlide 0.3s ease ${idx * 0.03}s both`,
                 boxShadow: isDragTarget ? "0 0 0 2px #E8A83840" : undefined,
+                opacity: item.type === "task" && item.completed ? 0.88 : 1,
               }}
             >
               {/* Quick action overlay (edit + delete) — both density modes */}
               <div className="absolute top-1.5 right-1.5 z-10 flex gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition">
-                {item.type === "task" && (
-                  <button
-                    onClick={e => { e.stopPropagation(); completeTask(item.id); }}
-                    className="w-6 h-6 rounded-full bg-black/70 backdrop-blur-sm text-[#56CCF2] hover:bg-[#56CCF220] active:scale-90 transition flex items-center justify-center text-[11px]"
-                    aria-label="Mark task complete"
-                    title="Mark complete"
-                  >✓</button>
-                )}
                 <button
                   onClick={e => { e.stopPropagation(); handleEdit(item); }}
                   className="w-6 h-6 rounded-full bg-black/70 backdrop-blur-sm text-gray-400 hover:text-[#E8A838] hover:bg-[#E8A83820] active:scale-90 transition flex items-center justify-center text-[11px]"
@@ -2315,7 +2373,7 @@ export default function Brain() {
                     <div
                       className={`${isCompact ? "w-6 h-6 text-xs" : isList ? "w-8 h-8 text-sm" : "w-8 h-8 text-base"} rounded-lg flex items-center justify-center shrink-0`}
                       style={{ background: `${t.color}15`, border: `1px solid ${t.color}30` }}
-                    >{t.icon}</div>
+                    >{itemIcon}</div>
                   )}
 
                   <div className="flex-1 min-w-0">
@@ -2328,11 +2386,16 @@ export default function Brain() {
                         <div
                           className="w-5 h-5 rounded flex items-center justify-center text-[10px] shrink-0"
                           style={{ background: `${t.color}15`, border: `1px solid ${t.color}30` }}
-                        >{t.icon}</div>
+                        >{itemIcon}</div>
                       )}
-                      <p className={`${isCompact ? "text-[13px]" : isList ? "text-[13px]" : "text-sm"} font-semibold text-gray-100 ${expanded ? "" : "truncate"}`} style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                      <p className={`${isCompact ? "text-[13px]" : isList ? "text-[13px]" : "text-sm"} font-semibold text-gray-100 ${expanded ? "" : "truncate"} ${item.type === "task" && item.completed ? "line-through text-gray-400" : ""}`} style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
                         {item.title || item.ogTitle || "Untitled"}
                       </p>
+                      {hasChecklist && (
+                        <span className="text-[10px] font-mono text-gray-500">
+                          {taskProgress.completed}/{taskProgress.total}
+                        </span>
+                      )}
                     </div>
 
                     {/* YouTube channel/author name */}
@@ -2395,6 +2458,43 @@ export default function Brain() {
                       }
                       return null;
                     })()}
+
+                    {hasChecklist && !isCompact && (
+                      <div className="mt-2.5 flex flex-col gap-1.5">
+                        {checklist.map(row => (
+                          <button
+                            key={row.id}
+                            type="button"
+                            onClick={e => {
+                              e.stopPropagation();
+                              toggleChecklistItemOnCard(item, row.id);
+                            }}
+                            className="flex items-center gap-2 rounded-lg border border-brand-border bg-brand-muted/50 px-2.5 py-2 text-left hover:border-[#56CCF260] transition"
+                            aria-label={`${row.completed ? "Uncheck" : "Check"} ${row.text}`}
+                            title={row.completed ? "Mark incomplete" : "Mark complete"}
+                          >
+                            <span
+                              className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border text-[11px]"
+                              style={{
+                                borderColor: row.completed ? "#56CCF2" : "#3A3D44",
+                                color: row.completed ? "#56CCF2" : "#666",
+                                background: row.completed ? "#56CCF220" : "transparent",
+                              }}
+                            >
+                              {row.completed ? "✓" : ""}
+                            </span>
+                            <span className={`text-sm ${row.completed ? "text-gray-500 line-through" : "text-gray-200"}`}>
+                              {row.text}
+                            </span>
+                          </button>
+                        ))}
+                        {!expanded && checklistItems.length > checklist.length && (
+                          <span className="text-[10px] font-mono text-gray-600">
+                            +{checklistItems.length - checklist.length} more checklist items
+                          </span>
+                        )}
+                      </div>
+                    )}
 
                     {expanded && relatedItems.length > 0 && !isCompact && !isList && (
                       <div className="mt-2.5 pt-2.5 border-t border-brand-border">
@@ -2508,14 +2608,6 @@ export default function Brain() {
                     {/* Action buttons — hidden in compact view unless expanded */}
                     {!isCompact && !isList && (
                     <div className="flex flex-wrap gap-2 mt-3 pt-2.5 border-t border-brand-border">
-                      {item.type === "task" && (
-                        <button
-                          onClick={e => { e.stopPropagation(); completeTask(item.id); }}
-                          className="px-3 py-1.5 rounded-md text-[11px] font-mono transition hover:brightness-125 active:scale-95 flex items-center gap-1"
-                          style={{ border: "1px solid #56CCF260", background: "#56CCF215", color: "#56CCF2" }}
-                          title="Mark complete (deletes the task)"
-                        >✓ Complete</button>
-                      )}
                       <button
                         onClick={e => { e.stopPropagation(); handlePin(item.id); }}
                         className="px-3 py-1.5 rounded-md text-[11px] font-mono transition hover:brightness-125 active:scale-95"
@@ -2801,6 +2893,15 @@ export default function Brain() {
               aria-label="Title"
               className="w-full px-3 py-2.5 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none mb-2.5 placeholder:text-gray-500"
             />
+            {form.type === "task" && (
+              <TaskChecklistEditor
+                items={form.checklistItems}
+                onAdd={addChecklistRow}
+                onToggle={toggleChecklistRow}
+                onTextChange={updateChecklistRowText}
+                onRemove={deleteChecklistRow}
+              />
+            )}
             <textarea
               ref={contentRef}
               value={form.content}

@@ -9,6 +9,7 @@ export type SearchableCard = {
   ogDescription?: string;
   siteName?: string;
   noteEntries?: Array<{ body?: string }>;
+  checklistItems?: Array<{ text?: string }>;
 };
 
 export function itemMatchesCardSearch(item: SearchableCard, query: string): boolean {
@@ -33,6 +34,7 @@ function searchableCardText(item: SearchableCard): string {
     item.siteName,
     ...(item.tags || []),
     ...(item.noteEntries || []).map((entry) => entry.body),
+    ...(item.checklistItems || []).map((item) => item.text),
   ]
     .filter((value): value is string => typeof value === "string" && value.length > 0)
     .join(" ");

@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
+import TaskChecklistEditor from "@/components/TaskChecklistEditor";
 import { SYNC_CHANNEL, getSyncClientId, type SyncMessage, type SyncPayload } from "@/lib/sync";
 import { mergeReminderDateTimeParts, splitReminderDateTime } from "@/lib/reminders.mjs";
+import { newChecklistItem, normalizeChecklistItems, type ChecklistItem } from "@/lib/task-checklists";
 
 type ItemType = "note" | "link" | "clip" | "thought" | "task" | "memory";
 
@@ -29,9 +31,12 @@ interface Item {
   url: string;
   notes: string;
   noteEntries?: NoteEntry[];
+  checklistItems?: ChecklistItem[];
   tags: string[];
   category: string;
   pinned: boolean;
+  completed?: boolean;
+  completedAt?: string | null;
   favourite?: boolean;
   actionRequired?: boolean;
   attachments?: Attachment[];
@@ -130,6 +135,7 @@ export default function CardPopoutPage() {
     content: "",
     url: "",
     noteEntries: [] as NoteEntry[],
+    checklistItems: [] as ChecklistItem[],
     tags: "",
     category: "",
     favourite: false,
@@ -167,6 +173,37 @@ export default function CardPopoutPage() {
     setDirty(true);
   };
 
+  const addChecklistRow = () => {
+    setForm(f => ({ ...f, checklistItems: [...f.checklistItems, newChecklistItem()] }));
+    setDirty(true);
+  };
+
+  const updateChecklistRowText = (id: string, text: string) => {
+    setForm(f => ({
+      ...f,
+      checklistItems: f.checklistItems.map(item => item.id === id ? { ...item, text } : item),
+    }));
+    setDirty(true);
+  };
+
+  const toggleChecklistRow = (id: string) => {
+    const now = new Date().toISOString();
+    setForm(f => ({
+      ...f,
+      checklistItems: f.checklistItems.map(item => (
+        item.id === id
+          ? { ...item, completed: !item.completed, completedAt: item.completed ? null : now }
+          : item
+      )),
+    }));
+    setDirty(true);
+  };
+
+  const deleteChecklistRow = (id: string) => {
+    setForm(f => ({ ...f, checklistItems: f.checklistItems.filter(item => item.id !== id) }));
+    setDirty(true);
+  };
+
   useEffect(() => {
     const target = focusEntryIdRef.current;
     if (!target) return;
@@ -194,6 +231,7 @@ export default function CardPopoutPage() {
       content: next.content || "",
       url: next.url || "",
       noteEntries: entries,
+      checklistItems: next.checklistItems || [],
       tags: (next.tags || []).join(", "),
       category: next.category || "",
       favourite: !!next.favourite,
@@ -374,6 +412,7 @@ export default function CardPopoutPage() {
     const { reminderId, reminderDueAt, reminderMessage, ...itemForm } = form;
     // Drop entries whose body is entirely empty so we don't persist accidental blanks.
     const entries = form.noteEntries.filter(e => e.body.trim().length > 0);
+    const checklistItems = normalizeChecklistItems(form.checklistItems);
     // Once entries exist, retire the legacy single-blob `notes` field so it
     // doesn't reappear next load alongside the migrated entry.
     const legacyClear = entries.length > 0 ? { notes: "" } : {};
@@ -381,7 +420,7 @@ export default function CardPopoutPage() {
       const res = await fetch("/api/items", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, ...itemForm, tags, noteEntries: entries, ...legacyClear }),
+        body: JSON.stringify({ id, ...itemForm, tags, noteEntries: entries, checklistItems, ...legacyClear }),
       });
       if (!res.ok) { setSaving(false); return; }
       const saved: Item = await res.json();
@@ -455,14 +494,20 @@ export default function CardPopoutPage() {
   }
 
   const t = TYPES[item.type] || TYPES.note;
+  const headerIcon = item.type === "task" && item.completed ? "☑" : t.icon;
 
   return (
     <div className="min-h-screen bg-brand-dark text-gray-200 p-5 max-w-2xl mx-auto">
       <div className="flex items-center gap-2 mb-4">
-        <span style={{ color: t.color }}>{t.icon}</span>
+        <span style={{ color: t.color }}>{headerIcon}</span>
         <span className="text-xs font-mono text-gray-500">{t.label}</span>
         {item.category && (
           <span className="text-xs font-mono text-gray-500">· {item.category}</span>
+        )}
+        {item.type === "task" && item.checklistItems && item.checklistItems.length > 0 && (
+          <span className="text-xs font-mono text-gray-500">
+            · {item.checklistItems.filter(row => row.completed).length}/{item.checklistItems.length}
+          </span>
         )}
         <div className="flex-1" />
         {savedAt && !dirty && (
@@ -622,6 +667,16 @@ export default function CardPopoutPage() {
         aria-label="Title"
         className="w-full px-3 py-2.5 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none mb-2.5 placeholder:text-gray-500"
       />
+
+      {form.type === "task" && (
+        <TaskChecklistEditor
+          items={form.checklistItems}
+          onAdd={addChecklistRow}
+          onToggle={toggleChecklistRow}
+          onTextChange={updateChecklistRowText}
+          onRemove={deleteChecklistRow}
+        />
+      )}
 
       <textarea
         value={form.content}

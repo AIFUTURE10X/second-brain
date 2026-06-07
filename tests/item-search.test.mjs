@@ -67,3 +67,27 @@ test("related-card search matches YouTube owner metadata without matching market
   assert.equal(cardSearch.itemMatchesCardSearch(ownerCard, "mark kashef"), true);
   assert.equal(cardSearch.itemMatchesCardSearch(marketCard, "Mark"), false);
 });
+
+test("card search matches checklist row text inside a task card", () => {
+  const groceryTask = {
+    title: "Grocery trip",
+    content: "",
+    notes: "",
+    url: "",
+    category: "Errands",
+    tags: ["shopping"],
+    ogTitle: "",
+    ogDescription: "",
+    siteName: "",
+    noteEntries: [],
+    checklistItems: [
+      { text: "eggs" },
+      { text: "milk" },
+      { text: "bread" },
+    ],
+  };
+
+  assert.equal(cardSearch.itemMatchesCardSearch(groceryTask, "milk"), true);
+  assert.equal(cardSearch.itemMatchesCardSearch(groceryTask, "bread"), true);
+  assert.equal(cardSearch.itemMatchesCardSearch(groceryTask, "butter"), false);
+});

@@ -1,4 +1,5 @@
 import { pgTable, text, boolean, integer, uuid, timestamp, jsonb, uniqueIndex, index } from "drizzle-orm/pg-core";
+import type { ChecklistItem } from "@/lib/task-checklists";
 
 export type Attachment = {
   url: string;
@@ -41,9 +42,12 @@ export const items = pgTable("items", {
   url: text("url").default(""),
   notes: text("notes").default(""), // legacy single-blob annotations — kept for back-compat; new edits use noteEntries
   noteEntries: jsonb("note_entries").$type<NoteEntry[]>().default([]),
+  checklistItems: jsonb("checklist_items").$type<ChecklistItem[]>().default([]),
   tags: jsonb("tags").$type<string[]>().default([]),
   category: text("category").default(""),
   pinned: boolean("pinned").default(false),
+  completed: boolean("completed").default(false),
+  completedAt: timestamp("completed_at", { mode: "date" }),
   favourite: boolean("favourite").default(false),
   actionRequired: boolean("action_required").default(false),
   attachments: jsonb("attachments").$type<Attachment[]>().default([]),

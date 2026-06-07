@@ -7,7 +7,42 @@ import { checkApiKey } from "@/lib/api-key";
 import { aiTagAndCategorize } from "@/lib/ai-tagger";
 import { shouldEnrichUrlOnUpdate } from "@/lib/item-updates.mjs";
 import { buildItemSearchTsQuery } from "@/lib/item-search";
+import { deriveTaskCompletion, normalizeChecklistItems } from "@/lib/task-checklists";
 import { appendYouTubeDescriptionLinksToNotes, fetchYouTubeDescriptionLinks, type YouTubeDescriptionLink } from "@/lib/youtube";
+
+function prepareTaskFields(
+  type: unknown,
+  incomingChecklistItems: unknown,
+  fallbackChecklistItems: unknown,
+  fallbackCompleted: unknown,
+  fallbackCompletedAt: unknown,
+) {
+  if (type !== "task") {
+    return {
+      checklistItems: [],
+      completed: false,
+      completedAt: null,
+    };
+  }
+
+  const checklistItems = normalizeChecklistItems(
+    incomingChecklistItems === undefined ? fallbackChecklistItems : incomingChecklistItems
+  );
+  const derived = deriveTaskCompletion(
+    checklistItems,
+    fallbackCompleted === true,
+    fallbackCompletedAt instanceof Date
+      ? fallbackCompletedAt.toISOString()
+      : typeof fallbackCompletedAt === "string"
+        ? fallbackCompletedAt
+        : null,
+  );
+  return {
+    checklistItems,
+    completed: derived.completed,
+    completedAt: derived.completedAt ? new Date(derived.completedAt) : null,
+  };
+}
 
 // GET all items — supports ?q= for full-text search
 export async function GET(req: NextRequest) {
@@ -35,13 +70,16 @@ export async function GET(req: NextRequest) {
       SELECT
         id, type, title, content, url, notes, tags, category, pinned, attachments,
         favourite,
+        completed,
         action_required AS "actionRequired",
+        checklist_items AS "checklistItems",
         note_entries AS "noteEntries",
         favicon,
         og_title AS "ogTitle",
         og_description AS "ogDescription",
         og_image AS "ogImage",
         site_name AS "siteName",
+        completed_at AS "completedAt",
         created_at AS "createdAt",
         updated_at AS "updatedAt"
       FROM items, to_tsquery('english', ${tsquery}) AS query,
@@ -49,6 +87,7 @@ export async function GET(req: NextRequest) {
              SELECT coalesce(title,'') || ' ' ||
                     coalesce(content,'') || ' ' ||
                     coalesce(notes,'') || ' ' ||
+                    coalesce(checklist_items::text,'') || ' ' ||
                     coalesce(og_title,'') || ' ' ||
                     coalesce(og_description,'') || ' ' ||
                     coalesce(site_name,'') || ' ' ||
@@ -121,6 +160,14 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  const taskFields = prepareTaskFields(
+    body.type || "note",
+    body.checklistItems,
+    [],
+    body.completed,
+    body.completedAt,
+  );
+
   const [row] = await db
     .insert(items)
     .values({
@@ -132,6 +179,9 @@ export async function POST(req: NextRequest) {
       tags: itemTags,
       category: itemCategory,
       pinned: body.pinned || false,
+      checklistItems: taskFields.checklistItems,
+      completed: taskFields.completed,
+      completedAt: taskFields.completedAt,
       attachments: Array.isArray(body.attachments) ? body.attachments : [],
       ogTitle: body.ogTitle || og.ogTitle || "",
       ogDescription: body.ogDescription || og.ogDescription || "",
@@ -155,6 +205,7 @@ export async function PUT(req: NextRequest) {
 
   const [current] = await db.select().from(items).where(eq(items.id, id));
   if (!current) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  const nextType = updates.type || current.type;
 
   if (shouldEnrichUrlOnUpdate({ currentUrl: current.url, nextUrl: updates.url, nextOgTitle: updates.ogTitle })) {
     const og = await enrichUrl(updates.url);
@@ -179,9 +230,23 @@ export async function PUT(req: NextRequest) {
     }
   }
 
+  const taskFields = prepareTaskFields(
+    nextType,
+    updates.checklistItems,
+    current.checklistItems,
+    current.completed,
+    current.completedAt,
+  );
+
   const [row] = await db
     .update(items)
-    .set({ ...updates, updatedAt: new Date() })
+    .set({
+      ...updates,
+      checklistItems: taskFields.checklistItems,
+      completed: taskFields.completed,
+      completedAt: taskFields.completedAt,
+      updatedAt: new Date(),
+    })
     .where(eq(items.id, id))
     .returning();
 

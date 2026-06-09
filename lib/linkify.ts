@@ -1,3 +1,5 @@
+import { formatCardLinkLabel, normalizeCardLinkUrl } from "./card-links";
+
 export type LinkifiedTextSegment =
   | { type: "text"; text: string }
   | { type: "link"; text: string; href: string };
@@ -14,12 +16,13 @@ export function linkifyText(text: string): LinkifiedTextSegment[] {
     const start = match.index ?? 0;
     const linkText = stripTrailingUrlPunctuation(raw);
     if (!linkText || !isHttpUrl(linkText)) continue;
+    const normalizedHref = normalizeCardLinkUrl(linkText);
 
     if (start > lastIndex) {
       segments.push({ type: "text", text: text.slice(lastIndex, start) });
     }
 
-    segments.push({ type: "link", text: linkText, href: linkText });
+    segments.push({ type: "link", text: formatCardLinkLabel(normalizedHref), href: normalizedHref });
     lastIndex = start + linkText.length;
   }
 

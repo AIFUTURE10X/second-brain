@@ -55,3 +55,14 @@ test("extractCardLinks ignores empty fields and preserves first-seen order", () 
     "https://second.example.com",
   ]);
 });
+
+test("extractCardLinks unwraps YouTube redirect links to their real destination", () => {
+  const links = cardLinks.extractCardLinks({
+    notes: "Official app: https://www.youtube.com/redirect?event=video_description&q=https%3A%2F%2Fapp.example.com%2Fdownload&redir_token=abc",
+    noteEntries: [],
+  });
+
+  assert.deepEqual(links, [
+    "https://app.example.com/download",
+  ]);
+});

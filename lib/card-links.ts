@@ -31,10 +31,31 @@ function extractTextUrls(text: string): string[] {
     const raw = match[0] || "";
     const cleaned = stripTrailingUrlPunctuation(raw);
     if (!cleaned || !isHttpUrl(cleaned)) continue;
-    urls.push(cleaned);
+    urls.push(normalizeCardLinkUrl(cleaned));
   }
 
   return urls;
+}
+
+export function normalizeCardLinkUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    const redirectTarget = parsed.searchParams.get("q") || parsed.searchParams.get("url") || "";
+
+    if (redirectTarget) {
+      const nested = new URL(redirectTarget);
+      if (nested.protocol === "http:" || nested.protocol === "https:") {
+        nested.hash = "";
+        return nested.toString();
+      }
+    }
+
+    parsed.hash = "";
+    if (parsed.pathname === "/" && !parsed.search) return parsed.origin;
+    return parsed.toString();
+  } catch {
+    return url;
+  }
 }
 
 export function extractCardLinks(source: CardLinkSource): string[] {
@@ -60,10 +81,12 @@ export function extractCardLinks(source: CardLinkSource): string[] {
 
 export function formatCardLinkLabel(url: string): string {
   try {
-    const parsed = new URL(url);
+    const parsed = new URL(normalizeCardLinkUrl(url));
     const host = parsed.hostname.replace(/^www\./, "");
-    const suffix = `${parsed.pathname}${parsed.search}`.replace(/\/$/, "");
-    return `${host}${suffix}` || host;
+    const path = parsed.pathname.replace(/\/$/, "");
+    const suffix = path && path !== "/" ? path : "";
+    const label = `${host}${suffix}` || host;
+    return label.length > 60 ? `${label.slice(0, 57)}...` : label;
   } catch {
     return url;
   }

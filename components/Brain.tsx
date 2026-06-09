@@ -15,6 +15,7 @@ import { nextViewMode, parseViewMode, type ViewMode } from "@/lib/view-mode";
 import { compressImageForUpload } from "@/lib/image-compression";
 import { draftStorageKey, parseDraftPayload, serializeDraftPayload } from "@/lib/item-draft-autosave";
 import { newChecklistItem, normalizeChecklistItems, type ChecklistItem } from "@/lib/task-checklists";
+import { extractCardLinks, formatCardLinkLabel } from "@/lib/card-links";
 
 const CLIENT_APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "dev";
 
@@ -2514,6 +2515,7 @@ export default function Brain() {
           const compactPreviewClass = "relative block w-full aspect-[5/4] bg-brand-muted overflow-hidden group shrink-0";
           const compactBodyClass = isCompact ? "flex flex-1 flex-col justify-between min-h-0 px-3 py-2.5" : isList ? "px-3 py-2.5" : "p-4";
           const compactTitleClass = isCompact ? "text-[13px] line-clamp-2" : isList ? "text-[13px]" : "text-sm";
+          const cardLinks = extractCardLinks(item);
           const relatedItems = relatedItemsForId(item.id);
           const reminder = activeReminderForId(item.id);
 
@@ -2711,7 +2713,7 @@ export default function Brain() {
                       <p className={`text-xs text-gray-500 mt-1 ${isList ? "line-clamp-1" : "line-clamp-2"}`}>{item.ogDescription}</p>
                     )}
 
-                    {item.url && !isCompact && (
+                    {item.url && !isCompact && !expanded && (
                       <a
                         href={item.url}
                         target="_blank"
@@ -2726,6 +2728,28 @@ export default function Brain() {
                         text={item.content}
                         className={`${isList ? "text-[11px] mt-0.5 line-clamp-1" : "text-xs mt-1.5"} text-gray-500 leading-relaxed ${expanded ? "whitespace-pre-wrap" : isList ? "line-clamp-1" : "line-clamp-2"}`}
                       />
+                    )}
+
+                    {expanded && cardLinks.length > 0 && !isCompact && !isList && (
+                      <div className="mt-2.5 pt-2.5 border-t border-brand-border">
+                        <p className="text-[10px] text-gray-600 font-mono mb-1.5">Links</p>
+                        <div className="flex flex-col gap-1.5">
+                          {cardLinks.map((link) => (
+                            <a
+                              key={link}
+                              href={link}
+                              target="_blank"
+                              rel="noreferrer"
+                              onClick={e => e.stopPropagation()}
+                              className="flex items-center gap-2 rounded-lg border border-brand-border bg-brand-muted/50 px-2.5 py-2 text-left hover:border-[#5B8DEF60] hover:text-white transition"
+                              title={link}
+                            >
+                              <span className="text-type-link shrink-0">↗</span>
+                              <span className="text-[11px] text-gray-300 truncate">{formatCardLinkLabel(link)}</span>
+                            </a>
+                          ))}
+                        </div>
+                      </div>
                     )}
 
                     {/* Notes section (separate from content) — entries first, legacy fallback */}

@@ -25,6 +25,7 @@ interface ItemCardProps {
   onEdit: () => void;
   onArchive: () => void;
   onCycleReadingStatus: () => void;
+  onShare: () => void;
   onPopOut: () => void;
   onDelete: () => void;
   onPreviewImageFailed: (src?: string) => void;
@@ -52,6 +53,7 @@ export function ItemCard({
   onEdit,
   onArchive,
   onCycleReadingStatus,
+  onShare,
   onPopOut,
   onDelete,
   onPreviewImageFailed,
@@ -557,6 +559,12 @@ export function ItemCard({
                 {isSummarizing && <span className="inline-block w-3 h-3 border border-current border-t-transparent rounded-full" style={{ animation: "spin 0.6s linear infinite" }} />}
                 {isSummarizing ? "Summarizing" : "Summarize"}
               </button>
+              <button
+                onClick={e => { e.stopPropagation(); onShare(); }}
+                className="px-3 py-1.5 min-h-[44px] sm:min-h-0 rounded-md text-[11px] font-mono transition hover:brightness-125 active:scale-95"
+                style={{ border: "1px solid #9B51E030", background: "#9B51E010", color: "#C39BE8" }}
+                title="Copy a read-only share link for this card"
+              >⤴ Share</button>
             </div>
             )}
           </div>

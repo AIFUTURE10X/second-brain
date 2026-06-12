@@ -69,6 +69,13 @@ import {
 } from "@/lib/card-templates.mjs";
 import { BulkActionsBar } from "./brain/BulkActionsBar";
 import { AskBrainPanel } from "./brain/AskBrainPanel";
+import { ensureNotificationPermission, notifyDesktop } from "@/lib/desktop-notifications";
+import {
+  NOTIFIED_STORAGE_KEY,
+  NOTIFY_TOGGLE_STORAGE_KEY,
+  appendNotifiedIds,
+  pickDueReminderNotifications,
+} from "@/lib/reminder-notifications.mjs";
 
 const CLIENT_APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "dev";
 
@@ -113,6 +120,7 @@ export default function Brain() {
   const [memoryOfWeekSaving, setMemoryOfWeekSaving] = useState(false);
   const [vaultOpen, setVaultOpen] = useState(false);
   const [askOpen, setAskOpen] = useState(false);
+  const [desktopNotify, setDesktopNotify] = useState(false);
   const [search, setSearch] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [showCatManager, setShowCatManager] = useState(false);
@@ -624,6 +632,59 @@ export default function Brain() {
       window.history.replaceState({}, "", window.location.pathname);
     }
   }, []);
+
+  // Desktop notifications for due reminders (roadmap 3.2). Opt-in via the
+  // header bell; works in browser tabs, the installed PWA, and the Tauri
+  // desktop wrapper (notification plugin via IPC).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setDesktopNotify(window.localStorage.getItem(NOTIFY_TOGGLE_STORAGE_KEY) === "on");
+  }, []);
+
+  const toggleDesktopNotify = async () => {
+    if (desktopNotify) {
+      setDesktopNotify(false);
+      window.localStorage.setItem(NOTIFY_TOGGLE_STORAGE_KEY, "off");
+      showToast("Reminder notifications off", "success");
+      return;
+    }
+    const granted = await ensureNotificationPermission();
+    if (!granted) {
+      showToast("Notification permission was denied", "error");
+      return;
+    }
+    setDesktopNotify(true);
+    window.localStorage.setItem(NOTIFY_TOGGLE_STORAGE_KEY, "on");
+    showToast("Reminder notifications on", "success");
+  };
+
+  useEffect(() => {
+    if (!desktopNotify || typeof window === "undefined") return;
+    const check = () => {
+      let notifiedIds: string[] = [];
+      try {
+        const raw = window.localStorage.getItem(NOTIFIED_STORAGE_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        if (Array.isArray(parsed)) notifiedIds = parsed.filter((id): id is string => typeof id === "string");
+      } catch {}
+      const due = pickDueReminderNotifications(reminders, notifiedIds) as Reminder[];
+      if (due.length === 0) return;
+      for (const reminder of due) {
+        const item = items.find(i => i.id === reminder.itemId);
+        notifyDesktop(
+          reminder.message?.trim() || "Reminder",
+          item?.title || item?.ogTitle || "Open Second Brain to see the card",
+        );
+      }
+      window.localStorage.setItem(
+        NOTIFIED_STORAGE_KEY,
+        JSON.stringify(appendNotifiedIds(notifiedIds, due.map(r => r.id)))
+      );
+    };
+    check();
+    const interval = setInterval(check, 60_000);
+    return () => clearInterval(interval);
+  }, [desktopNotify, reminders, items]);
 
   // Offline write queue: replay queued writes on load and whenever the
   // browser reports connectivity is back.
@@ -1556,6 +1617,24 @@ export default function Brain() {
     }), "Deleted");
   };
 
+  // Signed share links (roadmap 3.3): mint a read-only /shared/<id>?share=
+  // URL and put it on the clipboard.
+  const handleShare = async (id: string) => {
+    if (isOfflineTempId(id)) return;
+    try {
+      const res = await fetch(`/api/items/share?id=${encodeURIComponent(id)}`);
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.url) {
+        showToast(data?.error || "Failed to create share link", "error");
+        return;
+      }
+      await navigator.clipboard.writeText(data.url);
+      showToast("Read-only share link copied", "success");
+    } catch {
+      showToast("Failed to create share link", "error");
+    }
+  };
+
   const handleSummarize = async (id: string) => {
     setSummarizing(id);
     try {
@@ -1923,6 +2002,16 @@ export default function Brain() {
               title="Ask my brain"
             >✦</button>
             <button
+              onClick={toggleDesktopNotify}
+              className="w-11 h-11 sm:w-10 sm:h-10 rounded-xl text-sm flex items-center justify-center border active:scale-95 transition"
+              style={{
+                color: desktopNotify ? "#E8A838" : "#6b7280",
+                borderColor: desktopNotify ? "#E8A83860" : "#1E2128",
+              }}
+              aria-label={desktopNotify ? "Disable reminder notifications" : "Enable reminder notifications"}
+              title={desktopNotify ? "Reminder notifications: on" : "Reminder notifications: off"}
+            >{desktopNotify ? "◉" : "◌"}</button>
+            <button
               onClick={() => setVaultOpen(true)}
               className="w-11 h-11 sm:w-10 sm:h-10 rounded-xl text-gray-500 text-sm flex items-center justify-center border border-brand-border hover:text-[#E8A838] hover:border-[#E8A83860] active:scale-95 transition"
               aria-label="Open encrypted vault"
@@ -2244,6 +2333,7 @@ export default function Brain() {
                     onDelete={() => handleDelete(item.id)}
                     onArchive={() => handleArchive(item.id)}
                     onCycleReadingStatus={() => handleCycleReadingStatus(item.id)}
+                    onShare={() => handleShare(item.id)}
                     onPreviewImageFailed={markPreviewImageFailed}
                     onToggleChecklistRow={rowId => toggleChecklistItemOnCard(item, rowId)}
                     onOpenCard={openCardInCurrentTab}

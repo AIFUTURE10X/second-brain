@@ -8,6 +8,16 @@
   "background": {
     "service_worker": "background.js"
   },
+  "commands": {
+    "save-page": {
+      "suggested_key": { "default": "Ctrl+Shift+S", "mac": "Command+Shift+S" },
+      "description": "Save the current page to Brain"
+    },
+    "annotate-selection": {
+      "suggested_key": { "default": "Ctrl+Shift+L", "mac": "Command+Shift+L" },
+      "description": "Save the highlighted text as an annotation on this page's card"
+    }
+  },
   "action": {
     "default_popup": "popup.html"
   }

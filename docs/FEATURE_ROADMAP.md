@@ -41,10 +41,10 @@ Auth is explicitly deferred — the app stays open (same-origin + `API_SECRET` b
 
 | # | Feature | What to build |
 |---|---------|---------------|
-| 3.1 | **Extension shortcuts** | MV3 `commands` keyboard shortcut; highlight → annotate on link card |
-| 3.2 | **Desktop notifications** | Tauri notification plugin; fire on reminder cron via desktop bridge or poll |
-| 3.3 | **Signed share links** | `?share=<HMAC>` on `/card/[id]`; verify with `AUTH_SECRET` or dedicated `SHARE_SECRET` (no login required for share token only) |
-| 3.4 | **Vault extras** | TOTP field; copy username/password with auto-clear clipboard; link vault entry to card |
+| 3.1 | **Extension shortcuts** ✅ | MV3 `commands` keyboard shortcut; highlight → annotate on link card |
+| 3.2 | **Desktop notifications** ✅ | Tauri notification plugin; fire on reminder cron via desktop bridge or poll |
+| 3.3 | **Signed share links** ✅ | `?share=<HMAC>` on `/card/[id]`; verify with `AUTH_SECRET` or dedicated `SHARE_SECRET` (no login required for share token only) |
+| 3.4 | **Vault extras** ✅ | TOTP field; copy username/password with auto-clear clipboard; link vault entry to card |
 
 ---
 

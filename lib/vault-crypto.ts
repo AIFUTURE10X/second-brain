@@ -20,6 +20,9 @@ export interface VaultSecret {
   notes: string;
   tags: string[];
   updatedAt: string;
+  // Vault extras (roadmap 3.4) — optional so pre-existing ciphertexts decode.
+  totp?: string; // base32 TOTP secret; live codes rendered client-side
+  linkedItemId?: string; // Second Brain card this credential belongs to
 }
 
 export interface EncryptedVaultPayload {

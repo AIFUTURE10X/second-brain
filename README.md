@@ -103,6 +103,8 @@ All routes accept `x-api-key: $API_SECRET` (or same-origin browser requests).
 | `GET /api/export?format=json\|csv\|markdown` | Backup |
 | `POST /api/import` | Restore from JSON export |
 | `POST /api/summarize` | OpenAI bullet summary appended to notes |
+| `POST /api/ask` | "Ask my brain" — RAG answer + cited source cards (rate-limited) |
+| `GET /api/items/duplicates?url=&title=` | Duplicate check: canonical URL match + trigram title similarity |
 | `POST /api/upload` | Vercel Blob client-upload handshake |
 | `POST /api/telegram` | Bot webhook |
 | `GET /api/cron/*` | Vercel crons (require `CRON_SECRET` bearer) |
@@ -114,14 +116,24 @@ Request bodies are validated with zod; invalid payloads return
 
 - **Extension** (`extension/`): load unpacked in Chrome, set the deployment URL
   + `API_SECRET` in the popup. Right-click anywhere for "Save page / link /
-  selection to Brain" (result flashes on the toolbar badge).
+  selection to Brain" (result flashes on the toolbar badge). Shortcuts:
+  Ctrl/Cmd+Shift+S saves the page, Ctrl/Cmd+Shift+L annotates the page's
+  existing card with the highlighted text.
 - **Telegram bot**: set `TELEGRAM_BOT_TOKEN` + `TELEGRAM_ALLOWED_USER_ID`, then
   register the webhook against `/api/telegram` (include
   `&secret_token=$TELEGRAM_WEBHOOK_SECRET` if set). Commands: send a URL/text
   to capture, `/t` task, `/m` memory, `/find <query>` (same hybrid search as
   the app), `/done <task title or id>`.
 - **Desktop** (`desktop/`): Tauri WebView wrapper pointed at the production
-  URL; installer built by `.github/workflows/build-desktop.yml`.
+  URL; installer built by `.github/workflows/build-desktop.yml`. Includes the
+  notification plugin — the in-app bell toggle fires native reminder
+  notifications (web Notification API in browsers/PWA).
+- **Share links**: the Share action on a card copies a signed read-only URL
+  (`/shared/<id>?share=<HMAC>`, secret `SHARE_SECRET` or `API_SECRET`) —
+  rotate the secret to revoke all links.
+- **Vault extras**: TOTP secrets render live 2FA codes client-side, sensitive
+  copies auto-clear the clipboard after 30s, and entries can link to the card
+  they belong to.
 
 ## Backups
 

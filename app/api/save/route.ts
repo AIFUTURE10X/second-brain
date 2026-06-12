@@ -9,7 +9,8 @@ import { initialReadingStatus } from "@/lib/reading-status.mjs";
 import { syncWikiRelations } from "@/lib/wiki-link-store";
 import { aiTagAndCategorize } from "@/lib/ai-tagger";
 import { appendYouTubeDescriptionLinksToNotes, fetchYouTubeDescriptionLinks, type YouTubeDescriptionLink } from "@/lib/youtube";
-import { asc } from "drizzle-orm";
+import { asc, eq, sql as sqlExpr } from "drizzle-orm";
+import { findUrlDuplicates } from "@/lib/duplicate-detection.mjs";
 import { parseBody, readJsonBody, serverError } from "@/lib/api-errors";
 import { saveSchema } from "@/lib/validation";
 
@@ -44,6 +45,20 @@ export async function POST(req: NextRequest) {
   try {
   const url = ((body.url as string) || "").trim();
   const text = ((body.text as string) || "").trim();
+
+  // Annotate mode (roadmap 3.1): highlighted text from the extension lands
+  // as a note entry on the existing card for that URL instead of a new card.
+  // Falls through to a normal create when no card matches.
+  if (body.annotate === true && url && text) {
+    const annotated = await annotateExistingCard(url, text);
+    if (annotated) {
+      after(() => {
+        if (embeddingsEnabled()) updateItemEmbedding(annotated.id);
+      });
+      after(() => syncWikiRelations(annotated.id));
+      return NextResponse.json({ annotated: true, id: annotated.id, title: annotated.title });
+    }
+  }
   const title = ((body.title as string) || "").trim();
   const content = ((body.content as string) || text).trim();
   const notes = ((body.notes as string) || "").trim();
@@ -131,4 +146,28 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     return serverError(error);
   }
+}
+
+// Find the card matching this URL (canonicalised — tracking params, www.,
+// hashes ignored) and append the highlight as a note entry.
+async function annotateExistingCard(url: string, text: string): Promise<{ id: string; title: string | null } | null> {
+  const candidates = await db
+    .select({ id: items.id, title: items.title, url: items.url, noteEntries: items.noteEntries })
+    .from(items)
+    .where(sqlExpr`${items.url} <> ''`);
+  const matches = findUrlDuplicates(url, candidates.filter(c => c.url)) as typeof candidates;
+  const target = matches[0];
+  if (!target) return null;
+
+  const now = new Date().toISOString();
+  const noteEntries = [
+    ...(target.noteEntries || []),
+    { id: crypto.randomUUID(), body: text, createdAt: now, updatedAt: now },
+  ];
+  const [row] = await db
+    .update(items)
+    .set({ noteEntries, updatedAt: new Date() })
+    .where(eq(items.id, target.id))
+    .returning({ id: items.id, title: items.title });
+  return row ?? null;
 }

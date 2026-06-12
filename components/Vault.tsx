@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { showToast } from "./Toast";
 import { revealVaultEditForm } from "@/lib/vault-ui";
+import { generateTotp, normalizeTotpSecret } from "@/lib/totp";
+import { parseLinkedCardId } from "@/lib/vault-link.mjs";
 import {
   createVaultConfig,
   decryptVaultSecret,
@@ -46,7 +48,12 @@ const EMPTY_SECRET: VaultSecret = {
   notes: "",
   tags: [],
   updatedAt: "",
+  totp: "",
+  linkedItemId: "",
 };
+
+// How long copied secrets stay on the clipboard before being cleared.
+const CLIPBOARD_CLEAR_MS = 30_000;
 
 function splitTags(value: string): string[] {
   return value.split(",").map(tag => tag.trim()).filter(Boolean);
@@ -60,6 +67,38 @@ function displayDate(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
   return date.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+// Live RFC 6238 code for entries with a TOTP secret (roadmap 3.4).
+function TotpCode({ secret, onCopy }: { secret: string; onCopy: (code: string) => void }) {
+  const [state, setState] = useState<{ code: string; secondsRemaining: number } | null | "loading">("loading");
+  useEffect(() => {
+    let cancelled = false;
+    const tick = async () => {
+      const result = await generateTotp(secret);
+      if (!cancelled) setState(result);
+    };
+    tick();
+    const interval = setInterval(tick, 1_000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [secret]);
+
+  if (state === "loading") return null;
+  if (!state) return <span className="text-[11px] font-mono text-red-400">invalid TOTP secret</span>;
+  return (
+    <span className="inline-flex items-center gap-2">
+      <button
+        onClick={() => onCopy(state.code)}
+        className="font-mono text-sm tracking-[0.2em] text-[#6FCF97] hover:brightness-125 transition"
+        title="Copy 2FA code"
+      >
+        {state.code.slice(0, 3)} {state.code.slice(3)}
+      </button>
+      <span className={`text-[10px] font-mono ${state.secondsRemaining <= 5 ? "text-red-400" : "text-gray-600"}`}>
+        {state.secondsRemaining}s
+      </span>
+    </span>
+  );
 }
 
 function EyeIcon({ hidden }: { hidden: boolean }) {
@@ -298,6 +337,17 @@ export default function Vault({ onClose }: VaultProps) {
       return;
     }
 
+    const totp = normalizeTotpSecret(form.totp || "");
+    if ((form.totp || "").trim() && !totp) {
+      showToast("TOTP secret must be base32 (letters A-Z, digits 2-7)", "error");
+      return;
+    }
+    const linkedItemId = parseLinkedCardId(form.linkedItemId || "");
+    if ((form.linkedItemId || "").trim() && !linkedItemId) {
+      showToast("Linked card must be a card id or /card/... URL", "error");
+      return;
+    }
+
     const secret: VaultSecret = {
       title: form.title.trim(),
       username: form.username.trim(),
@@ -306,6 +356,8 @@ export default function Vault({ onClose }: VaultProps) {
       notes: form.notes,
       tags: splitTags(form.tags),
       updatedAt: new Date().toISOString(),
+      totp,
+      linkedItemId,
     };
 
     setBusy(true);
@@ -343,7 +395,9 @@ export default function Vault({ onClose }: VaultProps) {
 
   const editEntry = (entry: VaultEntry) => {
     setEditingId(entry.id);
-    setForm({ ...entry.secret, tags: joinTags(entry.secret.tags || []) });
+    // Spread over EMPTY_SECRET so entries saved before totp/linkedItemId
+    // existed still hydrate every form field.
+    setForm({ ...EMPTY_SECRET, ...entry.secret, tags: joinTags(entry.secret.tags || []) });
     setShowFormPassword(false);
     window.requestAnimationFrame(() => {
       revealVaultEditForm(editPanelRef.current, titleInputRef.current);
@@ -373,6 +427,26 @@ export default function Vault({ onClose }: VaultProps) {
     try {
       await navigator.clipboard.writeText(value);
       showToast(`${label} copied`, "success");
+    } catch {
+      showToast(`Could not copy ${label.toLowerCase()}`, "error");
+    }
+  };
+
+  // Sensitive copies (username/password/2FA codes) auto-clear the clipboard
+  // after 30s so credentials don't linger (roadmap 3.4). Best effort: the
+  // clear only fires while this tab is focused — browsers block clipboard
+  // writes from background tabs.
+  const clipboardClearTimer = useRef<number | null>(null);
+  const copySensitive = async (value: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      showToast(`${label} copied — clipboard clears in 30s`, "success");
+      if (clipboardClearTimer.current) window.clearTimeout(clipboardClearTimer.current);
+      clipboardClearTimer.current = window.setTimeout(async () => {
+        try {
+          if (document.hasFocus()) await navigator.clipboard.writeText("");
+        } catch {}
+      }, CLIPBOARD_CLEAR_MS);
     } catch {
       showToast(`Could not copy ${label.toLowerCase()}`, "error");
     }
@@ -532,7 +606,22 @@ export default function Vault({ onClose }: VaultProps) {
                   Generate
                 </button>
               </div>
+              <input
+                value={form.totp || ""}
+                onChange={e => setForm(f => ({ ...f, totp: e.target.value }))}
+                placeholder="TOTP secret (base32, optional — shows live 2FA codes)"
+                autoComplete="off"
+                spellCheck={false}
+                className="w-full mb-2 px-3 py-2 rounded-lg bg-brand-muted border border-brand-border text-sm outline-none font-mono"
+              />
               <input value={form.url} onChange={e => setForm(f => ({ ...f, url: e.target.value }))} placeholder="URL" className="w-full mb-2 px-3 py-2 rounded-lg bg-brand-muted border border-brand-border text-sm outline-none" />
+              <input
+                value={form.linkedItemId || ""}
+                onChange={e => setForm(f => ({ ...f, linkedItemId: e.target.value }))}
+                placeholder="Linked card (paste a card id or /card/... URL)"
+                spellCheck={false}
+                className="w-full mb-2 px-3 py-2 rounded-lg bg-brand-muted border border-brand-border text-sm outline-none"
+              />
               <input value={form.tags} onChange={e => setForm(f => ({ ...f, tags: e.target.value }))} placeholder="Tags, comma separated" className="w-full mb-2 px-3 py-2 rounded-lg bg-brand-muted border border-brand-border text-sm outline-none" />
               <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Notes" rows={4} className="w-full mb-3 px-3 py-2 rounded-lg bg-brand-muted border border-brand-border text-sm outline-none resize-y" />
               <div className="flex gap-2">
@@ -582,6 +671,22 @@ export default function Vault({ onClose }: VaultProps) {
                             {visiblePasswords.has(entry.id) ? entry.secret.password : "************"}
                           </p>
                         )}
+                        {entry.secret.totp && (
+                          <div className="mt-2">
+                            <TotpCode secret={entry.secret.totp} onCopy={code => copySensitive(code, "2FA code")} />
+                          </div>
+                        )}
+                        {entry.secret.linkedItemId && (
+                          <a
+                            href={`/card/${entry.secret.linkedItemId}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="mt-2 inline-block text-[11px] font-mono text-[#E8A838] hover:underline"
+                            title="Open the Second Brain card linked to this credential"
+                          >
+                            ◆ Open linked card
+                          </a>
+                        )}
                         {entry.secret.notes && <p className="text-xs text-gray-500 mt-2 whitespace-pre-wrap">{entry.secret.notes}</p>}
                         {(entry.secret.tags || []).length > 0 && (
                           <div className="flex flex-wrap gap-1 mt-2">
@@ -590,8 +695,8 @@ export default function Vault({ onClose }: VaultProps) {
                         )}
                       </div>
                       <div className="flex flex-wrap justify-end gap-1.5">
-                        {entry.secret.username && <button onClick={() => copyText(entry.secret.username, "Username")} className="px-2 py-1 rounded-md border border-brand-border text-[11px] text-gray-400 hover:text-white">Copy user</button>}
-                        {entry.secret.password && <button onClick={() => copyText(entry.secret.password, "Password")} className="px-2 py-1 rounded-md border border-brand-border text-[11px] text-gray-400 hover:text-white">Copy pass</button>}
+                        {entry.secret.username && <button onClick={() => copySensitive(entry.secret.username, "Username")} className="px-2 py-1 rounded-md border border-brand-border text-[11px] text-gray-400 hover:text-white">Copy user</button>}
+                        {entry.secret.password && <button onClick={() => copySensitive(entry.secret.password, "Password")} className="px-2 py-1 rounded-md border border-brand-border text-[11px] text-gray-400 hover:text-white">Copy pass</button>}
                         {entry.secret.password && (
                           <button
                             onClick={() => toggleVisiblePassword(entry.id)}

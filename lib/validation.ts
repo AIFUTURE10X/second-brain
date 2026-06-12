@@ -85,6 +85,8 @@ export const saveSchema = z
     category: z.string().optional(),
     type: itemTypeSchema.optional(),
     tags: z.union([z.array(z.string()), z.string()]).optional(),
+    // Extension highlight → annotate the existing card for this URL (3.1).
+    annotate: z.boolean().optional(),
   })
   .passthrough()
   .refine(

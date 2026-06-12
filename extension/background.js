@@ -42,6 +42,37 @@ async function saveToBrain(payload) {
   }
 }
 
+// Keyboard shortcuts (roadmap 3.1) — see manifest "commands".
+chrome.commands.onCommand.addListener(async (command, tab) => {
+  if (!tab?.id) {
+    [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  }
+  if (!tab?.url) return;
+
+  if (command === "save-page") {
+    saveToBrain({ type: "link", url: tab.url, title: tab.title || "" });
+    return;
+  }
+
+  if (command === "annotate-selection") {
+    let selection = "";
+    try {
+      const [result] = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: () => window.getSelection()?.toString() || "",
+      });
+      selection = result?.result || "";
+    } catch {}
+    if (!selection.trim()) {
+      flashBadge("sel", "#EB5757"); // nothing highlighted
+      return;
+    }
+    // annotate: true appends to the existing card for this URL; the server
+    // falls back to creating a new card when none exists.
+    saveToBrain({ url: tab.url, text: selection, title: tab.title || "", annotate: true });
+  }
+});
+
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   const pageUrl = tab?.url || info.pageUrl || "";
   const pageTitle = tab?.title || "";

@@ -33,6 +33,10 @@ other users.
   bulk actions (tag, category, archive, delete), timeline date filters
   (today/week/month/custom with day-grouped headers), and read-later tracking
   on links (unread → reading → read cycle + "To read" filter).
+- **Ask my brain** — chat over everything you've saved (RAG with the hybrid
+  search + embeddings); answers cite the source cards. Duplicate detection
+  warns in the card form when the same URL (tracking params ignored) or a
+  near-identical title is already saved.
 - **Connect knowledge** — `[[wiki links]]` in card text auto-create related-card
   links on save, card templates prefill type/tags/category/checklist, recurring
   tasks respawn on completion, and reminders support snooze (Telegram inline

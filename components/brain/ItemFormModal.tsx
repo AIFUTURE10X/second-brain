@@ -110,6 +110,31 @@ export function ItemFormModal({
   onSaveTemplate,
   onDeleteTemplate,
 }: ItemFormModalProps) {
+  // Duplicate detection (roadmap 2.12): as the URL/title is typed, ask the
+  // server for cards with the same canonical URL or a near-identical title.
+  type DuplicateMatch = { id: string; title: string | null; url: string | null; type: string | null; match: string };
+  const [duplicates, setDuplicates] = useState<DuplicateMatch[]>([]);
+  useEffect(() => {
+    const url = form.url.trim();
+    const title = form.title.trim();
+    if (!url && title.length < 4) {
+      setDuplicates([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const params = new URLSearchParams();
+        if (url) params.set("url", url);
+        if (title) params.set("title", title);
+        if (editingId) params.set("excludeId", editingId);
+        const res = await fetch(`/api/items/duplicates?${params.toString()}`, { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json().catch(() => null);
+        setDuplicates(Array.isArray(data?.duplicates) ? data.duplicates : []);
+      } catch {}
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [form.url, form.title, editingId]);
   const [isDragOver, setIsDragOver] = useState(false);
   const contentRef = useRef<HTMLTextAreaElement>(null);
   const focusEntryIdRef = useRef<string | null>(null);
@@ -560,6 +585,27 @@ export function ItemFormModal({
               aria-label="Title"
               className="w-full px-3 py-2.5 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none mb-2.5 placeholder:text-gray-500"
             />
+            {duplicates.length > 0 && (
+              <div className="mb-2.5 rounded-lg border border-[#E8A83850] bg-[#E8A83812] px-3 py-2">
+                <p className="text-[11px] font-mono text-[#E8A838] mb-1.5">
+                  ⚠ Similar card{duplicates.length > 1 ? "s" : ""} already saved:
+                </p>
+                <div className="flex flex-col gap-1">
+                  {duplicates.map(dup => (
+                    <button
+                      key={dup.id}
+                      type="button"
+                      onClick={() => { const id = dup.id; closeForm(); openCardInCurrentTab(id); }}
+                      className="flex items-center gap-2 text-left text-[12px] text-gray-300 hover:text-[#E8A838] transition"
+                      title={dup.url || dup.title || ""}
+                    >
+                      <span className="shrink-0 text-[10px] font-mono uppercase opacity-60">{dup.match === "url" ? "same url" : "similar title"}</span>
+                      <span className="truncate">{dup.title || dup.url || "Untitled"}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             {form.type === "task" && (
               <TaskChecklistEditor
                 items={form.checklistItems}

@@ -28,12 +28,12 @@ Auth is explicitly deferred — the app stays open (same-origin + `API_SECRET` b
 | 2.5 | **Bulk actions** ✅ | Multi-select in review mode + grid; bulk tag, category, archive, delete |
 | 2.6 | **Extension context menu** ✅ | MV3 `contextMenus`: "Save link to Brain", "Save selection to Brain" |
 | 2.7 | **Telegram `/find` + `/done`** ✅ | `/find <query>` → search API results in chat; `/done <id or title>` → mark task complete |
-| 2.8 | **Reminder snooze + recurring** | `snoozed_until`, `recurrence` on reminders; snooze buttons in Telegram; cron handles recurrence |
+| 2.8 | **Reminder snooze + recurring** ✅ | `snoozed_until`, `recurrence` on reminders; snooze buttons in Telegram; cron handles recurrence |
 | 2.9 | **Read-later** ✅ | `reading_status`: `unread` \| `reading` \| `done` on link items; filter + quick toggle |
-| 2.10 | **Card templates** | `templates` in settings or table; pre-fill type, tags, category, checklist skeleton |
-| 2.11 | **Recurring tasks** | `recurrence` field on tasks; cron or daily digest surfaces next occurrence |
-| 2.12 | **Duplicate detection** | On save, check URL exact match + title trigram similarity; toast "similar card exists" with link |
-| 2.13 | **Ask my brain** | Chat UI; RAG over item embeddings (depends on 1.1); cite source cards |
+| 2.10 | **Card templates** ✅ | `templates` in settings or table; pre-fill type, tags, category, checklist skeleton |
+| 2.11 | **Recurring tasks** ✅ | `recurrence` field on tasks; cron or daily digest surfaces next occurrence |
+| 2.12 | **Duplicate detection** ✅ | On save, check URL exact match + title trigram similarity; toast "similar card exists" with link |
+| 2.13 | **Ask my brain** ✅ | Chat UI; RAG over item embeddings (depends on 1.1); cite source cards |
 
 ---
 

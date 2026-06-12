@@ -68,6 +68,7 @@ import {
   normalizeCardTemplates,
 } from "@/lib/card-templates.mjs";
 import { BulkActionsBar } from "./brain/BulkActionsBar";
+import { AskBrainPanel } from "./brain/AskBrainPanel";
 
 const CLIENT_APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "dev";
 
@@ -111,6 +112,7 @@ export default function Brain() {
   const [memoryOfWeekEnabled, setMemoryOfWeekEnabled] = useState(true);
   const [memoryOfWeekSaving, setMemoryOfWeekSaving] = useState(false);
   const [vaultOpen, setVaultOpen] = useState(false);
+  const [askOpen, setAskOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [showCatManager, setShowCatManager] = useState(false);
@@ -689,7 +691,8 @@ export default function Brain() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        if (vaultOpen) setVaultOpen(false);
+        if (askOpen) setAskOpen(false);
+        else if (vaultOpen) setVaultOpen(false);
         else if (relatedPickerOpen) { setRelatedPickerOpen(false); setRelatedPickerSearch(""); }
         else if (pickerOpen) { setPickerOpen(false); setPickerSearch(""); }
         else if (showAdd) closeForm();
@@ -704,7 +707,7 @@ export default function Brain() {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [pickerOpen, relatedPickerOpen, showAdd, showCatManager, showTagManager, vaultOpen]);
+  }, [askOpen, pickerOpen, relatedPickerOpen, showAdd, showCatManager, showTagManager, vaultOpen]);
 
   // Paste image from clipboard while the add/edit modal is open
   useEffect(() => {
@@ -1914,6 +1917,12 @@ export default function Brain() {
               onToggleMemoryOfWeek={updateMemoryOfWeekEnabled}
             />
             <button
+              onClick={() => setAskOpen(true)}
+              className="w-11 h-11 sm:w-10 sm:h-10 rounded-xl text-gray-500 text-sm flex items-center justify-center border border-brand-border hover:text-[#E8A838] hover:border-[#E8A83860] active:scale-95 transition"
+              aria-label="Ask my brain (AI chat over your cards)"
+              title="Ask my brain"
+            >✦</button>
+            <button
               onClick={() => setVaultOpen(true)}
               className="w-11 h-11 sm:w-10 sm:h-10 rounded-xl text-gray-500 text-sm flex items-center justify-center border border-brand-border hover:text-[#E8A838] hover:border-[#E8A83860] active:scale-95 transition"
               aria-label="Open encrypted vault"
@@ -2303,6 +2312,8 @@ export default function Brain() {
           onClear={exitSelectMode}
         />
       )}
+
+      {askOpen && <AskBrainPanel onClose={() => setAskOpen(false)} onOpenCard={(id) => { setAskOpen(false); openCardInCurrentTab(id); }} />}
 
       {vaultOpen && <Vault onClose={() => setVaultOpen(false)} />}
 

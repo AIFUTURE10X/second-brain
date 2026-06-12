@@ -60,10 +60,11 @@ export async function GET(req: NextRequest) {
   }
 
   if (q) {
-    // Full-text search across card text, link-preview metadata, source, and URL.
+    // Full-text search against the weighted, GIN-indexed search_tsv column
+    // (see db/schema.ts — covers title, tags, category, body, note entries,
+    // checklist rows, and link metadata).
     const tsquery = buildItemSearchTsQuery(q);
     if (!tsquery) return NextResponse.json([]);
-    // ts_rank_cd ranks matches so cards hitting more of the terms float up.
     // Alias snake_case columns to camelCase so search results match the
     // Drizzle-select shape the frontend expects.
     const rows = await sql`
@@ -82,25 +83,46 @@ export async function GET(req: NextRequest) {
         completed_at AS "completedAt",
         created_at AS "createdAt",
         updated_at AS "updatedAt"
-      FROM items, to_tsquery('english', ${tsquery}) AS query,
-           LATERAL (
-             SELECT coalesce(title,'') || ' ' ||
-                    coalesce(content,'') || ' ' ||
-                    coalesce(notes,'') || ' ' ||
-                    coalesce(checklist_items::text,'') || ' ' ||
-                    coalesce(og_title,'') || ' ' ||
-                    coalesce(og_description,'') || ' ' ||
-                    coalesce(site_name,'') || ' ' ||
-                    coalesce(url,'') || ' ' ||
-                    coalesce(category,'') || ' ' ||
-                    coalesce(tags::text, '') AS haystack
-           ) h
-      WHERE to_tsvector('english', h.haystack) @@ query
+      FROM items, to_tsquery('english', ${tsquery}) AS query
+      WHERE search_tsv @@ query
       ORDER BY pinned DESC,
-               ts_rank_cd(to_tsvector('english', h.haystack), query) DESC,
+               ts_rank_cd(search_tsv, query) DESC,
                created_at DESC
     `;
-    return NextResponse.json(rows);
+    if (rows.length > 0) return NextResponse.json(rows);
+    // Zero exact hits — trigram fallback over titles so typos still surface
+    // cards ("recat" finds "react"). Flagged via header rather than a body
+    // shape change so existing clients that expect a bare array keep working.
+    try {
+      const fuzzy = await sql`
+        SELECT
+          id, type, title, content, url, notes, tags, category, pinned, attachments,
+          favourite,
+          completed,
+          action_required AS "actionRequired",
+          checklist_items AS "checklistItems",
+          note_entries AS "noteEntries",
+          favicon,
+          og_title AS "ogTitle",
+          og_description AS "ogDescription",
+          og_image AS "ogImage",
+          site_name AS "siteName",
+          completed_at AS "completedAt",
+          created_at AS "createdAt",
+          updated_at AS "updatedAt"
+        FROM items
+        WHERE word_similarity(${q}, title) > 0.3
+        ORDER BY pinned DESC,
+                 word_similarity(${q}, title) DESC,
+                 created_at DESC
+        LIMIT 25
+      `;
+      return NextResponse.json(fuzzy, { headers: { "x-search-fuzzy": "1" } });
+    } catch (error) {
+      // pg_trgm not installed yet (scripts/db-setup.sql) — degrade to no results.
+      console.error("Fuzzy search fallback failed:", error);
+      return NextResponse.json([]);
+    }
   }
 
   const rows = await db.select().from(items).orderBy(desc(items.pinned), desc(items.createdAt));

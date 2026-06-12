@@ -7,6 +7,7 @@ import { pathToFileURL } from "node:url";
 import ts from "typescript";
 
 const routeSource = await readFile(new URL("../app/api/items/route.ts", import.meta.url), "utf8");
+const schemaSource = await readFile(new URL("../db/schema.ts", import.meta.url), "utf8");
 
 async function loadTsModule(relativePath, prefix) {
   const source = await readFile(new URL(relativePath, import.meta.url), "utf8");
@@ -25,18 +26,25 @@ async function loadTsModule(relativePath, prefix) {
 const itemSearch = await loadTsModule("../lib/item-search.ts", "second-brain-item-search-");
 const cardSearch = await loadTsModule("../lib/card-search.ts", "second-brain-card-search-");
 
-test("item search indexes URL and source metadata for YouTube channel owner lookup", () => {
-  assert.match(routeSource, /coalesce\(url,\s*''\)/);
-  assert.match(routeSource, /coalesce\(site_name,\s*''\)/);
+test("item search runs against the indexed search_tsv column with rank ordering", () => {
+  assert.match(routeSource, /search_tsv @@ query/);
+  assert.match(routeSource, /ts_rank_cd\(search_tsv, query\)/);
+  assert.match(routeSource, /word_similarity/);
 });
 
-test("server search requires all search terms and avoids broad mark prefix matches", () => {
-  assert.equal(itemSearch.buildItemSearchTsQuery("mark kashef"), "mark & kashef:*");
-  assert.equal(itemSearch.buildItemSearchTsQuery("mark"), "mark");
+test("search document covers URL, source metadata, and note entries", () => {
+  assert.match(schemaSource, /coalesce\(url, ''\)/);
+  assert.match(schemaSource, /coalesce\(site_name, ''\)/);
+  assert.match(schemaSource, /coalesce\(note_entries::text, ''\)/);
+});
+
+test("server search requires all terms and prefix-matches every term", () => {
+  assert.equal(itemSearch.buildItemSearchTsQuery("mark kashef"), "mark:* & kashef:*");
+  assert.equal(itemSearch.buildItemSearchTsQuery("mark"), "mark:*");
   assert.equal(itemSearch.buildItemSearchTsQuery("market"), "market:*");
 });
 
-test("related-card search matches YouTube owner metadata without matching market", () => {
+test("related-card search prefix-matches uniformly across metadata", () => {
   const ownerCard = {
     title: "Build Your Agentic OS Better Than The 99%",
     content: "",
@@ -65,7 +73,10 @@ test("related-card search matches YouTube owner metadata without matching market
 
   assert.equal(cardSearch.itemMatchesCardSearch(ownerCard, "Mark"), true);
   assert.equal(cardSearch.itemMatchesCardSearch(ownerCard, "mark kashef"), true);
-  assert.equal(cardSearch.itemMatchesCardSearch(marketCard, "Mark"), false);
+  // Prefix matching is uniform since the PLAN.md 1.2 search overhaul:
+  // "mark" intentionally also matches "market trends" — server-side
+  // ts_rank_cd ordering is responsible for relevance now.
+  assert.equal(cardSearch.itemMatchesCardSearch(marketCard, "Mark"), true);
 });
 
 test("card search matches checklist row text inside a task card", () => {

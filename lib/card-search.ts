@@ -47,6 +47,5 @@ function tokenize(input: string): string[] {
 }
 
 function tokenMatches(haystackToken: string, queryToken: string): boolean {
-  if (queryToken.length === 4) return haystackToken === queryToken;
   return haystackToken.startsWith(queryToken);
 }

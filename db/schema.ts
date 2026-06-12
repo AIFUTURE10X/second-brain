@@ -1,5 +1,13 @@
-import { pgTable, text, boolean, integer, uuid, timestamp, jsonb, uniqueIndex, index } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { pgTable, text, boolean, integer, uuid, timestamp, jsonb, uniqueIndex, index, customType } from "drizzle-orm/pg-core";
 import type { ChecklistItem } from "@/lib/task-checklists";
+
+// Postgres tsvector — drizzle-orm has no built-in column type for it.
+const tsvector = customType<{ data: string }>({
+  dataType() {
+    return "tsvector";
+  },
+});
 
 export type Attachment = {
   url: string;
@@ -59,9 +67,21 @@ export const items = pgTable("items", {
   favicon: text("favicon").default(""),
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
+  // Weighted search document, maintained by Postgres itself. Weights:
+  // A=title, B=tags+category ('simple' config so tags aren't stemmed),
+  // C=body text incl. note entries + checklist rows, D=link/OG metadata.
+  // jsonb columns are cast to text — set-returning extractors aren't allowed
+  // in generated columns, and the extra JSON-key tokens are harmless noise.
+  searchTsv: tsvector("search_tsv").generatedAlwaysAs(
+    sql`setweight(to_tsvector('english', coalesce(title, '')), 'A') || setweight(to_tsvector('simple', coalesce(tags::text, '') || ' ' || coalesce(category, '')), 'B') || setweight(to_tsvector('english', coalesce(content, '') || ' ' || coalesce(notes, '') || ' ' || coalesce(note_entries::text, '') || ' ' || coalesce(checklist_items::text, '')), 'C') || setweight(to_tsvector('english', coalesce(og_title, '') || ' ' || coalesce(og_description, '') || ' ' || coalesce(site_name, '') || ' ' || coalesce(url, '')), 'D')`
+  ),
 }, (table) => [
   index("items_category_idx").on(table.category),
   index("items_pinned_created_idx").on(table.pinned, table.createdAt),
+  index("items_search_tsv_idx").using("gin", table.searchTsv),
+  // Trigram index for the zero-result fuzzy fallback. Requires the pg_trgm
+  // extension (scripts/db-setup.sql); declared here so db:push won't drop it.
+  index("items_title_trgm_idx").using("gin", table.title.op("gin_trgm_ops")),
 ]);
 
 export const itemRelations = pgTable("item_relations", {

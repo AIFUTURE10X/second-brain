@@ -10,9 +10,13 @@ const MENU_ITEMS = [
 ];
 
 chrome.runtime.onInstalled.addListener(() => {
-  for (const item of MENU_ITEMS) {
-    chrome.contextMenus.create(item);
-  }
+  // removeAll first: onInstalled also fires on extension reload/update, and
+  // re-creating an existing menu id would error.
+  chrome.contextMenus.removeAll(() => {
+    for (const item of MENU_ITEMS) {
+      chrome.contextMenus.create(item);
+    }
+  });
 });
 
 function flashBadge(text, color) {

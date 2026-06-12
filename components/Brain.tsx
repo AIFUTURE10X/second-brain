@@ -60,6 +60,7 @@ import {
   removeSavedSearch,
 } from "@/lib/saved-searches.mjs";
 import { groupItemsByDay, itemInDateRange } from "@/lib/date-range.mjs";
+import { isToRead, nextReadingStatus } from "@/lib/reading-status.mjs";
 import { BulkActionsBar } from "./brain/BulkActionsBar";
 
 const CLIENT_APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "dev";
@@ -82,6 +83,7 @@ export default function Brain() {
   const [favouritesOnly, setFavouritesOnly] = useState(false);
   const [actionOnly, setActionOnly] = useState(false);
   const [remindersOnly, setRemindersOnly] = useState(false);
+  const [readLaterOnly, setReadLaterOnly] = useState(false);
   const [archivedOnly, setArchivedOnly] = useState(false);
   const [datePreset, setDatePreset] = useState<"all" | "today" | "week" | "month" | "custom">("all");
   const [dateFrom, setDateFrom] = useState("");
@@ -269,6 +271,7 @@ export default function Brain() {
     favouritesOnly,
     actionOnly,
     remindersOnly,
+    readLaterOnly,
     reviewMode,
     archivedOnly,
     sortBy,
@@ -302,6 +305,7 @@ export default function Brain() {
     setFavouritesOnly(Boolean(state.favouritesOnly));
     setActionOnly(Boolean(state.actionOnly));
     setRemindersOnly(Boolean(state.remindersOnly));
+    setReadLaterOnly(Boolean(state.readLaterOnly));
     setReviewMode(Boolean(state.reviewMode));
     setArchivedOnly(Boolean(state.archivedOnly));
     setSortBy(state.sortBy as "newest" | "oldest");
@@ -627,7 +631,7 @@ export default function Brain() {
   }, [fetchItems, fetchCategories, fetchRelations, fetchReminders, search]);
 
   // Reset pagination when filters change
-  useEffect(() => { setVisibleCount(50); }, [view, catFilter, search, sortBy, sourceFilter, tagFilter, withNotesOnly, favouritesOnly, actionOnly, remindersOnly, reviewMode, archivedOnly, datePreset, dateFrom, dateTo]);
+  useEffect(() => { setVisibleCount(50); }, [view, catFilter, search, sortBy, sourceFilter, tagFilter, withNotesOnly, favouritesOnly, actionOnly, remindersOnly, readLaterOnly, reviewMode, archivedOnly, datePreset, dateFrom, dateTo]);
 
   // Close modals on Escape, focus search on Cmd/Ctrl+K
   useEffect(() => {
@@ -1111,6 +1115,7 @@ export default function Brain() {
     setFavouritesOnly(false);
     setActionOnly(false);
     setRemindersOnly(false);
+    setReadLaterOnly(false);
     setReviewMode(false);
     setArchivedOnly(false);
     setDatePreset("all");
@@ -1340,6 +1345,35 @@ export default function Brain() {
         showToast("Offline — change queued for sync", "success");
       } else {
         showToast("Failed to update", "error");
+      }
+    }
+  };
+
+  const handleCycleReadingStatus = async (id: string) => {
+    const item = items.find(i => i.id === id);
+    if (!item || isOfflineTempId(id)) return;
+    const readingStatus = nextReadingStatus(item.readingStatus) as Item["readingStatus"];
+    try {
+      const res = await fetch("/api/items", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, readingStatus }),
+      });
+      if (!res.ok) {
+        showToast("Failed to update reading status", "error");
+        return;
+      }
+      try {
+        const saved = await res.clone().json();
+        if (saved && saved.id) broadcastSync({ type: "item-updated", item: saved });
+      } catch {}
+      setItems(prev => prev.map(i => i.id === id ? { ...i, readingStatus } : i));
+    } catch {
+      if (await queueWriteOffline({ kind: "update", payload: { id, readingStatus } })) {
+        setItems(prev => prev.map(i => i.id === id ? { ...i, readingStatus } : i));
+        showToast("Offline — change queued for sync", "success");
+      } else {
+        showToast("Failed to update reading status", "error");
       }
     }
   };
@@ -1661,6 +1695,7 @@ export default function Brain() {
     .filter(i => !favouritesOnly || !!i.favourite)
     .filter(i => !actionOnly || !!i.actionRequired)
     .filter(i => !remindersOnly || reminders.some(r => r.itemId === i.id && r.status === "pending"))
+    .filter(i => !readLaterOnly || isToRead(i))
     .filter(i => {
       if (!reviewMode) return true;
       const noCategory = !i.category?.trim();
@@ -1692,6 +1727,7 @@ export default function Brain() {
     favouritesOnly,
     actionOnly,
     remindersOnly,
+    readLaterOnly,
     reviewMode,
     archivedOnly,
     datePreset !== "all",
@@ -1716,6 +1752,7 @@ export default function Brain() {
   const favouriteCount = items.filter(i => i.favourite).length;
   const actionCount = items.filter(i => i.actionRequired).length;
   const reminderCount = reminders.filter(r => r.status === "pending").length;
+  const readLaterCount = items.filter(i => isToRead(i)).length;
   const reviewCount = items.filter(i => {
     const noCategory = !i.category?.trim();
     const noTags = (i.tags?.length ?? 0) === 0;
@@ -1909,6 +1946,9 @@ export default function Brain() {
           remindersOnly={remindersOnly}
           onRemindersOnly={setRemindersOnly}
           reminderCount={reminderCount}
+          readLaterOnly={readLaterOnly}
+          onReadLaterOnly={setReadLaterOnly}
+          readLaterCount={readLaterCount}
           reviewMode={reviewMode}
           onReviewMode={setReviewMode}
           reviewCount={reviewCount}
@@ -2132,6 +2172,7 @@ export default function Brain() {
                     onPopOut={() => popOutCard(item.id)}
                     onDelete={() => handleDelete(item.id)}
                     onArchive={() => handleArchive(item.id)}
+                    onCycleReadingStatus={() => handleCycleReadingStatus(item.id)}
                     onPreviewImageFailed={markPreviewImageFailed}
                     onToggleChecklistRow={rowId => toggleChecklistItemOnCard(item, rowId)}
                     onOpenCard={openCardInCurrentTab}

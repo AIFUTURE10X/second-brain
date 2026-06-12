@@ -11,7 +11,17 @@ import {
   MEMORY_OF_WEEK_ENABLED_KEY,
   parseMemoryToggleCommand,
 } from "@/lib/telegram-memory-settings.mjs";
-import { asc, eq } from "drizzle-orm";
+import { asc, and, eq, isNull } from "drizzle-orm";
+import { hybridSearchItems } from "@/lib/search-items";
+import { initialReadingStatus } from "@/lib/reading-status.mjs";
+import {
+  formatDoneAmbiguous,
+  formatFindResults,
+  matchTaskCandidates,
+  parseDoneCommand,
+  parseFindCommand,
+} from "@/lib/telegram-commands.mjs";
+import { normalizeChecklistItems } from "@/lib/task-checklists";
 
 /**
  * POST /api/telegram
@@ -77,6 +87,54 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
+  // /find <query> — same hybrid search (FTS + semantic + fuzzy) as the app.
+  const findQuery = parseFindCommand(rawText);
+  if (findQuery) {
+    try {
+      const result = await hybridSearchItems(findQuery);
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "";
+      await sendTelegram(botToken, chatId, formatFindResults(result.rows, { baseUrl, query: findQuery }));
+    } catch {
+      await sendTelegram(botToken, chatId, "✗ Search failed. Try again.");
+    }
+    return NextResponse.json({ ok: true });
+  }
+
+  // /done <id or title> — mark an open task complete.
+  const doneArg = parseDoneCommand(rawText);
+  if (doneArg) {
+    try {
+      const openTasks = await db
+        .select({ id: items.id, title: items.title, checklistItems: items.checklistItems })
+        .from(items)
+        .where(and(eq(items.type, "task"), eq(items.completed, false), isNull(items.archivedAt)));
+      const candidates = matchTaskCandidates(doneArg, openTasks);
+      if (candidates.length === 0) {
+        await sendTelegram(botToken, chatId, `No open task matches "${doneArg}".`);
+      } else if (candidates.length > 1) {
+        await sendTelegram(botToken, chatId, formatDoneAmbiguous(candidates));
+      } else {
+        const task = candidates[0] as { id: string; title: string | null; checklistItems: unknown };
+        const now = new Date();
+        // Completing a checklist task means completing every row — the app
+        // derives task completion from its checklist.
+        const checklistItems = normalizeChecklistItems(task.checklistItems).map(row => ({
+          ...row,
+          completed: true,
+          completedAt: row.completedAt || now.toISOString(),
+        }));
+        await db
+          .update(items)
+          .set({ completed: true, completedAt: now, checklistItems, updatedAt: now })
+          .where(eq(items.id, task.id));
+        await sendTelegram(botToken, chatId, `☑ Done: ${task.title || "Untitled"}`);
+      }
+    } catch {
+      await sendTelegram(botToken, chatId, "✗ Couldn't update the task. Try again.");
+    }
+    return NextResponse.json({ ok: true });
+  }
+
   // Extract URLs from the message
   const urlMatch = text.match(/https?:\/\/[^\s]+/);
   const url = urlMatch?.[0] || "";
@@ -86,7 +144,7 @@ export async function POST(req: NextRequest) {
     await sendTelegram(
       botToken,
       chatId,
-      "Send me:\n• a URL → saved as a Link\n• plain text → saved as a Thought\n• '/t buy milk' → saved as a Task\n• '/m wifi password is abc123' → saved as a Memory"
+      "Send me:\n• a URL → saved as a Link\n• plain text → saved as a Thought\n• '/t buy milk' → saved as a Task\n• '/m wifi password is abc123' → saved as a Memory\n• '/find <query>' → search your Brain\n• '/done <task title or id>' → complete a task"
     );
     return NextResponse.json({ ok: true });
   }
@@ -153,6 +211,7 @@ export async function POST(req: NextRequest) {
         tags,
         category,
         pinned: false,
+        readingStatus: initialReadingStatus(type),
         ogTitle: og.ogTitle,
         ogDescription: og.ogDescription,
         ogImage: og.ogImage,

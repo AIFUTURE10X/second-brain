@@ -1,54 +1,20 @@
 import { NextRequest, NextResponse, after } from "next/server";
-import { db, sql } from "@/db";
+import { db } from "@/db";
 import { items, categories, deletedItems } from "@/db/schema";
 import { eq, gt, desc, asc, and, isNull, isNotNull, sql as sqlExpr, type SQL } from "drizzle-orm";
 import { enrichUrl } from "@/lib/enrich";
 import { checkApiKey } from "@/lib/api-key";
 import { aiTagAndCategorize } from "@/lib/ai-tagger";
 import { shouldEnrichUrlOnUpdate } from "@/lib/item-updates.mjs";
-import { buildItemSearchTsQuery } from "@/lib/item-search";
-import { embeddingsEnabled, generateEmbedding, vectorLiteral, SEMANTIC_DISTANCE_CUTOFF, SEMANTIC_SEARCH_LIMIT } from "@/lib/embeddings.mjs";
-import { mergeHybridResults } from "@/lib/hybrid-search.mjs";
+import { embeddingsEnabled } from "@/lib/embeddings.mjs";
+import { hybridSearchItems } from "@/lib/search-items";
+import { initialReadingStatus } from "@/lib/reading-status.mjs";
 import { SYNC_CURSOR_OVERLAP_MS } from "@/lib/polling-sync.mjs";
 import { embeddingInputChanged, updateItemEmbedding } from "@/lib/embedding-store";
 import { jsonError, parseBody, readJsonBody, serverError } from "@/lib/api-errors";
 import { itemCreateSchema, itemUpdateSchema } from "@/lib/validation";
 import { deriveTaskCompletion, normalizeChecklistItems } from "@/lib/task-checklists";
 import { appendYouTubeDescriptionLinksToNotes, fetchYouTubeDescriptionLinks, type YouTubeDescriptionLink } from "@/lib/youtube";
-
-// snake_case → camelCase column list shared by the raw-SQL search paths so
-// their rows match the Drizzle-select shape the frontend expects.
-const ITEM_COLUMNS_SQL = `
-  id, type, title, content, url, notes, tags, category, pinned, attachments,
-  favourite,
-  completed,
-  action_required AS "actionRequired",
-  checklist_items AS "checklistItems",
-  note_entries AS "noteEntries",
-  favicon,
-  og_title AS "ogTitle",
-  og_description AS "ogDescription",
-  og_image AS "ogImage",
-  site_name AS "siteName",
-  completed_at AS "completedAt",
-  created_at AS "createdAt",
-  updated_at AS "updatedAt"
-`;
-
-// Nearest-neighbour lookup over item embeddings (cosine distance, HNSW
-// index). Rows past the distance cutoff are noise and excluded entirely.
-async function semanticSearchRows(queryVector: number[], archivedFilterSql: string) {
-  return await sql.query(
-    `SELECT ${ITEM_COLUMNS_SQL}
-     FROM items
-     WHERE embedding IS NOT NULL
-       AND (embedding <=> $1::vector) < $2
-       ${archivedFilterSql}
-     ORDER BY embedding <=> $1::vector
-     LIMIT $3`,
-    [vectorLiteral(queryVector), SEMANTIC_DISTANCE_CUTOFF, SEMANTIC_SEARCH_LIMIT]
-  );
-}
 
 function prepareTaskFields(
   type: unknown,
@@ -100,7 +66,6 @@ export async function GET(req: NextRequest) {
   // cards; ?archived=1 returns only the archive. ?since= deltas are exempt —
   // pollers must see archive/unarchive transitions to stay in sync.
   const archivedOnly = url.searchParams.get("archived") === "1";
-  const archivedFilterSql = archivedOnly ? "AND archived_at IS NOT NULL" : "AND archived_at IS NULL";
 
   if (id) {
     const [row] = await db.select().from(items).where(eq(items.id, id));
@@ -142,81 +107,22 @@ export async function GET(req: NextRequest) {
     (!type || row.type === type);
 
   if (q) {
-    // Hybrid search: weighted FTS over search_tsv merged with pgvector
-    // semantic ranking via reciprocal rank fusion (lib/hybrid-search.mjs).
-    // ?semantic=0 forces FTS-only, ?semantic=1 returns pure semantic ranking;
-    // the default auto-merges whenever OPENAI_API_KEY is configured. Every
-    // semantic failure mode (no key, column/extension not migrated yet,
-    // OpenAI error) degrades silently to the FTS-only behaviour.
+    // Hybrid search shared with Telegram /find (lib/search-items.ts):
+    // weighted FTS + pgvector semantic ranking merged via reciprocal rank
+    // fusion, trigram fuzzy fallback on zero hits. ?semantic=0 forces
+    // FTS-only, ?semantic=1 returns pure semantic ranking. Result flags map
+    // to headers rather than a body shape change so existing clients that
+    // expect a bare array keep working.
     const semanticParam = url.searchParams.get("semantic");
-
-    // Full-text search against the weighted, GIN-indexed search_tsv column
-    // (see db/schema.ts — covers title, tags, category, body, note entries,
-    // checklist rows, and link metadata).
-    const tsquery = buildItemSearchTsQuery(q);
-    // Loose row shape for the raw-SQL search paths — all optional so the
-    // neon driver's Record<string, any> rows assign without casts.
-    type SearchRow = { id?: string; pinned?: boolean | null; tags?: unknown; category?: string | null; type?: string | null } & Record<string, unknown>;
-    let ftsRows: SearchRow[] = [];
-    if (tsquery) {
-      ftsRows = await sql.query(
-        `SELECT ${ITEM_COLUMNS_SQL}
-         FROM items, to_tsquery('english', $1) AS query
-         WHERE search_tsv @@ query
-           ${archivedFilterSql}
-         ORDER BY pinned DESC,
-                  ts_rank_cd(search_tsv, query) DESC,
-                  created_at DESC`,
-        [tsquery]
-      );
-    }
-
-    let semanticRows: SearchRow[] = [];
-    let semanticUsed = false;
-    if (semanticParam !== "0" && embeddingsEnabled()) {
-      try {
-        const queryVector = await generateEmbedding(q);
-        if (queryVector) {
-          semanticRows = await semanticSearchRows(queryVector, archivedFilterSql);
-          semanticUsed = true;
-        }
-      } catch (error) {
-        console.error("Semantic search failed:", error);
-      }
-    }
-
-    const ranked = semanticParam === "1" && semanticUsed
-      ? semanticRows
-      : mergeHybridResults(ftsRows, semanticRows);
-    const matched = ranked.filter(matchesStructuredFilters);
-    if (matched.length > 0) {
-      // Flagged via header rather than a body shape change so existing
-      // clients that expect a bare array keep working.
-      return NextResponse.json(
-        matched,
-        semanticUsed ? { headers: { "x-search-semantic": "1" } } : undefined
-      );
-    }
-    // Zero hits — trigram fallback over titles so typos still surface
-    // cards ("recat" finds "react").
-    try {
-      const fuzzy = await sql.query(
-        `SELECT ${ITEM_COLUMNS_SQL}
-         FROM items
-         WHERE word_similarity($1, title) > 0.3
-           ${archivedFilterSql}
-         ORDER BY pinned DESC,
-                  word_similarity($1, title) DESC,
-                  created_at DESC
-         LIMIT 25`,
-        [q]
-      );
-      return NextResponse.json(fuzzy.filter(matchesStructuredFilters), { headers: { "x-search-fuzzy": "1" } });
-    } catch (error) {
-      // pg_trgm not installed yet (scripts/db-setup.sql) — degrade to no results.
-      console.error("Fuzzy search fallback failed:", error);
-      return NextResponse.json([]);
-    }
+    const result = await hybridSearchItems(q, {
+      archivedOnly,
+      semanticMode: semanticParam === "0" ? "off" : semanticParam === "1" ? "only" : "auto",
+      filter: matchesStructuredFilters,
+    });
+    const headers: Record<string, string> = {};
+    if (result.semanticUsed) headers["x-search-semantic"] = "1";
+    if (result.fuzzy) headers["x-search-fuzzy"] = "1";
+    return NextResponse.json(result.rows, Object.keys(headers).length > 0 ? { headers } : undefined);
   }
 
   const conditions: SQL[] = [];
@@ -314,6 +220,7 @@ export async function POST(req: NextRequest) {
       tags: itemTags,
       category: itemCategory,
       pinned: body.pinned || false,
+      readingStatus: body.readingStatus ?? initialReadingStatus(body.type || "note"),
       checklistItems: taskFields.checklistItems,
       completed: taskFields.completed,
       completedAt: taskFields.completedAt,

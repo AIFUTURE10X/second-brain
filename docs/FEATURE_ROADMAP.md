@@ -26,8 +26,8 @@ Auth is explicitly deferred — the app stays open (same-origin + `API_SECRET` b
 | 2.3 | **Timeline / date views** ✅ | Filter by `createdAt` range (this week, month, custom); calendar or grouped list UI |
 | 2.4 | **Archive** ✅ | `archived_at` column; hide archived from default grid; "Archive" action + filter toggle |
 | 2.5 | **Bulk actions** ✅ | Multi-select in review mode + grid; bulk tag, category, archive, delete |
-| 2.6 | **Extension context menu** | MV3 `contextMenus`: "Save link to Brain", "Save selection to Brain" |
-| 2.7 | **Telegram `/find` + `/done`** | `/find <query>` → search API results in chat; `/done <id or title>` → mark task complete |
+| 2.6 | **Extension context menu** ✅ | MV3 `contextMenus`: "Save link to Brain", "Save selection to Brain" |
+| 2.7 | **Telegram `/find` + `/done`** ✅ | `/find <query>` → search API results in chat; `/done <id or title>` → mark task complete |
 | 2.8 | **Reminder snooze + recurring** | `snoozed_until`, `recurrence` on reminders; snooze buttons in Telegram; cron handles recurrence |
 | 2.9 | **Read-later** | `reading_status`: `unread` \| `reading` \| `done` on link items; filter + quick toggle |
 | 2.10 | **Card templates** | `templates` in settings or table; pre-fill type, tags, category, checklist skeleton |

@@ -44,6 +44,9 @@ interface FilterBarProps {
   remindersOnly: boolean;
   onRemindersOnly: (v: boolean) => void;
   reminderCount: number;
+  readLaterOnly: boolean;
+  onReadLaterOnly: (v: boolean) => void;
+  readLaterCount: number;
   reviewMode: boolean;
   onReviewMode: (v: boolean) => void;
   reviewCount: number;
@@ -77,6 +80,7 @@ export function FilterBar(props: FilterBarProps) {
     favouritesOnly, onFavouritesOnly, favouriteCount,
     actionOnly, onActionOnly, actionCount,
     remindersOnly, onRemindersOnly, reminderCount,
+    readLaterOnly, onReadLaterOnly, readLaterCount,
     reviewMode, onReviewMode, reviewCount,
     archivedOnly, onArchivedOnly,
     datePreset, onDatePreset, dateFrom, onDateFrom, dateTo, onDateTo,
@@ -137,7 +141,7 @@ export function FilterBar(props: FilterBarProps) {
     : sourceCounts;
 
   const dateActive = datePreset !== "all";
-  const secondaryActive = [withNotesOnly, favouritesOnly, actionOnly, remindersOnly, reviewMode, archivedOnly, dateActive, sourceFilter !== null].filter(Boolean).length;
+  const secondaryActive = [withNotesOnly, favouritesOnly, actionOnly, remindersOnly, readLaterOnly, reviewMode, archivedOnly, dateActive, sourceFilter !== null].filter(Boolean).length;
   const activeCount = [
     view !== "all",
     catFilter !== "all",
@@ -147,6 +151,7 @@ export function FilterBar(props: FilterBarProps) {
     favouritesOnly,
     actionOnly,
     remindersOnly,
+    readLaterOnly,
     reviewMode,
     archivedOnly,
     dateActive,
@@ -162,6 +167,7 @@ export function FilterBar(props: FilterBarProps) {
     onFavouritesOnly(false);
     onActionOnly(false);
     onRemindersOnly(false);
+    onReadLaterOnly(false);
     onReviewMode(false);
     onArchivedOnly(false);
     onDatePreset("all");
@@ -514,6 +520,7 @@ export function FilterBar(props: FilterBarProps) {
             {favouriteCount > 0 && togglePill(favouritesOnly, onFavouritesOnly, "#F2C94C", "★ Favourites", favouriteCount, "Show only favourites")}
             {actionCount > 0 && togglePill(actionOnly, onActionOnly, "#EB5757", "⚡ Needs action", actionCount, "Show only items needing action")}
             {reminderCount > 0 && togglePill(remindersOnly, onRemindersOnly, "#56CCF2", "⏰ Reminders", reminderCount, "Show cards with pending reminders")}
+            {readLaterCount > 0 && togglePill(readLaterOnly, onReadLaterOnly, "#9B51E0", "◐ To read", readLaterCount, "Show unread and in-progress link cards")}
             {reviewCount > 0 && togglePill(reviewMode, onReviewMode, "#EB5757", "⚑ Review", reviewCount, "Items needing attention: no category, no tags, short title, or stale tasks")}
             <button
               onClick={() => onArchivedOnly(!archivedOnly)}

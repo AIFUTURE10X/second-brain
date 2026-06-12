@@ -6,7 +6,9 @@ import test from "node:test";
 import { pathToFileURL } from "node:url";
 import ts from "typescript";
 
-const routeSource = await readFile(new URL("../app/api/items/route.ts", import.meta.url), "utf8");
+// The search SQL lives in lib/search-items.ts (shared with Telegram /find);
+// the route delegates to it.
+const routeSource = await readFile(new URL("../lib/search-items.ts", import.meta.url), "utf8");
 const schemaSource = await readFile(new URL("../db/schema.ts", import.meta.url), "utf8");
 
 async function loadTsModule(relativePath, prefix) {

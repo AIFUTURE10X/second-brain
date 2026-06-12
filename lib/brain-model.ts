@@ -33,6 +33,7 @@ export interface Item {
   favourite?: boolean;
   actionRequired?: boolean;
   archivedAt?: string | null;
+  readingStatus?: "unread" | "reading" | "done" | null;
   attachments?: Attachment[];
   ogTitle: string;
   ogDescription: string;

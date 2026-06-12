@@ -5,6 +5,7 @@ import { LinkifiedText } from "../LinkifiedText";
 import { extractCardLinks, formatCardLinkLabel } from "@/lib/card-links";
 import { TAG_COLORS, TYPES, type Item, type RelatedItemSummary, type Reminder } from "@/lib/brain-model";
 import { checklistProgress, fileIcon, formatReminderDue, formatSize, timeAgo } from "@/lib/brain-format";
+import { readingStatusColor, readingStatusLabel } from "@/lib/reading-status.mjs";
 import type { ViewMode } from "@/lib/view-mode";
 
 interface ItemCardProps {
@@ -23,6 +24,7 @@ interface ItemCardProps {
   onAttachFiles: (files: FileList) => void;
   onEdit: () => void;
   onArchive: () => void;
+  onCycleReadingStatus: () => void;
   onPopOut: () => void;
   onDelete: () => void;
   onPreviewImageFailed: (src?: string) => void;
@@ -49,6 +51,7 @@ export function ItemCard({
   onAttachFiles,
   onEdit,
   onArchive,
+  onCycleReadingStatus,
   onPopOut,
   onDelete,
   onPreviewImageFailed,
@@ -523,6 +526,18 @@ export function ItemCard({
                 }}
                 title={item.actionRequired ? "Clear action flag" : "Mark as needing action"}
               >{item.actionRequired ? "⚡ Action needed" : "⚡ Flag action"}</button>
+              {item.type === "link" && (
+                <button
+                  onClick={e => { e.stopPropagation(); onCycleReadingStatus(); }}
+                  className="px-3 py-1.5 min-h-[44px] sm:min-h-0 rounded-md text-[11px] font-mono transition hover:brightness-125 active:scale-95"
+                  style={{
+                    border: `1px solid ${readingStatusColor(item.readingStatus)}40`,
+                    background: `${readingStatusColor(item.readingStatus)}10`,
+                    color: readingStatusColor(item.readingStatus),
+                  }}
+                  title="Read-later status — click to cycle unread → reading → read"
+                >{readingStatusLabel(item.readingStatus) || "◌ track reading"}</button>
+              )}
               <button
                 onClick={e => { e.stopPropagation(); onEdit(); }}
                 className="px-3 py-1.5 min-h-[44px] sm:min-h-0 rounded-md text-[11px] font-mono transition hover:brightness-125 active:scale-95"

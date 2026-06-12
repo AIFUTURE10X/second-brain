@@ -61,6 +61,9 @@ export const items = pgTable("items", {
   // Archive (roadmap 2.4): archived cards are hidden from the default grid
   // and search; null = active. Set/cleared via PUT { archivedAt }.
   archivedAt: timestamp("archived_at", { mode: "date" }),
+  // Read-later (roadmap 2.9): unread | reading | done on link cards;
+  // null = not tracked (non-link types, pre-feature links).
+  readingStatus: text("reading_status"),
   attachments: jsonb("attachments").$type<Attachment[]>().default([]),
   // OpenGraph / link preview data (auto-filled on save)
   ogTitle: text("og_title").default(""),

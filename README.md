@@ -104,7 +104,8 @@ Request bodies are validated with zod; invalid payloads return
 ## Satellites
 
 - **Extension** (`extension/`): load unpacked in Chrome, set the deployment URL
-  + `API_SECRET` in the popup.
+  + `API_SECRET` in the popup. Right-click anywhere for "Save page / link /
+  selection to Brain" (result flashes on the toolbar badge).
 - **Telegram bot**: set `TELEGRAM_BOT_TOKEN` + `TELEGRAM_ALLOWED_USER_ID`, then
   register the webhook against `/api/telegram` (include
   `&secret_token=$TELEGRAM_WEBHOOK_SECRET` if set).

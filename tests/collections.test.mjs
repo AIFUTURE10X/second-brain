@@ -12,6 +12,8 @@ import {
 import { dateRangeBounds, groupItemsByDay, itemInDateRange, timelineDayKey } from "../lib/date-range.mjs";
 
 const routeSource = await readFile(new URL("../app/api/items/route.ts", import.meta.url), "utf8");
+// Search SQL (incl. the archived filter fragments) lives in lib/search-items.ts.
+const searchLibSource = await readFile(new URL("../lib/search-items.ts", import.meta.url), "utf8");
 const schemaSource = await readFile(new URL("../db/schema.ts", import.meta.url), "utf8");
 const brainSource = await readFile(new URL("../components/Brain.tsx", import.meta.url), "utf8");
 
@@ -89,11 +91,11 @@ test("timeline groups follow list order keyed by local day", () => {
 test("schema and API gained the archive column and filters", () => {
   assert.match(schemaSource, /archivedAt: timestamp\("archived_at"/);
   assert.match(routeSource, /searchParams\.get\("archived"\)/);
-  assert.match(routeSource, /AND archived_at IS NULL/);
-  assert.match(routeSource, /AND archived_at IS NOT NULL/);
+  assert.match(searchLibSource, /AND archived_at IS NULL/);
+  assert.match(searchLibSource, /AND archived_at IS NOT NULL/);
   // Every search path respects the filter; ?since= deltas do not (sync needs
   // to see archive transitions).
-  const filtered = routeSource.match(/\$\{archivedFilterSql\}/g) || [];
+  const filtered = searchLibSource.match(/\$\{archivedFilterSql\}/g) || [];
   assert.ok(filtered.length >= 3, "FTS, semantic, and fuzzy paths must all filter archived");
   assert.match(routeSource, /Invalid archivedAt timestamp/);
 });

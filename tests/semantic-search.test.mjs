@@ -13,6 +13,9 @@ import {
 import { mergeHybridResults } from "../lib/hybrid-search.mjs";
 
 const routeSource = await readFile(new URL("../app/api/items/route.ts", import.meta.url), "utf8");
+// The hybrid search implementation lives in lib/search-items.ts (shared with
+// Telegram /find); the route delegates to it.
+const searchLibSource = await readFile(new URL("../lib/search-items.ts", import.meta.url), "utf8");
 const schemaSource = await readFile(new URL("../db/schema.ts", import.meta.url), "utf8");
 const dbSetupSource = await readFile(new URL("../scripts/db-setup.sql", import.meta.url), "utf8");
 
@@ -166,13 +169,13 @@ test("pinned items sort first regardless of fusion score", () => {
 // ── route + schema wiring ────────────────────────────────────────────────────
 
 test("items search merges semantic ranking and flags it via header", () => {
-  assert.match(routeSource, /embedding <=> \$1::vector/);
-  assert.match(routeSource, /mergeHybridResults\(ftsRows, semanticRows\)/);
+  assert.match(searchLibSource, /embedding <=> \$1::vector/);
+  assert.match(searchLibSource, /mergeHybridResults\(ftsRows, semanticRows\)/);
   assert.match(routeSource, /x-search-semantic/);
   // FTS + trigram fallback must survive the hybrid rewrite.
-  assert.match(routeSource, /search_tsv @@ query/);
-  assert.match(routeSource, /ts_rank_cd\(search_tsv, query\)/);
-  assert.match(routeSource, /word_similarity/);
+  assert.match(searchLibSource, /search_tsv @@ query/);
+  assert.match(searchLibSource, /ts_rank_cd\(search_tsv, query\)/);
+  assert.match(searchLibSource, /word_similarity/);
 });
 
 test("item writes schedule a post-response embedding update", () => {

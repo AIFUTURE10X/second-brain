@@ -5,6 +5,7 @@ import { enrichUrl } from "@/lib/enrich";
 import { checkApiKey } from "@/lib/api-key";
 import { embeddingsEnabled } from "@/lib/embeddings.mjs";
 import { updateItemEmbedding } from "@/lib/embedding-store";
+import { initialReadingStatus } from "@/lib/reading-status.mjs";
 import { aiTagAndCategorize } from "@/lib/ai-tagger";
 import { appendYouTubeDescriptionLinksToNotes, fetchYouTubeDescriptionLinks, type YouTubeDescriptionLink } from "@/lib/youtube";
 import { asc } from "drizzle-orm";
@@ -111,6 +112,7 @@ export async function POST(req: NextRequest) {
       tags,
       category,
       pinned: false,
+      readingStatus: initialReadingStatus(type),
       ogTitle: og.ogTitle,
       ogDescription: og.ogDescription,
       ogImage: og.ogImage,

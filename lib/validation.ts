@@ -44,6 +44,8 @@ const itemFields = {
   actionRequired: z.boolean().optional(),
   // ISO timestamp to archive, null to unarchive (roadmap 2.4).
   archivedAt: z.string().nullable().optional(),
+  // Read-later tracking on link cards (roadmap 2.9).
+  readingStatus: z.enum(["unread", "reading", "done"]).nullable().optional(),
   attachments: z.array(attachmentSchema).optional(),
   ogTitle: z.string().optional(),
   ogDescription: z.string().optional(),

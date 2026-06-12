@@ -9,6 +9,7 @@ interface FilterBarProps {
   search: string;
   onSearchChange: (value: string) => void;
   searchInputRef: RefObject<HTMLInputElement | null>;
+  searching?: boolean;
   view: "all" | ItemType;
   onViewChange: (view: "all" | ItemType) => void;
   counts: Record<string, number>;
@@ -56,7 +57,7 @@ const menuSearchClass = "mb-2 w-full rounded-lg border border-brand-border bg-[#
 // the source filter live in the "More" popover. Filter state stays in Brain.
 export function FilterBar(props: FilterBarProps) {
   const {
-    search, onSearchChange, searchInputRef,
+    search, onSearchChange, searchInputRef, searching,
     view, onViewChange, counts,
     catFilter, onCatFilterChange, parentCats, getChildren, getCatNamesUnderParent, usedCatNames, itemCount,
     sourceCounts, sourceFilter, onSourceFilterChange,
@@ -188,7 +189,15 @@ export function FilterBar(props: FilterBarProps) {
             aria-label="Search items"
             className="w-full py-2 pl-8 pr-3 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none placeholder:text-gray-500"
           />
-          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-600 text-sm">⌕</span>
+          {searching ? (
+            <span
+              className="absolute left-2.5 top-1/2 -translate-y-1/2 inline-block w-3.5 h-3.5 border border-gray-500 border-t-transparent rounded-full"
+              style={{ animation: "spin 0.6s linear infinite" }}
+              aria-label="Searching"
+            />
+          ) : (
+            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-600 text-sm">⌕</span>
+          )}
         </div>
 
         {/* Type */}

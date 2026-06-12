@@ -44,6 +44,8 @@ import { TelegramHelpMenu } from "./brain/TelegramHelpMenu";
 import { ItemCard } from "./brain/ItemCard";
 import { QuickCaptureBar } from "./brain/QuickCaptureBar";
 import { FilterBar } from "./brain/FilterBar";
+import { EmptyState } from "./brain/EmptyState";
+import { SkeletonCard } from "./brain/SkeletonCard";
 
 const CLIENT_APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "dev";
 
@@ -53,6 +55,9 @@ export default function Brain() {
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
+  const [itemsError, setItemsError] = useState(false);
+  const [searchFuzzy, setSearchFuzzy] = useState(false);
+  const [searching, setSearching] = useState(false);
   const [view, setView] = useState<"all" | ItemType>("all");
   const [catFilter, setCatFilter] = useState<string>("all");
   const [sourceFilter, setSourceFilter] = useState<string | null>(null);
@@ -238,14 +243,23 @@ export default function Brain() {
   };
 
   const fetchItems = useCallback(async (query?: string) => {
+    if (query) setSearching(true);
     try {
       const url = query ? `/api/items?q=${encodeURIComponent(query)}` : "/api/items";
       const res = await fetch(url, { cache: "no-store" });
-      if (res.ok) setItems(await res.json());
-      else showToast("Failed to load items", "error");
+      if (res.ok) {
+        setItems(await res.json());
+        setSearchFuzzy(res.headers.get("x-search-fuzzy") === "1");
+        setItemsError(false);
+      } else {
+        showToast("Failed to load items", "error");
+        setItemsError(true);
+      }
     } catch {
       showToast("Failed to load items", "error");
+      setItemsError(true);
     }
+    setSearching(false);
     setLoading(false);
   }, []);
 
@@ -1017,6 +1031,20 @@ export default function Brain() {
     setQuickMemorySaving(false);
   };
 
+  // Shared by FilterBar's Clear-all and the no-matches empty state.
+  const clearAllFilters = () => {
+    setView("all");
+    setCatFilter("all");
+    setSourceFilter(null);
+    setTagFilter(null);
+    setWithNotesOnly(false);
+    setFavouritesOnly(false);
+    setActionOnly(false);
+    setRemindersOnly(false);
+    setReviewMode(false);
+    setSearch("");
+  };
+
   // Quick capture — mirrors the Telegram bot grammar: URL → link,
   // "/t text" → task, "/m text" → memory, anything else → thought.
   const captureQuick = async (raw: string): Promise<boolean> => {
@@ -1494,18 +1522,7 @@ export default function Brain() {
           </div>
         </div>
         <div className="px-4 space-y-2.5">
-          {[1, 2, 3, 4, 5].map(i => (
-            <div key={i} className="skeleton rounded-xl p-4" style={{ animationDelay: `${i * 0.1}s` }}>
-              <div className="flex gap-3">
-                <div className="skeleton w-8 h-8 rounded-lg shrink-0" />
-                <div className="flex-1 space-y-2">
-                  <div className="skeleton h-4 w-3/4" />
-                  <div className="skeleton h-3 w-full" />
-                  <div className="skeleton h-3 w-1/2" />
-                </div>
-              </div>
-            </div>
-          ))}
+          {[1, 2, 3, 4, 5].map(i => <SkeletonCard key={i} delay={i * 0.1} />)}
         </div>
       </div>
     );
@@ -1590,6 +1607,7 @@ export default function Brain() {
           search={search}
           onSearchChange={setSearch}
           searchInputRef={searchInputRef}
+          searching={searching}
           view={view}
           onViewChange={setView}
           counts={counts}
@@ -1733,31 +1751,19 @@ export default function Brain() {
       <div
         className={`px-4 ${density === "compact" ? "grid grid-cols-1 gap-2 sm:[grid-template-columns:repeat(auto-fit,minmax(min(100%,17rem),17rem))]" : density === "list" ? "flex flex-col gap-1.5" : ""}`}
       >
-        {filtered.length === 0 && (
-          <div className={`text-center py-16 text-gray-700 ${density === "compact" ? "col-span-full" : ""}`}>
-            <div className="text-4xl mb-3">◇</div>
-            {items.length === 0 ? (
-              <>
-                <p className="text-sm font-mono text-gray-500">Your second brain is empty</p>
-                <p className="text-xs mt-1.5 text-gray-600">Save notes, links, clips & thoughts</p>
-                <button
-                  onClick={() => { closeForm(); setShowAdd(true); }}
-                  className="mt-4 px-5 py-2 rounded-xl text-white text-sm font-medium"
-                  style={{ background: "linear-gradient(135deg, #F2C94C, #E8A838)" }}
-                >+ Add your first item</button>
-              </>
-            ) : catFilter !== "all" ? (
-              <>
-                <p className="text-sm font-mono text-gray-500">No items in this category</p>
-                <p className="text-xs mt-1.5 text-gray-600">Try a different category or add an item</p>
-              </>
-            ) : (
-              <>
-                <p className="text-sm font-mono text-gray-500">No matches</p>
-                <p className="text-xs mt-1.5 text-gray-600">Try a different search term</p>
-              </>
-            )}
+        {searchFuzzy && search.trim() && filtered.length > 0 && (
+          <div className={`mb-2 rounded-lg border border-[#E8A83840] bg-[#E8A83810] px-3 py-2 text-[11px] font-mono text-[#E8A838] ${density === "compact" ? "col-span-full" : ""}`}>
+            No exact matches for &ldquo;{search.trim()}&rdquo; — showing close matches
           </div>
+        )}
+        {filtered.length === 0 && (
+          <EmptyState
+            variant={items.length === 0 ? (itemsError ? "error" : "new") : "no-matches"}
+            className={density === "compact" ? "col-span-full" : ""}
+            onAddFirst={() => { closeForm(); setShowAdd(true); }}
+            onClearFilters={clearAllFilters}
+            onRetry={() => fetchItems(search.trim() || undefined)}
+          />
         )}
 
         {visibleItems.map((item, idx) => (

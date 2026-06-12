@@ -152,7 +152,7 @@ export function FilterBar(props: FilterBarProps) {
   };
 
   const viewColor = view === "all" ? "#E8A838" : TYPES[view].color;
-  const triggerClass = "px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-mono font-medium transition-all shrink-0 flex items-center gap-1.5";
+  const triggerClass = "px-3 py-1.5 min-h-[44px] sm:min-h-0 rounded-lg text-xs whitespace-nowrap font-mono font-medium transition-all shrink-0 flex items-center gap-1.5";
 
   const togglePill = (
     active: boolean,
@@ -178,7 +178,7 @@ export function FilterBar(props: FilterBarProps) {
 
   return (
     <div className="relative pb-2" data-filter-bar>
-      <div className="flex flex-wrap items-center gap-1.5">
+      <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-0.5 sm:flex-wrap sm:overflow-visible sm:pb-0">
         {/* Search */}
         <div className="relative min-w-[180px] flex-1">
           <input
@@ -187,7 +187,7 @@ export function FilterBar(props: FilterBarProps) {
             onChange={e => onSearchChange(e.target.value)}
             placeholder="Search… (Ctrl+K)"
             aria-label="Search items"
-            className="w-full py-2 pl-8 pr-3 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none placeholder:text-gray-500"
+            className="w-full py-2 min-h-[44px] sm:min-h-0 pl-8 pr-3 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none placeholder:text-gray-500"
           />
           {searching ? (
             <span

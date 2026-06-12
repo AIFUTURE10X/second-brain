@@ -1549,13 +1549,13 @@ export default function Brain() {
             />
             <button
               onClick={() => setVaultOpen(true)}
-              className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl text-gray-500 text-sm flex items-center justify-center border border-brand-border hover:text-[#E8A838] hover:border-[#E8A83860] active:scale-95 transition"
+              className="w-11 h-11 sm:w-10 sm:h-10 rounded-xl text-gray-500 text-sm flex items-center justify-center border border-brand-border hover:text-[#E8A838] hover:border-[#E8A83860] active:scale-95 transition"
               aria-label="Open encrypted vault"
               title="Encrypted vault"
             >▣</button>
             <button
               onClick={() => setDensity(nextViewMode)}
-              className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl text-gray-500 text-sm flex items-center justify-center border border-brand-border hover:text-gray-300 hover:border-gray-600 active:scale-95 transition"
+              className="w-11 h-11 sm:w-10 sm:h-10 rounded-xl text-gray-500 text-sm flex items-center justify-center border border-brand-border hover:text-gray-300 hover:border-gray-600 active:scale-95 transition"
               aria-label={`Switch to ${viewModeLabel(nextViewMode(density))} view`}
               title={`${viewModeLabel(density)} view`}
             >{viewModeIcon(density)}</button>
@@ -1573,7 +1573,7 @@ export default function Brain() {
                 }
               }}
               disabled={isRefreshing}
-              className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl text-gray-500 text-sm flex items-center justify-center border border-brand-border hover:text-gray-300 hover:border-gray-600 active:scale-95 transition disabled:opacity-60"
+              className="w-11 h-11 sm:w-10 sm:h-10 rounded-xl text-gray-500 text-sm flex items-center justify-center border border-brand-border hover:text-gray-300 hover:border-gray-600 active:scale-95 transition disabled:opacity-60"
               aria-label="Refresh app and items"
               title="Refresh app and items"
             >
@@ -1581,18 +1581,18 @@ export default function Brain() {
             </button>
             <button
               onClick={() => setShowCatManager(true)}
-              className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl text-gray-500 text-sm flex items-center justify-center border border-brand-border hover:text-gray-300 hover:border-gray-600 active:scale-95 transition"
+              className="w-11 h-11 sm:w-10 sm:h-10 rounded-xl text-gray-500 text-sm flex items-center justify-center border border-brand-border hover:text-gray-300 hover:border-gray-600 active:scale-95 transition"
               aria-label="Manage categories"
             >⊞</button>
             <button
               onClick={handleExport}
-              className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl text-gray-500 text-sm flex items-center justify-center border border-brand-border hover:text-gray-300 hover:border-gray-600 active:scale-95 transition"
+              className="w-11 h-11 sm:w-10 sm:h-10 rounded-xl text-gray-500 text-sm flex items-center justify-center border border-brand-border hover:text-gray-300 hover:border-gray-600 active:scale-95 transition"
               aria-label="Download JSON backup"
               title="Download backup (JSON)"
             >↓</button>
             <button
               onClick={() => { closeForm(); setShowAdd(true); }}
-              className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl text-white text-xl flex items-center justify-center font-light transition-transform hover:scale-105 active:scale-95"
+              className="w-11 h-11 sm:w-10 sm:h-10 rounded-xl text-white text-xl flex items-center justify-center font-light transition-transform hover:scale-105 active:scale-95"
               style={{ background: "linear-gradient(135deg, #F2C94C, #E8A838)", boxShadow: "0 4px 16px rgba(232,168,56,0.35)" }}
               aria-label="Add new item"
             >+</button>
@@ -1846,7 +1846,7 @@ export default function Brain() {
             </div>
           )}
           <div className="flex-1 cursor-pointer" onClick={closeForm} />
-          <div className="bg-brand-card border-t border-brand-border rounded-t-2xl px-5 pt-4 pb-6 max-h-[90vh] overflow-y-auto relative">
+          <div className="bg-brand-card border-t border-brand-border rounded-t-2xl px-4 sm:px-5 pt-4 pb-6 min-h-[92dvh] max-h-[100dvh] sm:min-h-0 sm:max-h-[90vh] overflow-y-auto relative">
             <div className="w-9 h-1 bg-gray-700 rounded-full mx-auto mb-4" />
             <div className="flex items-center justify-between mb-4 gap-2">
               <h2 className="text-base font-semibold" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>

@@ -123,19 +123,19 @@ export function ItemCard({
       <div className="absolute top-1.5 right-1.5 z-10 flex gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition">
         <button
           onClick={e => { e.stopPropagation(); onEdit(); }}
-          className="w-6 h-6 rounded-full bg-black/70 backdrop-blur-sm text-gray-400 hover:text-[#E8A838] hover:bg-[#E8A83820] active:scale-90 transition flex items-center justify-center text-[11px]"
+          className="w-8 h-8 sm:w-6 sm:h-6 rounded-full bg-black/70 backdrop-blur-sm text-gray-400 hover:text-[#E8A838] hover:bg-[#E8A83820] active:scale-90 transition flex items-center justify-center text-[11px]"
           aria-label="Edit item"
           title="Edit"
         >✎</button>
         <button
           onClick={e => { e.stopPropagation(); onPopOut(); }}
-          className="w-6 h-6 rounded-full bg-black/70 backdrop-blur-sm text-gray-400 hover:text-[#5B8DEF] hover:bg-[#5B8DEF20] active:scale-90 transition flex items-center justify-center text-[11px]"
+          className="w-8 h-8 sm:w-6 sm:h-6 rounded-full bg-black/70 backdrop-blur-sm text-gray-400 hover:text-[#5B8DEF] hover:bg-[#5B8DEF20] active:scale-90 transition flex items-center justify-center text-[11px]"
           aria-label="Pop out in new window"
           title="Pop out"
         >⇱</button>
         <button
           onClick={e => { e.stopPropagation(); onDelete(); }}
-          className="w-6 h-6 rounded-full bg-black/70 backdrop-blur-sm text-gray-400 hover:text-red-400 hover:bg-red-500/20 active:scale-90 transition flex items-center justify-center text-sm"
+          className="w-8 h-8 sm:w-6 sm:h-6 rounded-full bg-black/70 backdrop-blur-sm text-gray-400 hover:text-red-400 hover:bg-red-500/20 active:scale-90 transition flex items-center justify-center text-sm"
           aria-label="Delete item"
           title="Delete"
         >×</button>
@@ -351,7 +351,7 @@ export function ItemCard({
                       e.stopPropagation();
                       onToggleChecklistRow(row.id);
                     }}
-                    className="flex items-center gap-2 rounded-lg border border-brand-border bg-brand-muted/50 px-2.5 py-2 text-left hover:border-[#56CCF260] transition"
+                    className="flex items-center gap-2 min-h-[44px] sm:min-h-0 rounded-lg border border-brand-border bg-brand-muted/50 px-2.5 py-2 text-left hover:border-[#56CCF260] transition"
                     aria-label={`${row.completed ? "Uncheck" : "Check"} ${row.text}`}
                     title={row.completed ? "Mark incomplete" : "Mark complete"}
                   >
@@ -492,12 +492,12 @@ export function ItemCard({
             <div className="flex flex-wrap gap-2 mt-3 pt-2.5 border-t border-brand-border">
               <button
                 onClick={e => { e.stopPropagation(); onPin(); }}
-                className="px-3 py-1.5 rounded-md text-[11px] font-mono transition hover:brightness-125 active:scale-95"
+                className="px-3 py-1.5 min-h-[44px] sm:min-h-0 rounded-md text-[11px] font-mono transition hover:brightness-125 active:scale-95"
                 style={{ border: "1px solid #E8A83830", background: "#E8A83810", color: "#E8A838" }}
               >{item.pinned ? "Unpin" : "Pin"}</button>
               <button
                 onClick={e => { e.stopPropagation(); onToggleFlag("favourite"); }}
-                className="px-3 py-1.5 rounded-md text-[11px] font-mono transition hover:brightness-125 active:scale-95"
+                className="px-3 py-1.5 min-h-[44px] sm:min-h-0 rounded-md text-[11px] font-mono transition hover:brightness-125 active:scale-95"
                 style={{
                   border: item.favourite ? "1px solid #F2C94C90" : "1px solid #F2C94C30",
                   background: item.favourite ? "#F2C94C25" : "#F2C94C10",
@@ -507,7 +507,7 @@ export function ItemCard({
               >{item.favourite ? "★ Favourite" : "☆ Favourite"}</button>
               <button
                 onClick={e => { e.stopPropagation(); onToggleFlag("actionRequired"); }}
-                className="px-3 py-1.5 rounded-md text-[11px] font-mono transition hover:brightness-125 active:scale-95"
+                className="px-3 py-1.5 min-h-[44px] sm:min-h-0 rounded-md text-[11px] font-mono transition hover:brightness-125 active:scale-95"
                 style={{
                   border: item.actionRequired ? "1px solid #EB575790" : "1px solid #EB575730",
                   background: item.actionRequired ? "#EB575725" : "#EB575710",
@@ -517,13 +517,13 @@ export function ItemCard({
               >{item.actionRequired ? "⚡ Action needed" : "⚡ Flag action"}</button>
               <button
                 onClick={e => { e.stopPropagation(); onEdit(); }}
-                className="px-3 py-1.5 rounded-md text-[11px] font-mono transition hover:brightness-125 active:scale-95"
+                className="px-3 py-1.5 min-h-[44px] sm:min-h-0 rounded-md text-[11px] font-mono transition hover:brightness-125 active:scale-95"
                 style={{ border: "1px solid #5B8DEF30", background: "#5B8DEF10", color: "#5B8DEF" }}
               >Edit</button>
               <button
                 disabled={isSummarizing}
                 onClick={e => { e.stopPropagation(); onSummarize(); }}
-                className="px-3 py-1.5 rounded-md text-[11px] font-mono transition hover:brightness-125 active:scale-95 disabled:opacity-50 flex items-center gap-1"
+                className="px-3 py-1.5 min-h-[44px] sm:min-h-0 rounded-md text-[11px] font-mono transition hover:brightness-125 active:scale-95 disabled:opacity-50 flex items-center gap-1"
                 style={{ border: "1px solid #56CCF230", background: "#56CCF210", color: "#56CCF2" }}
               >
                 {isSummarizing && <span className="inline-block w-3 h-3 border border-current border-t-transparent rounded-full" style={{ animation: "spin 0.6s linear infinite" }} />}

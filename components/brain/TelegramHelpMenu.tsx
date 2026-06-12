@@ -26,7 +26,7 @@ export function TelegramHelpMenu({ memoryOfWeekEnabled, memoryOfWeekSaving, onTo
     <div className="relative" data-help-menu>
       <button
         onClick={() => setHelpOpen(v => !v)}
-        className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl text-gray-500 text-sm flex items-center justify-center border border-brand-border hover:text-gray-300 hover:border-gray-600 active:scale-95 transition"
+        className="w-11 h-11 sm:w-10 sm:h-10 rounded-xl text-gray-500 text-sm flex items-center justify-center border border-brand-border hover:text-gray-300 hover:border-gray-600 active:scale-95 transition"
         aria-label="Show Telegram bot commands"
         aria-expanded={helpOpen}
         title="Telegram commands"

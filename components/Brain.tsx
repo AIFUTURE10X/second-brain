@@ -43,6 +43,7 @@ import {
 import { TelegramHelpMenu } from "./brain/TelegramHelpMenu";
 import { ItemCard } from "./brain/ItemCard";
 import { QuickCaptureBar } from "./brain/QuickCaptureBar";
+import { FilterBar } from "./brain/FilterBar";
 
 const CLIENT_APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "dev";
 
@@ -61,12 +62,6 @@ export default function Brain() {
   const [actionOnly, setActionOnly] = useState(false);
   const [remindersOnly, setRemindersOnly] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [catMenuOpen, setCatMenuOpen] = useState(false);
-  const [catMenuSearch, setCatMenuSearch] = useState("");
-  const [sourceMenuOpen, setSourceMenuOpen] = useState(false);
-  const [sourceMenuSearch, setSourceMenuSearch] = useState("");
-  const [tagMenuOpen, setTagMenuOpen] = useState(false);
-  const [tagMenuSearch, setTagMenuSearch] = useState("");
   const [quickTaskText, setQuickTaskText] = useState("");
   const [quickTaskSaving, setQuickTaskSaving] = useState(false);
   const [quickMemoryText, setQuickMemoryText] = useState("");
@@ -438,9 +433,6 @@ export default function Brain() {
         else if (showAdd) closeForm();
         else if (showCatManager) setShowCatManager(false);
         else if (showTagManager) { setShowTagManager(false); setMergingTag(null); }
-        else if (tagMenuOpen) { setTagMenuOpen(false); setTagMenuSearch(""); }
-        else if (sourceMenuOpen) { setSourceMenuOpen(false); setSourceMenuSearch(""); }
-        else if (catMenuOpen) { setCatMenuOpen(false); setCatMenuSearch(""); }
       }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
@@ -450,7 +442,7 @@ export default function Brain() {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [catMenuOpen, pickerOpen, relatedPickerOpen, showAdd, showCatManager, showTagManager, sourceMenuOpen, tagMenuOpen, vaultOpen]);
+  }, [pickerOpen, relatedPickerOpen, showAdd, showCatManager, showTagManager, vaultOpen]);
 
   // Paste image from clipboard while the add/edit modal is open
   useEffect(() => {
@@ -573,48 +565,6 @@ export default function Brain() {
       showToast("Clipboard access denied — grant permission or try Ctrl+V", "error");
     }
   }, []);
-
-  // Close category menu when clicking outside
-  useEffect(() => {
-    if (!catMenuOpen) return;
-    const handleClick = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (!target.closest("[data-category-menu]")) {
-        setCatMenuOpen(false);
-        setCatMenuSearch("");
-      }
-    };
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [catMenuOpen]);
-
-  // Close source menu when clicking outside
-  useEffect(() => {
-    if (!sourceMenuOpen) return;
-    const handleClick = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (!target.closest("[data-source-menu]")) {
-        setSourceMenuOpen(false);
-        setSourceMenuSearch("");
-      }
-    };
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [sourceMenuOpen]);
-
-  // Close tag menu when clicking outside
-  useEffect(() => {
-    if (!tagMenuOpen) return;
-    const handleClick = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (!target.closest("[data-tag-menu]")) {
-        setTagMenuOpen(false);
-        setTagMenuSearch("");
-      }
-    };
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [tagMenuOpen]);
 
   // Debounced server-side search
   useEffect(() => {
@@ -1506,28 +1456,6 @@ export default function Brain() {
   })();
 
   const tagsByCount = [...allTags].sort((a, b) => (tagCounts.get(b) ?? 0) - (tagCounts.get(a) ?? 0));
-  const INLINE_TAG_LIMIT = 8;
-  const inlineTags = (() => {
-    const top = tagsByCount.slice(0, INLINE_TAG_LIMIT);
-    if (search && allTags.includes(search) && !top.includes(search)) {
-      return [search, ...top.slice(0, INLINE_TAG_LIMIT - 1)];
-    }
-    return top;
-  })();
-  const menuTags = tagMenuSearch.trim()
-    ? tagsByCount.filter(t => t.toLowerCase().includes(tagMenuSearch.toLowerCase()))
-    : tagsByCount;
-  const categoryMenuQuery = catMenuSearch.trim().toLowerCase();
-  const categoryMenuGroups = parentCats
-    .map(parent => {
-      const children = getChildren(parent.id).filter(sub => usedCatNames.has(sub.name));
-      return { parent, children };
-    })
-    .filter(({ parent, children }) => {
-      if (!categoryMenuQuery) return true;
-      return parent.name.toLowerCase().includes(categoryMenuQuery)
-        || children.some(child => child.name.toLowerCase().includes(categoryMenuQuery));
-    });
 
   const sourceCounts = (() => {
     const counts = new Map<string, { label: string; count: number }>();
@@ -1542,10 +1470,6 @@ export default function Brain() {
       .map(([key, v]) => ({ key, label: v.label, count: v.count }))
       .sort((a, b) => b.count - a.count);
   })();
-  const sourceMenuQuery = sourceMenuSearch.trim().toLowerCase();
-  const sourceMenuItems = sourceMenuQuery
-    ? sourceCounts.filter(src => src.label.toLowerCase().includes(sourceMenuQuery) || src.key.toLowerCase().includes(sourceMenuQuery))
-    : sourceCounts;
   const counts: Record<string, number> = {
     all: items.length,
     ...Object.fromEntries(Object.keys(TYPES).map(k => [
@@ -1661,489 +1585,51 @@ export default function Brain() {
         {/* Quick capture */}
         <QuickCaptureBar saving={quickCapturing} onCapture={captureQuick} />
 
-        {/* Search */}
-        <div className="relative mb-3">
-          <input
-            ref={searchInputRef}
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Search notes, clips, thoughts… (Ctrl+K)"
-            aria-label="Search items"
-            className="w-full py-2.5 pl-9 pr-3 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none placeholder:text-gray-500"
-          />
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600 text-sm">⌕</span>
-        </div>
-
-        {/* Type filters */}
-        <div className="flex flex-wrap gap-1.5 pb-1.5">
-          {[{ key: "all" as const, label: "All", icon: "◇", color: "#E8A838" }, ...Object.entries(TYPES).map(([k, v]) => ({ key: k as "all" | ItemType, label: v.label, icon: v.icon, color: v.color }))].map(tab => {
-            const isTask = tab.key === "task";
-            const hasOpenTasks = isTask && counts.task > 0;
-            const active = view === tab.key;
-            return (
-              <button
-                key={tab.key}
-                onClick={() => { setView(tab.key); if (tab.key === "all") setCatFilter("all"); }}
-                className="px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-mono font-medium transition-all shrink-0 flex items-center gap-1.5"
-                style={{
-                  border: `1px solid ${tab.color}${active ? "70" : "25"}`,
-                  background: active ? `${tab.color}18` : "transparent",
-                  color: active ? tab.color : `${tab.color}A0`,
-                }}
-              >
-                <span>{tab.icon} {tab.label}</span>
-                {hasOpenTasks ? (
-                  <span
-                    className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full text-[10px] font-bold text-white"
-                    style={{ background: "#56CCF2" }}
-                  >{counts.task}</span>
-                ) : (
-                  <span className="opacity-60 text-[10px]">{counts[tab.key]}</span>
-                )}
-              </button>
-            );
-          })}
-          {withNotesCount > 0 && (
-            <button
-              onClick={() => setWithNotesOnly(v => !v)}
-              className="px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-mono font-medium transition-all shrink-0 ml-1"
-              style={{
-                border: withNotesOnly ? "1px solid #6FCF9770" : "1px solid #6FCF9725",
-                background: withNotesOnly ? "#6FCF9720" : "transparent",
-                color: withNotesOnly ? "#6FCF97" : "#6FCF9780",
-              }}
-              title="Show only items with notes attached"
-            >
-              ✎ With notes <span className="opacity-50 text-[10px]">{withNotesCount}</span>
-            </button>
-          )}
-          {favouriteCount > 0 && (
-            <button
-              onClick={() => setFavouritesOnly(v => !v)}
-              className="px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-mono font-medium transition-all shrink-0 ml-1"
-              style={{
-                border: favouritesOnly ? "1px solid #F2C94C90" : "1px solid #F2C94C30",
-                background: favouritesOnly ? "#F2C94C25" : "transparent",
-                color: favouritesOnly ? "#F2C94C" : "#F2C94C90",
-              }}
-              title="Show only favourites"
-            >
-              ★ Favourites <span className="opacity-50 text-[10px]">{favouriteCount}</span>
-            </button>
-          )}
-          {actionCount > 0 && (
-            <button
-              onClick={() => setActionOnly(v => !v)}
-              className="px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-mono font-medium transition-all shrink-0 ml-1"
-              style={{
-                border: actionOnly ? "1px solid #EB575790" : "1px solid #EB575730",
-                background: actionOnly ? "#EB575725" : "transparent",
-                color: actionOnly ? "#EB5757" : "#EB575790",
-              }}
-              title="Show only items needing action"
-            >
-              ⚡ Needs action <span className="opacity-50 text-[10px]">{actionCount}</span>
-            </button>
-          )}
-          {reminderCount > 0 && (
-            <button
-              onClick={() => setRemindersOnly(v => !v)}
-              className="px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-mono font-medium transition-all shrink-0 ml-1"
-              style={{
-                border: remindersOnly ? "1px solid #56CCF290" : "1px solid #56CCF230",
-                background: remindersOnly ? "#56CCF225" : "transparent",
-                color: remindersOnly ? "#56CCF2" : "#56CCF290",
-              }}
-              title="Show cards with pending reminders"
-            >
-              ⏰ Reminders <span className="opacity-50 text-[10px]">{reminderCount}</span>
-            </button>
-          )}
-          {reviewCount > 0 && (
-            <button
-              onClick={() => setReviewMode(v => !v)}
-              className="px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-mono font-medium transition-all shrink-0 ml-1"
-              style={{
-                border: reviewMode ? "1px solid #EB575770" : "1px solid #EB575725",
-                background: reviewMode ? "#EB575720" : "transparent",
-                color: reviewMode ? "#EB5757" : "#EB575780",
-              }}
-              title="Items needing attention: no category, no tags, short title, or stale tasks"
-            >
-              ⚑ Review <span className="opacity-50 text-[10px]">{reviewCount}</span>
-            </button>
-          )}
-          {(() => {
-            const activeFilters = [
-              view !== "all",
-              catFilter !== "all",
-              sourceFilter !== null,
-              withNotesOnly,
-              favouritesOnly,
-              actionOnly,
-              remindersOnly,
-              reviewMode,
-              search.trim().length > 0,
-            ].filter(Boolean).length;
-            const hasActive = activeFilters > 0;
-            return (
-              <button
-                onClick={() => {
-                  if (!hasActive) return;
-                  setView("all");
-                  setCatFilter("all");
-                  setSourceFilter(null);
-                  setWithNotesOnly(false);
-                  setFavouritesOnly(false);
-                  setActionOnly(false);
-                  setRemindersOnly(false);
-                  setReviewMode(false);
-                  setSearch("");
-                }}
-                disabled={!hasActive}
-                className="px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-mono font-medium transition-all shrink-0 ml-1 flex items-center gap-1.5 disabled:cursor-not-allowed"
-                style={{
-                  border: hasActive ? "1px solid #ffffff35" : "1px solid #ffffff15",
-                  background: hasActive ? "#ffffff10" : "transparent",
-                  color: hasActive ? "#ddd" : "#555",
-                }}
-                title={hasActive ? "Clear all active filters and search" : "No active filters"}
-              >
-                × Clear filters {hasActive && <span className="opacity-60 text-[10px]">{activeFilters}</span>}
-              </button>
-            );
-          })()}
-        </div>
-
-        {/* Category filter dropdown */}
-        {categories.length > 0 && (
-          <div className="relative pb-3 pt-1.5" data-category-menu>
-            <button
-              type="button"
-              onClick={() => {
-                setCatMenuOpen(v => {
-                  const next = !v;
-                  if (next) {
-                    setSourceMenuOpen(false);
-                    setSourceMenuSearch("");
-                    setTagMenuOpen(false);
-                    setTagMenuSearch("");
-                  } else {
-                    setCatMenuSearch("");
-                  }
-                  return next;
-                });
-              }}
-              className="flex w-full items-center justify-between rounded-xl border border-brand-border bg-brand-muted/60 px-3 py-2 text-left transition hover:border-gray-500"
-              aria-expanded={catMenuOpen}
-            >
-              <span className="flex min-w-0 items-center gap-2">
-                <span className="text-[10px] font-mono uppercase tracking-[0.2em] text-gray-500">Categories</span>
-                <span className="truncate text-sm text-gray-200">{catFilter === "all" ? "All categories" : catFilter}</span>
-              </span>
-              <span className="shrink-0 text-xs font-mono text-gray-500">{catMenuOpen ? "▴" : "▾"}</span>
-            </button>
-
-            {catMenuOpen && (
-              <div className="absolute left-0 right-0 top-full z-40 mt-2 rounded-xl border border-brand-border bg-[#0D0F12] p-3 shadow-2xl">
-                <input
-                  type="text"
-                  autoFocus
-                  value={catMenuSearch}
-                  onChange={e => setCatMenuSearch(e.target.value)}
-                  placeholder="Search categories…"
-                  className="mb-2 w-full rounded-lg border border-brand-border bg-[#13161B] px-3 py-2 text-sm text-gray-200 outline-none focus:border-gray-500"
-                />
-                <div className="max-h-72 overflow-y-auto no-scrollbar">
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCatFilter("all");
-                        setView("all");
-                        setCatMenuOpen(false);
-                        setCatMenuSearch("");
-                      }}
-                      className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-left transition"
-                      style={{
-                        borderColor: catFilter === "all" ? "#E8A83860" : "#343842",
-                        background: catFilter === "all" ? "#E8A83815" : "#13161B",
-                        color: catFilter === "all" ? "#E8A838" : "#ddd",
-                      }}
-                    >
-                      <span className="font-mono text-[11px] whitespace-nowrap">All categories</span>
-                      <span className="text-[10px] opacity-60">{items.length}</span>
-                    </button>
-
-                    {categoryMenuGroups.length === 0 ? (
-                      <div className="w-full p-4 text-center text-xs text-gray-500">No categories match &ldquo;{catMenuSearch}&rdquo;</div>
-                    ) : (
-                      categoryMenuGroups.map(({ parent, children }) => {
-                        const parentActive = catFilter === parent.name;
-                        const parentCount = getCatNamesUnderParent(parent.name).filter(name => usedCatNames.has(name)).length;
-
-                        if (children.length === 0) {
-                          return (
-                            <button
-                              key={parent.id}
-                              type="button"
-                              onClick={() => {
-                                setCatFilter(parentActive ? "all" : parent.name);
-                                setCatMenuOpen(false);
-                                setCatMenuSearch("");
-                              }}
-                              className="inline-flex max-w-full items-center gap-2 rounded-full border px-3 py-1.5 text-left transition"
-                              style={{
-                                borderColor: `${parent.color}${parentActive ? "70" : "35"}`,
-                                background: parentActive ? `${parent.color}20` : `${parent.color}10`,
-                                color: parent.color,
-                              }}
-                            >
-                              <span className="truncate font-mono text-[11px]">{parent.name}</span>
-                              <span className="shrink-0 text-[10px] opacity-60">{parentCount}</span>
-                            </button>
-                          );
-                        }
-
-                        return (
-                          <div key={parent.id} className="inline-flex max-w-full flex-col gap-1">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setCatFilter(parentActive ? "all" : parent.name);
-                                setCatMenuOpen(false);
-                                setCatMenuSearch("");
-                              }}
-                              className="inline-flex max-w-full items-center gap-2 self-start rounded-full border px-3 py-1.5 text-left transition"
-                              style={{
-                                borderColor: `${parent.color}${parentActive ? "70" : "35"}`,
-                                background: parentActive ? `${parent.color}20` : `${parent.color}10`,
-                                color: parent.color,
-                              }}
-                            >
-                              <span className="truncate font-mono text-[11px]">{parent.name}</span>
-                              <span className="shrink-0 text-[10px] opacity-60">{parentCount}</span>
-                            </button>
-                            <div className="flex max-w-full flex-wrap gap-1.5 pl-2">
-                              {children.map(child => {
-                                const childActive = catFilter === child.name;
-                                return (
-                                  <button
-                                    key={child.id}
-                                    type="button"
-                                    onClick={() => {
-                                      setCatFilter(child.name);
-                                      setCatMenuOpen(false);
-                                      setCatMenuSearch("");
-                                    }}
-                                    className="rounded-full border px-2.5 py-1 text-[10px] font-mono transition"
-                                    style={{
-                                      borderColor: childActive ? `${child.color}60` : `${child.color}25`,
-                                      background: childActive ? `${child.color}15` : "transparent",
-                                      color: childActive ? child.color : "#7b8190",
-                                    }}
-                                  >
-                                    {child.name}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
+        {/* Filter bar: search / type / category / tags / more / sort */}
+        <FilterBar
+          search={search}
+          onSearchChange={setSearch}
+          searchInputRef={searchInputRef}
+          view={view}
+          onViewChange={setView}
+          counts={counts}
+          catFilter={catFilter}
+          onCatFilterChange={setCatFilter}
+          parentCats={parentCats}
+          getChildren={getChildren}
+          getCatNamesUnderParent={getCatNamesUnderParent}
+          usedCatNames={usedCatNames}
+          itemCount={items.length}
+          sourceCounts={sourceCounts}
+          sourceFilter={sourceFilter}
+          onSourceFilterChange={setSourceFilter}
+          tagsByCount={tagsByCount}
+          tagCounts={tagCounts}
+          tagFilter={tagFilter}
+          onTagFilterChange={setTagFilter}
+          tagColor={tagColor}
+          duplicateGroupCount={duplicateGroups.length}
+          onOpenTagManager={() => setShowTagManager(true)}
+          sortBy={sortBy}
+          onSortByChange={setSortBy}
+          withNotesOnly={withNotesOnly}
+          onWithNotesOnly={setWithNotesOnly}
+          withNotesCount={withNotesCount}
+          favouritesOnly={favouritesOnly}
+          onFavouritesOnly={setFavouritesOnly}
+          favouriteCount={favouriteCount}
+          actionOnly={actionOnly}
+          onActionOnly={setActionOnly}
+          actionCount={actionCount}
+          remindersOnly={remindersOnly}
+          onRemindersOnly={setRemindersOnly}
+          reminderCount={reminderCount}
+          reviewMode={reviewMode}
+          onReviewMode={setReviewMode}
+          reviewCount={reviewCount}
+        />
       </div>
 
-      {/* Sources (filter by site) */}
-      {sourceCounts.length > 0 && (
-        <div className="relative px-5 pt-2.5" data-source-menu>
-          <button
-            type="button"
-            onClick={() => {
-              setSourceMenuOpen(v => {
-                const next = !v;
-                if (next) {
-                  setCatMenuOpen(false);
-                  setCatMenuSearch("");
-                  setTagMenuOpen(false);
-                  setTagMenuSearch("");
-                } else {
-                  setSourceMenuSearch("");
-                }
-                return next;
-              });
-            }}
-            className="flex w-full items-center justify-between rounded-xl border border-brand-border bg-brand-muted/60 px-3 py-2 text-left transition hover:border-gray-500"
-            aria-expanded={sourceMenuOpen}
-          >
-            <span className="flex min-w-0 items-center gap-2">
-              <span className="text-[10px] font-mono uppercase tracking-[0.2em] text-gray-500">Sources</span>
-              <span className="truncate text-sm text-gray-200">{sourceFilter ? sourceCounts.find(src => src.key === sourceFilter)?.label || sourceFilter : "All sources"}</span>
-            </span>
-            <span className="shrink-0 text-xs font-mono text-gray-500">{sourceMenuOpen ? "▴" : "▾"}</span>
-          </button>
-
-          {sourceMenuOpen && (
-            <div className="absolute left-5 right-5 top-full z-40 mt-2 rounded-xl border border-brand-border bg-[#0D0F12] p-3 shadow-2xl">
-              <input
-                type="text"
-                autoFocus
-                value={sourceMenuSearch}
-                onChange={e => setSourceMenuSearch(e.target.value)}
-                placeholder="Search sources…"
-                className="mb-2 w-full rounded-lg border border-brand-border bg-[#13161B] px-3 py-2 text-sm text-gray-200 outline-none focus:border-gray-500"
-              />
-              <div className="max-h-72 overflow-y-auto no-scrollbar">
-                <div className="flex flex-wrap gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSourceFilter(null);
-                      setSourceMenuOpen(false);
-                      setSourceMenuSearch("");
-                    }}
-                    className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-left transition"
-                    style={{
-                      borderColor: sourceFilter === null ? "#E8A83860" : "#343842",
-                      background: sourceFilter === null ? "#E8A83815" : "#13161B",
-                      color: sourceFilter === null ? "#E8A838" : "#ddd",
-                    }}
-                  >
-                    <span className="font-mono text-[11px] whitespace-nowrap">All sources</span>
-                    <span className="text-[10px] opacity-60">{sourceCounts.reduce((sum, src) => sum + src.count, 0)}</span>
-                  </button>
-
-                  {sourceMenuItems.length === 0 ? (
-                    <div className="w-full p-4 text-center text-xs text-gray-500">No sources match &ldquo;{sourceMenuSearch}&rdquo;</div>
-                  ) : (
-                    sourceMenuItems.map(src => {
-                      const active = sourceFilter === src.key;
-                      return (
-                        <button
-                          key={src.key}
-                          type="button"
-                          onClick={() => {
-                            setSourceFilter(active ? null : src.key);
-                            setSourceMenuOpen(false);
-                            setSourceMenuSearch("");
-                          }}
-                          className="inline-flex max-w-full items-center gap-2 rounded-full border px-2.5 py-1.5 text-left transition"
-                          style={{
-                            border: `1px solid ${active ? "#E8A83870" : "#44444460"}`,
-                            background: active ? "#E8A83820" : "#13161B",
-                            color: active ? "#E8A838" : "#aaa",
-                          }}
-                        >
-                          <span className="truncate text-[11px] font-mono">{src.label}</span>
-                          <span className="shrink-0 text-[10px] opacity-50">{src.count}</span>
-                        </button>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Tags */}
-      {allTags.length > 0 && (
-        <div className="relative px-5 py-2.5" data-tag-menu>
-          <div className="flex gap-1.5 items-center flex-wrap">
-            {inlineTags.map(tag => {
-              const color = tagColor(tag);
-              const active = tagFilter === tag;
-              return (
-                <button
-                  key={tag}
-                  onClick={() => setTagFilter(active ? null : tag)}
-                  className="px-2.5 py-0.5 rounded-full text-[11px] font-mono transition whitespace-nowrap"
-                  style={{
-                    border: `1px solid ${color}30`,
-                    background: active ? `${color}20` : "transparent",
-                    color,
-                  }}
-                >#{tag}</button>
-              );
-            })}
-            {tagsByCount.length > INLINE_TAG_LIMIT && (
-              <button
-                onClick={() => setTagMenuOpen(v => !v)}
-                className="px-2.5 py-0.5 rounded-full text-[11px] font-mono transition whitespace-nowrap border border-gray-700 text-gray-500 hover:text-gray-300 hover:border-gray-500"
-                aria-expanded={tagMenuOpen}
-              >
-                + {tagsByCount.length - INLINE_TAG_LIMIT} more {tagMenuOpen ? "▴" : "▾"}
-              </button>
-            )}
-          </div>
-
-          {tagMenuOpen && (
-            <div
-              data-tag-menu
-              className="absolute top-full left-5 right-5 z-40 mt-1 rounded-xl border border-brand-border bg-[#0D0F12] p-3 shadow-2xl max-w-2xl"
-            >
-              <input
-                type="text"
-                autoFocus
-                value={tagMenuSearch}
-                onChange={e => setTagMenuSearch(e.target.value)}
-                placeholder="Search tags…"
-                className="w-full mb-2 px-3 py-2 rounded-lg bg-[#13161B] border border-brand-border text-sm text-gray-200 outline-none focus:border-gray-500"
-              />
-              <div className="max-h-64 overflow-y-auto no-scrollbar">
-                {menuTags.length === 0 ? (
-                  <div className="text-gray-500 text-xs p-4 text-center">No tags match &ldquo;{tagMenuSearch}&rdquo;</div>
-                ) : (
-                  <div className="flex gap-1.5 flex-wrap">
-                    {menuTags.map(tag => {
-                      const color = tagColor(tag);
-                      const active = tagFilter === tag;
-                      return (
-                        <button
-                          key={tag}
-                          onClick={() => {
-                            setTagFilter(active ? null : tag);
-                            setTagMenuOpen(false);
-                            setTagMenuSearch("");
-                          }}
-                          className="px-2.5 py-0.5 rounded-full text-[11px] font-mono transition whitespace-nowrap"
-                          style={{
-                            border: `1px solid ${color}30`,
-                            background: active ? `${color}20` : "transparent",
-                            color,
-                          }}
-                        >
-                          #{tag} <span className="opacity-50">{tagCounts.get(tag) ?? 0}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-              <div className="mt-2 pt-2 border-t border-brand-border flex items-center justify-between">
-                <span className="text-[10px] text-gray-600 font-mono">
-                  {duplicateGroups.length > 0
-                    ? `${duplicateGroups.length} duplicate group${duplicateGroups.length > 1 ? "s" : ""} found`
-                    : "No duplicates"}
-                </span>
-                <button
-                  onClick={() => { setTagMenuOpen(false); setShowTagManager(true); }}
-                  className="text-[11px] font-mono text-gray-400 hover:text-[#E8A838] transition"
-                >
-                  Manage tags →
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
 
       {/* Active structured-filter chips */}
       {(view !== "all" || catFilter !== "all" || sourceFilter || tagFilter) && (
@@ -2242,13 +1728,6 @@ export default function Brain() {
           </div>
         </div>
       )}
-
-      {/* Sort */}
-      <div className="flex justify-end px-5 py-1">
-        <button onClick={() => setSortBy(s => s === "newest" ? "oldest" : "newest")} className="text-[11px] text-gray-600 font-mono">
-          ↕ {sortBy === "newest" ? "Newest" : "Oldest"}
-        </button>
-      </div>
 
       {/* Items */}
       <div

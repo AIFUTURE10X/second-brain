@@ -16,248 +16,38 @@ import { compressImageForUpload } from "@/lib/image-compression";
 import { draftStorageKey, parseDraftPayload, serializeDraftPayload } from "@/lib/item-draft-autosave";
 import { newChecklistItem, normalizeChecklistItems, type ChecklistItem } from "@/lib/task-checklists";
 import { extractCardLinks, formatCardLinkLabel } from "@/lib/card-links";
+import {
+  CAT_COLORS,
+  REMINDER_TIME_OPTIONS,
+  TAG_COLORS,
+  TYPES,
+  hasMeaningfulFormContent,
+  newEntryId,
+  type Attachment,
+  type Category,
+  type Item,
+  type ItemRelation,
+  type ItemType,
+  type NoteEntry,
+  type RelatedItemSummary,
+  type Reminder,
+} from "@/lib/brain-model";
+import {
+  checklistProgress,
+  fileIcon,
+  formatReminderDue,
+  formatSize,
+  formatStamp,
+  resolveContentType,
+  sourceFromUrl,
+  timeAgo,
+  toDateTimeLocal,
+  viewModeIcon,
+  viewModeLabel,
+} from "@/lib/brain-format";
+import { TelegramHelpMenu } from "./brain/TelegramHelpMenu";
 
 const CLIENT_APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "dev";
-
-type ItemType = "note" | "link" | "clip" | "thought" | "task" | "memory";
-
-interface Attachment {
-  url: string;
-  name: string;
-  contentType: string;
-  size: number;
-}
-
-interface NoteEntry {
-  id: string;
-  body: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface Item {
-  id: string;
-  type: ItemType;
-  title: string;
-  content: string;
-  url: string;
-  notes: string;
-  noteEntries?: NoteEntry[];
-  checklistItems?: ChecklistItem[];
-  tags: string[];
-  category: string;
-  pinned: boolean;
-  completed?: boolean;
-  completedAt?: string | null;
-  favourite?: boolean;
-  actionRequired?: boolean;
-  attachments?: Attachment[];
-  ogTitle: string;
-  ogDescription: string;
-  ogImage: string;
-  siteName: string;
-  favicon: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface Reminder {
-  id: string;
-  itemId: string;
-  message: string;
-  dueAt: string;
-  status: "pending" | "sent" | "done";
-  sentAt?: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface RelatedItemSummary {
-  id: string;
-  type: ItemType;
-  title: string;
-  url: string;
-  category: string;
-  tags: string[];
-  ogTitle: string;
-  siteName: string;
-  favicon: string;
-}
-
-interface ItemRelation {
-  id?: string;
-  itemAId: string;
-  itemBId: string;
-  itemA: RelatedItemSummary;
-  itemB: RelatedItemSummary;
-  createdAt?: string;
-}
-
-const newEntryId = () =>
-  (typeof crypto !== "undefined" && "randomUUID" in crypto)
-    ? crypto.randomUUID()
-    : `e_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-
-const formatStamp = (iso: string) => {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-};
-
-// Some browsers report `.md` files with an empty type — force markdown so the
-// server allowlist accepts it. Pass through everything else.
-function resolveContentType(file: File): string {
-  if (/\.(md|markdown)$/i.test(file.name)) return "text/markdown";
-  return file.type || "application/octet-stream";
-}
-
-function fileIcon(contentType: string, name?: string): string {
-  if (contentType.startsWith("image/")) return "🖼";
-  if (contentType === "application/pdf") return "📄";
-  if (contentType.includes("spreadsheet") || contentType.includes("excel") || contentType === "text/csv") return "📊";
-  if (contentType.includes("word") || contentType.includes("document")) return "📝";
-  if (contentType === "text/markdown" || contentType === "text/x-markdown" || (name && /\.(md|markdown)$/i.test(name))) return "Ⓜ";
-  if (contentType === "text/plain") return "📃";
-  return "📎";
-}
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-interface Category {
-  id: string;
-  name: string;
-  color: string;
-  parentId: string | null;
-  position?: number;
-}
-
-const TYPES: Record<ItemType, { icon: string; label: string; color: string }> = {
-  note: { icon: "✎", label: "Note", color: "#E8A838" },
-  link: { icon: "◈", label: "Link", color: "#5B8DEF" },
-  clip: { icon: "✂", label: "Clip", color: "#6FCF97" },
-  thought: { icon: "◉", label: "Thought", color: "#BB6BD9" },
-  task: { icon: "☐", label: "Task", color: "#56CCF2" },
-  memory: { icon: "💡", label: "Memory", color: "#F2C94C" },
-};
-
-const TAG_COLORS = ["#E8A838", "#5B8DEF", "#6FCF97", "#BB6BD9", "#EB5757", "#56CCF2", "#F2994A", "#9B51E0"];
-const CAT_COLORS = ["#E8A838", "#5B8DEF", "#6FCF97", "#BB6BD9", "#EB5757", "#56CCF2", "#F2994A", "#9B51E0", "#27AE60", "#F2C94C"];
-
-function viewModeIcon(mode: ViewMode): string {
-  if (mode === "comfortable") return "▦";
-  if (mode === "list") return "☰";
-  return "≡";
-}
-
-function viewModeLabel(mode: ViewMode): string {
-  if (mode === "comfortable") return "Comfortable";
-  if (mode === "list") return "List";
-  return "Compact";
-}
-
-const SOURCE_LABELS: Record<string, string> = {
-  "youtube.com": "YouTube",
-  "youtu.be": "YouTube",
-  "m.youtube.com": "YouTube",
-  "x.com": "X/Twitter",
-  "twitter.com": "X/Twitter",
-  "github.com": "GitHub",
-  "medium.com": "Medium",
-  "reddit.com": "Reddit",
-  "linkedin.com": "LinkedIn",
-  "tiktok.com": "TikTok",
-  "instagram.com": "Instagram",
-  "claude.ai": "Claude",
-  "anthropic.com": "Anthropic",
-  "vercel.com": "Vercel",
-};
-
-const REMINDER_TIME_OPTIONS = Array.from({ length: 31 }, (_, i) => {
-  const totalMinutes = 7 * 60 + i * 30;
-  const hour = Math.floor(totalMinutes / 60);
-  const minute = totalMinutes % 60;
-  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
-});
-
-function sourceFromUrl(url: string): { key: string; label: string } | null {
-  if (!url) return null;
-  try {
-    const host = new URL(url).hostname.replace(/^www\./, "");
-    const label = SOURCE_LABELS[host] || host;
-    return { key: label, label };
-  } catch {
-    return null;
-  }
-}
-
-function timeAgo(dateStr: string) {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const m = Math.floor(diff / 60000);
-  if (m < 1) return "just now";
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  const d = Math.floor(h / 24);
-  if (d < 30) return `${d}d ago`;
-  return new Date(dateStr).toLocaleDateString();
-}
-
-function toDateTimeLocal(value?: string | null): string {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
-  return local.toISOString().slice(0, 16);
-}
-
-function formatReminderDue(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleString([], {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function checklistProgress(items?: ChecklistItem[]): { completed: number; total: number } {
-  const total = items?.length ?? 0;
-  const completed = (items || []).filter(item => item.completed).length;
-  return { completed, total };
-}
-
-function hasMeaningfulFormContent(form: {
-  title: string;
-  content: string;
-  url: string;
-  noteEntries: NoteEntry[];
-  checklistItems: ChecklistItem[];
-  tags: string;
-  category: string;
-  attachments: Attachment[];
-  reminderDueAt: string;
-  reminderMessage: string;
-  relatedItemIds: string[];
-}): boolean {
-  return Boolean(
-    form.title.trim() ||
-    form.content.trim() ||
-    form.url.trim() ||
-    form.tags.trim() ||
-    form.category.trim() ||
-    form.reminderDueAt.trim() ||
-    form.reminderMessage.trim() ||
-    form.noteEntries.some(entry => entry.body.trim()) ||
-    form.checklistItems.some(item => item.text.trim()) ||
-    form.attachments.length > 0 ||
-    form.relatedItemIds.length > 0
-  );
-}
 
 export default function Brain() {
   const [items, setItems] = useState<Item[]>([]);
@@ -283,7 +73,6 @@ export default function Brain() {
   const [quickTaskSaving, setQuickTaskSaving] = useState(false);
   const [quickMemoryText, setQuickMemoryText] = useState("");
   const [quickMemorySaving, setQuickMemorySaving] = useState(false);
-  const [helpOpen, setHelpOpen] = useState(false);
   const [memoryOfWeekEnabled, setMemoryOfWeekEnabled] = useState(true);
   const [memoryOfWeekSaving, setMemoryOfWeekSaving] = useState(false);
   const [vaultOpen, setVaultOpen] = useState(false);
@@ -827,17 +616,6 @@ export default function Brain() {
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, [tagMenuOpen]);
-
-  // Close help popover when clicking outside
-  useEffect(() => {
-    if (!helpOpen) return;
-    const handleClick = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (!target.closest("[data-help-menu]")) setHelpOpen(false);
-    };
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [helpOpen]);
 
   // Debounced server-side search
   useEffect(() => {
@@ -1780,87 +1558,11 @@ export default function Brain() {
             </p>
           </div>
           <div className="flex items-center gap-1.5 sm:gap-2 justify-start sm:justify-end flex-wrap">
-            <div className="relative" data-help-menu>
-              <button
-                onClick={() => setHelpOpen(v => !v)}
-                className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl text-gray-500 text-sm flex items-center justify-center border border-brand-border hover:text-gray-300 hover:border-gray-600 active:scale-95 transition"
-                aria-label="Show Telegram bot commands"
-                aria-expanded={helpOpen}
-                title="Telegram commands"
-              >✈</button>
-              {helpOpen && (
-                <div
-                  data-help-menu
-                  className="fixed left-4 right-4 top-[68px] z-50 rounded-xl border border-brand-border bg-[#0D0F12] p-4 shadow-2xl text-left sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[360px]"
-                >
-                  <div className="text-xs font-mono text-gray-400 mb-2 flex items-center justify-between">
-                    <span>Telegram: <a href="https://t.me/philsbrain_bot" target="_blank" rel="noreferrer" className="text-[#5B8DEF] hover:underline">@philsbrain_bot</a></span>
-                    <button
-                      onClick={() => setHelpOpen(false)}
-                      className="text-gray-600 hover:text-gray-300 text-xs"
-                      aria-label="Close help"
-                    >×</button>
-                  </div>
-                  <div className="space-y-2 text-[11px] font-mono">
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-[#5B8DEF] shrink-0 w-24">URL</span>
-                      <span className="text-gray-400">→ ◈ Link (auto-tagged)</span>
-                    </div>
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-[#BB6BD9] shrink-0 w-24">plain text</span>
-                      <span className="text-gray-400">→ ◉ Thought</span>
-                    </div>
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-[#56CCF2] shrink-0 w-24">/t &lt;text&gt;</span>
-                      <span className="text-gray-400">→ ☐ Task</span>
-                    </div>
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-[#F2C94C] shrink-0 w-24">/m &lt;text&gt;</span>
-                      <span className="text-gray-400">→ 💡 Memory</span>
-                    </div>
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-[#6FCF97] shrink-0 w-24">forward msg</span>
-                      <span className="text-gray-400">→ captures content</span>
-                    </div>
-                  </div>
-                  <p className="text-[10px] text-gray-600 font-mono mt-3 pt-3 border-t border-brand-border">
-                    Long-press any message in any chat, tap Forward, pick the bot.
-                  </p>
-                  <div className="mt-3 pt-3 border-t border-brand-border">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-[11px] font-mono text-gray-300">Memory of the week</p>
-                        <p className="text-[10px] font-mono text-gray-600">
-                          {memoryOfWeekEnabled ? "Telegram reminder is on" : "Telegram reminder is off"}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-checked={memoryOfWeekEnabled}
-                        aria-label={memoryOfWeekEnabled ? "Turn off Memory of the week" : "Turn on Memory of the week"}
-                        disabled={memoryOfWeekSaving}
-                        onClick={() => updateMemoryOfWeekEnabled(!memoryOfWeekEnabled)}
-                        className="relative h-7 w-12 shrink-0 rounded-full border transition disabled:opacity-60"
-                        style={{
-                          borderColor: memoryOfWeekEnabled ? "#F2C94C80" : "#333842",
-                          background: memoryOfWeekEnabled ? "#F2C94C28" : "#181B21",
-                        }}
-                      >
-                        <span
-                          className="absolute top-1 h-5 w-5 rounded-full transition-all"
-                          style={{
-                            left: memoryOfWeekEnabled ? "22px" : "4px",
-                            background: memoryOfWeekEnabled ? "#F2C94C" : "#5B616D",
-                            boxShadow: memoryOfWeekEnabled ? "0 0 12px rgba(242, 201, 76, 0.35)" : "none",
-                          }}
-                        />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
+            <TelegramHelpMenu
+              memoryOfWeekEnabled={memoryOfWeekEnabled}
+              memoryOfWeekSaving={memoryOfWeekSaving}
+              onToggleMemoryOfWeek={updateMemoryOfWeekEnabled}
+            />
             <button
               onClick={() => setVaultOpen(true)}
               className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl text-gray-500 text-sm flex items-center justify-center border border-brand-border hover:text-[#E8A838] hover:border-[#E8A83860] active:scale-95 transition"

@@ -15,6 +15,6 @@ export function allowedTelegramIds(): string[] {
 
 export function verifyCronAuth(authHeader: string | null): boolean {
   const secret = process.env.CRON_SECRET;
-  if (!secret) return true; // no secret → allow (dev)
+  if (!secret) return false; // fail closed — set CRON_SECRET (Vercel sends it automatically)
   return authHeader === `Bearer ${secret}`;
 }

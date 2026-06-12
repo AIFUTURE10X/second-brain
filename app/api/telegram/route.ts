@@ -30,13 +30,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "TELEGRAM_BOT_TOKEN not set" });
   }
 
-  // Verify webhook signature if secret is configured
+  // Webhook signature is required — register the webhook with &secret_token=...
   const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
-  if (webhookSecret) {
-    const token = req.headers.get("x-telegram-bot-api-secret-token");
-    if (token !== webhookSecret) {
-      return NextResponse.json({ ok: false }, { status: 403 });
-    }
+  if (!webhookSecret) {
+    return NextResponse.json({ ok: false, error: "TELEGRAM_WEBHOOK_SECRET not set" }, { status: 503 });
+  }
+  const token = req.headers.get("x-telegram-bot-api-secret-token");
+  if (token !== webhookSecret) {
+    return NextResponse.json({ ok: false }, { status: 403 });
   }
 
   const update = await req.json();

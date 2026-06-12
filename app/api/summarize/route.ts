@@ -1,8 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { db } from "@/db";
 import { items, type NoteEntry } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { checkApiKey } from "@/lib/api-key";
+import { embeddingsEnabled } from "@/lib/embeddings.mjs";
+import { updateItemEmbedding } from "@/lib/embedding-store";
 import { isPrivateUrl } from "@/lib/enrich";
 import { rateLimit } from "@/lib/rate-limit";
 import { extractYouTubeId, fetchYouTubeTranscript } from "@/lib/youtube";
@@ -115,6 +117,11 @@ export async function POST(req: NextRequest) {
       .returning();
 
     if (!updated) return NextResponse.json({ error: "Item not found" }, { status: 404 });
+
+    // The AI summary note entry feeds the embedding input — re-embed so
+    // semantic search picks up the summarized content.
+    if (embeddingsEnabled()) after(() => updateItemEmbedding(updated.id));
+
     return NextResponse.json(updated);
   } catch (error) {
     const message = error instanceof Error ? error.message : "AI summarization failed";

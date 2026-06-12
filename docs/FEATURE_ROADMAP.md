@@ -11,7 +11,7 @@ Auth is explicitly deferred — the app stays open (same-origin + `API_SECRET` b
 
 | # | Feature | What to build |
 |---|---------|---------------|
-| 1.1 | **Semantic search** | pgvector on Neon; embedding column on `items`; generate embeddings at save (OpenAI `text-embedding-3-small`); hybrid rank with existing FTS (`search_tsv` + `ts_rank_cd`); optional `?semantic=1` or auto-merge; Telegram `/find` reuses same endpoint |
+| 1.1 | **Semantic search** ✅ | pgvector on Neon; embedding column on `items`; generate embeddings at save (OpenAI `text-embedding-3-small`); hybrid rank with existing FTS (`search_tsv` + `ts_rank_cd`); optional `?semantic=1` or auto-merge; Telegram `/find` reuses same endpoint |
 | 1.2 | **Polling sync** | `GET /api/items?since=<ISO8601>` returns items where `updated_at > since`; index on `updated_at`; client polls every 30–60s when tab focused + on `visibilitychange`; merge into local state via existing `BroadcastChannel` |
 | 1.3 | **Offline write queue** | IndexedDB queue for create/update/delete; replay on reconnect through existing `expectedUpdatedAt` conflict machinery; SW stays read-only |
 

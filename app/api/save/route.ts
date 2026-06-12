@@ -1,8 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { db } from "@/db";
 import { items, categories } from "@/db/schema";
 import { enrichUrl } from "@/lib/enrich";
 import { checkApiKey } from "@/lib/api-key";
+import { embeddingsEnabled } from "@/lib/embeddings.mjs";
+import { updateItemEmbedding } from "@/lib/embedding-store";
 import { aiTagAndCategorize } from "@/lib/ai-tagger";
 import { appendYouTubeDescriptionLinksToNotes, fetchYouTubeDescriptionLinks, type YouTubeDescriptionLink } from "@/lib/youtube";
 import { asc } from "drizzle-orm";
@@ -116,6 +118,9 @@ export async function POST(req: NextRequest) {
       favicon: og.favicon,
     })
     .returning();
+
+  // Embed post-response so saves never block on (or fail because of) OpenAI.
+  if (embeddingsEnabled()) after(() => updateItemEmbedding(row.id));
 
   return NextResponse.json(row, { status: 201 });
   } catch (error) {

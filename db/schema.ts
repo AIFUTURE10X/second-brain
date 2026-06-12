@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, boolean, integer, uuid, timestamp, jsonb, uniqueIndex, index, customType } from "drizzle-orm/pg-core";
+import { pgTable, text, boolean, integer, uuid, timestamp, jsonb, uniqueIndex, index, customType, vector } from "drizzle-orm/pg-core";
 import type { ChecklistItem } from "@/lib/task-checklists";
 
 // Postgres tsvector — drizzle-orm has no built-in column type for it.
@@ -67,6 +67,11 @@ export const items = pgTable("items", {
   favicon: text("favicon").default(""),
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
+  // Semantic-search embedding (OpenAI text-embedding-3-small — keep in sync
+  // with EMBEDDING_DIMENSIONS in lib/embeddings.mjs). Written best-effort
+  // after saves by lib/embedding-store.ts; nullable so the app works without
+  // OPENAI_API_KEY. Requires the pgvector extension (scripts/db-setup.sql).
+  embedding: vector("embedding", { dimensions: 1536 }),
   // Weighted search document, maintained by Postgres itself. Weights:
   // A=title, B=tags+category ('simple' config so tags aren't stemmed),
   // C=body text incl. note entries + checklist rows, D=link/OG metadata.
@@ -82,6 +87,9 @@ export const items = pgTable("items", {
   // Trigram index for the zero-result fuzzy fallback. Requires the pg_trgm
   // extension (scripts/db-setup.sql); declared here so db:push won't drop it.
   index("items_title_trgm_idx").using("gin", table.title.op("gin_trgm_ops")),
+  // Approximate-nearest-neighbour index for semantic search (cosine distance).
+  // Requires the pgvector extension (scripts/db-setup.sql).
+  index("items_embedding_hnsw_idx").using("hnsw", table.embedding.op("vector_cosine_ops")),
 ]);
 
 export const itemRelations = pgTable("item_relations", {

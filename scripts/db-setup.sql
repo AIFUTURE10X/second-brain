@@ -10,3 +10,7 @@
 -- Trigram extension for the zero-result fuzzy search fallback
 -- ("recat" still surfaces "react" cards via word_similarity on titles).
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+-- pgvector for semantic search (items.embedding + HNSW index). Available on
+-- Neon out of the box; the column/index live in db/schema.ts as usual.
+CREATE EXTENSION IF NOT EXISTS vector;

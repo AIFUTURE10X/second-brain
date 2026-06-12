@@ -21,10 +21,13 @@ other users.
 - **Capture fast** — quick-capture bar mirroring the Telegram grammar: paste a
   URL → link (auto-enriched + AI-tagged), plain text → thought, `/t` → task,
   `/m` → memory. Voice input included.
-- **Find things later** — Postgres full-text search over a weighted, indexed
-  `tsvector` column (title > tags/category > body/notes > link metadata), with
-  a trigram fuzzy fallback for typos and structured `?tag=/?category=/?type=`
-  filters.
+- **Find things later** — hybrid search: Postgres full-text search over a
+  weighted, indexed `tsvector` column (title > tags/category > body/notes >
+  link metadata) merged with pgvector semantic search (OpenAI
+  `text-embedding-3-small`) via reciprocal rank fusion, plus a trigram fuzzy
+  fallback for typos and structured `?tag=/?category=/?type=` filters.
+  Semantic ranking activates when `OPENAI_API_KEY` is set; embeddings are
+  generated after every save.
 - URL enrichment (OpenGraph + YouTube), AI auto-tagging and categorization,
   category hierarchy, tasks with checklists, note entries per card, related
   cards, Telegram reminders + daily digest + memory-of-the-week crons,
@@ -44,8 +47,9 @@ cp .env.example .env.local   # fill in values — see comments in the file
 Database (Neon Postgres):
 
 ```bash
-node scripts/run-db-setup.mjs   # one-time: pg_trgm extension (push can't create it)
+node scripts/run-db-setup.mjs   # one-time: pg_trgm + pgvector extensions (push can't create them)
 npm run db:push                 # apply schema (interactive — review prompts, never run in CI)
+node scripts/backfill-embeddings.mjs   # optional: embed pre-existing cards for semantic search
 ```
 
 Run:
@@ -74,7 +78,7 @@ All routes accept `x-api-key: $API_SECRET` (or same-origin browser requests).
 
 | Route | Purpose |
 |---|---|
-| `GET/POST/PUT/DELETE /api/items` | CRUD; `?q=` indexed FTS (+`x-search-fuzzy` header on typo fallback); `?tag=/?category=/?type=` filters; PUT supports optional `expectedUpdatedAt` → `409` + current row on conflict |
+| `GET/POST/PUT/DELETE /api/items` | CRUD; `?q=` hybrid search — indexed FTS merged with pgvector semantic ranking (`x-search-semantic: 1` header when active; `?semantic=0` FTS-only, `?semantic=1` semantic-only) + `x-search-fuzzy` header on typo fallback; `?tag=/?category=/?type=` filters; PUT supports optional `expectedUpdatedAt` → `409` + current row on conflict |
 | `POST /api/save` | Automation endpoint (extension/Telegram/scripts): `{url}` or `{text}` or `{title, content}` |
 | `GET/POST/PUT/PATCH/DELETE /api/categories` | Category CRUD, hierarchy, reorder |
 | `GET/POST/PUT/DELETE /api/reminders` | Telegram reminders |

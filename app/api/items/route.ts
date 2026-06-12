@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { db, sql } from "@/db";
 import { items, categories } from "@/db/schema";
 import { eq, desc, asc, and, sql as sqlExpr, type SQL } from "drizzle-orm";
@@ -7,10 +7,46 @@ import { checkApiKey } from "@/lib/api-key";
 import { aiTagAndCategorize } from "@/lib/ai-tagger";
 import { shouldEnrichUrlOnUpdate } from "@/lib/item-updates.mjs";
 import { buildItemSearchTsQuery } from "@/lib/item-search";
+import { embeddingsEnabled, generateEmbedding, vectorLiteral, SEMANTIC_DISTANCE_CUTOFF, SEMANTIC_SEARCH_LIMIT } from "@/lib/embeddings.mjs";
+import { mergeHybridResults } from "@/lib/hybrid-search.mjs";
+import { embeddingInputChanged, updateItemEmbedding } from "@/lib/embedding-store";
 import { jsonError, parseBody, readJsonBody, serverError } from "@/lib/api-errors";
 import { itemCreateSchema, itemUpdateSchema } from "@/lib/validation";
 import { deriveTaskCompletion, normalizeChecklistItems } from "@/lib/task-checklists";
 import { appendYouTubeDescriptionLinksToNotes, fetchYouTubeDescriptionLinks, type YouTubeDescriptionLink } from "@/lib/youtube";
+
+// snake_case → camelCase column list shared by the raw-SQL search paths so
+// their rows match the Drizzle-select shape the frontend expects.
+const ITEM_COLUMNS_SQL = `
+  id, type, title, content, url, notes, tags, category, pinned, attachments,
+  favourite,
+  completed,
+  action_required AS "actionRequired",
+  checklist_items AS "checklistItems",
+  note_entries AS "noteEntries",
+  favicon,
+  og_title AS "ogTitle",
+  og_description AS "ogDescription",
+  og_image AS "ogImage",
+  site_name AS "siteName",
+  completed_at AS "completedAt",
+  created_at AS "createdAt",
+  updated_at AS "updatedAt"
+`;
+
+// Nearest-neighbour lookup over item embeddings (cosine distance, HNSW
+// index). Rows past the distance cutoff are noise and excluded entirely.
+async function semanticSearchRows(queryVector: number[]) {
+  return await sql.query(
+    `SELECT ${ITEM_COLUMNS_SQL}
+     FROM items
+     WHERE embedding IS NOT NULL
+       AND (embedding <=> $1::vector) < $2
+     ORDER BY embedding <=> $1::vector
+     LIMIT $3`,
+    [vectorLiteral(queryVector), SEMANTIC_DISTANCE_CUTOFF, SEMANTIC_SEARCH_LIMIT]
+  );
+}
 
 function prepareTaskFields(
   type: unknown,
@@ -73,64 +109,73 @@ export async function GET(req: NextRequest) {
     (!type || row.type === type);
 
   if (q) {
+    // Hybrid search: weighted FTS over search_tsv merged with pgvector
+    // semantic ranking via reciprocal rank fusion (lib/hybrid-search.mjs).
+    // ?semantic=0 forces FTS-only, ?semantic=1 returns pure semantic ranking;
+    // the default auto-merges whenever OPENAI_API_KEY is configured. Every
+    // semantic failure mode (no key, column/extension not migrated yet,
+    // OpenAI error) degrades silently to the FTS-only behaviour.
+    const semanticParam = url.searchParams.get("semantic");
+
     // Full-text search against the weighted, GIN-indexed search_tsv column
     // (see db/schema.ts — covers title, tags, category, body, note entries,
     // checklist rows, and link metadata).
     const tsquery = buildItemSearchTsQuery(q);
-    if (!tsquery) return NextResponse.json([]);
-    // Alias snake_case columns to camelCase so search results match the
-    // Drizzle-select shape the frontend expects.
-    const rows = await sql`
-      SELECT
-        id, type, title, content, url, notes, tags, category, pinned, attachments,
-        favourite,
-        completed,
-        action_required AS "actionRequired",
-        checklist_items AS "checklistItems",
-        note_entries AS "noteEntries",
-        favicon,
-        og_title AS "ogTitle",
-        og_description AS "ogDescription",
-        og_image AS "ogImage",
-        site_name AS "siteName",
-        completed_at AS "completedAt",
-        created_at AS "createdAt",
-        updated_at AS "updatedAt"
-      FROM items, to_tsquery('english', ${tsquery}) AS query
-      WHERE search_tsv @@ query
-      ORDER BY pinned DESC,
-               ts_rank_cd(search_tsv, query) DESC,
-               created_at DESC
-    `;
-    const matched = rows.filter(matchesStructuredFilters);
-    if (matched.length > 0) return NextResponse.json(matched);
-    // Zero exact hits — trigram fallback over titles so typos still surface
-    // cards ("recat" finds "react"). Flagged via header rather than a body
-    // shape change so existing clients that expect a bare array keep working.
+    // Loose row shape for the raw-SQL search paths — all optional so the
+    // neon driver's Record<string, any> rows assign without casts.
+    type SearchRow = { id?: string; pinned?: boolean | null; tags?: unknown; category?: string | null; type?: string | null } & Record<string, unknown>;
+    let ftsRows: SearchRow[] = [];
+    if (tsquery) {
+      ftsRows = await sql.query(
+        `SELECT ${ITEM_COLUMNS_SQL}
+         FROM items, to_tsquery('english', $1) AS query
+         WHERE search_tsv @@ query
+         ORDER BY pinned DESC,
+                  ts_rank_cd(search_tsv, query) DESC,
+                  created_at DESC`,
+        [tsquery]
+      );
+    }
+
+    let semanticRows: SearchRow[] = [];
+    let semanticUsed = false;
+    if (semanticParam !== "0" && embeddingsEnabled()) {
+      try {
+        const queryVector = await generateEmbedding(q);
+        if (queryVector) {
+          semanticRows = await semanticSearchRows(queryVector);
+          semanticUsed = true;
+        }
+      } catch (error) {
+        console.error("Semantic search failed:", error);
+      }
+    }
+
+    const ranked = semanticParam === "1" && semanticUsed
+      ? semanticRows
+      : mergeHybridResults(ftsRows, semanticRows);
+    const matched = ranked.filter(matchesStructuredFilters);
+    if (matched.length > 0) {
+      // Flagged via header rather than a body shape change so existing
+      // clients that expect a bare array keep working.
+      return NextResponse.json(
+        matched,
+        semanticUsed ? { headers: { "x-search-semantic": "1" } } : undefined
+      );
+    }
+    // Zero hits — trigram fallback over titles so typos still surface
+    // cards ("recat" finds "react").
     try {
-      const fuzzy = await sql`
-        SELECT
-          id, type, title, content, url, notes, tags, category, pinned, attachments,
-          favourite,
-          completed,
-          action_required AS "actionRequired",
-          checklist_items AS "checklistItems",
-          note_entries AS "noteEntries",
-          favicon,
-          og_title AS "ogTitle",
-          og_description AS "ogDescription",
-          og_image AS "ogImage",
-          site_name AS "siteName",
-          completed_at AS "completedAt",
-          created_at AS "createdAt",
-          updated_at AS "updatedAt"
-        FROM items
-        WHERE word_similarity(${q}, title) > 0.3
-        ORDER BY pinned DESC,
-                 word_similarity(${q}, title) DESC,
-                 created_at DESC
-        LIMIT 25
-      `;
+      const fuzzy = await sql.query(
+        `SELECT ${ITEM_COLUMNS_SQL}
+         FROM items
+         WHERE word_similarity($1, title) > 0.3
+         ORDER BY pinned DESC,
+                  word_similarity($1, title) DESC,
+                  created_at DESC
+         LIMIT 25`,
+        [q]
+      );
       return NextResponse.json(fuzzy.filter(matchesStructuredFilters), { headers: { "x-search-fuzzy": "1" } });
     } catch (error) {
       // pg_trgm not installed yet (scripts/db-setup.sql) — degrade to no results.
@@ -245,6 +290,9 @@ export async function POST(req: NextRequest) {
     })
     .returning();
 
+  // Embed post-response so saves never block on (or fail because of) OpenAI.
+  if (embeddingsEnabled()) after(() => updateItemEmbedding(row.id));
+
   return NextResponse.json(row);
   } catch (error) {
     return serverError(error);
@@ -335,6 +383,12 @@ export async function PUT(req: NextRequest) {
       );
     }
     return jsonError(404, "Not found");
+  }
+
+  // Re-embed post-response, but only when a field that feeds the embedding
+  // input actually changed (quick mutations like pin/favourite don't).
+  if (embeddingsEnabled() && embeddingInputChanged(current, row)) {
+    after(() => updateItemEmbedding(row.id));
   }
 
   return NextResponse.json(row);

@@ -1,8 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { db } from "@/db";
 import { items, categories, settings } from "@/db/schema";
 import { enrichUrl } from "@/lib/enrich";
 import { aiTagAndCategorize } from "@/lib/ai-tagger";
+import { embeddingsEnabled } from "@/lib/embeddings.mjs";
+import { updateItemEmbedding } from "@/lib/embedding-store";
 import { sendTelegram, allowedTelegramIds } from "@/lib/telegram";
 import {
   isMemoryOfWeekEnabled,
@@ -158,6 +160,9 @@ export async function POST(req: NextRequest) {
         favicon: og.favicon,
       })
       .returning();
+
+    // Embed post-response so captures never block on (or fail because of) OpenAI.
+    if (embeddingsEnabled()) after(() => updateItemEmbedding(row.id));
 
     // Reply with confirmation
     const emoji = type === "task" ? "☐" : type === "memory" ? "💡" : type === "link" ? "◈" : "◉";

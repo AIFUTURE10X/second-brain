@@ -440,7 +440,7 @@ export default function CardPopoutPage() {
   };
 
   const openRelatedCard = (related: RelatedItemSummary) => {
-    window.location.href = new URL(`/card/${related.id}`, window.location.origin).toString();
+    window.location.assign(new URL(`/card/${related.id}`, window.location.origin).toString());
   };
 
   const closeCardPage = async () => {

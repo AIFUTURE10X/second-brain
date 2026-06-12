@@ -1,6 +1,7 @@
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import { NextRequest, NextResponse } from "next/server";
 import { checkApiKey } from "@/lib/api-key";
+import { jsonError } from "@/lib/api-errors";
 
 const ALLOWED_CONTENT_TYPES = [
   "application/pdf",
@@ -53,9 +54,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     });
     return NextResponse.json(jsonResponse);
   } catch (error) {
-    return NextResponse.json(
-      { error: (error as Error).message },
-      { status: 400 },
-    );
+    // Don't echo internal error text to the client — log it and return a
+    // stable message (most rejections are type/size rule violations).
+    console.error("[upload] rejected:", error);
+    return jsonError(400, "Upload rejected: file type or size not allowed");
   }
 }

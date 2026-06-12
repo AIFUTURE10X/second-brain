@@ -4,29 +4,43 @@ import { db } from "@/db";
 import { reminders } from "@/db/schema";
 import { checkApiKey } from "@/lib/api-key";
 import { normalizeReminderInput } from "@/lib/reminders.mjs";
-
-const VALID_STATUSES = new Set(["pending", "sent", "done"]);
+import { jsonError, parseBody, readJsonBody, serverError } from "@/lib/api-errors";
+import { reminderUpdateSchema } from "@/lib/validation";
 
 export async function GET(req: NextRequest) {
   const denied = checkApiKey(req);
   if (denied) return denied;
 
-  const { searchParams } = new URL(req.url);
-  const itemId = searchParams.get("itemId")?.trim();
+  try {
+    const { searchParams } = new URL(req.url);
+    const itemId = searchParams.get("itemId")?.trim();
 
-  const rows = itemId
-    ? await db.select().from(reminders).where(eq(reminders.itemId, itemId)).orderBy(asc(reminders.dueAt))
-    : await db.select().from(reminders).orderBy(asc(reminders.dueAt));
+    const rows = itemId
+      ? await db.select().from(reminders).where(eq(reminders.itemId, itemId)).orderBy(asc(reminders.dueAt))
+      : await db.select().from(reminders).orderBy(asc(reminders.dueAt));
 
-  return NextResponse.json(rows);
+    return NextResponse.json(rows);
+  } catch (error) {
+    return serverError(error);
+  }
 }
 
 export async function POST(req: NextRequest) {
   const denied = checkApiKey(req);
   if (denied) return denied;
 
+  const raw = await readJsonBody(req);
+  if (!raw.ok) return raw.res;
+
+  // normalizeReminderInput throws intentional validation messages → 400.
+  let input: ReturnType<typeof normalizeReminderInput>;
   try {
-    const input = normalizeReminderInput(await req.json());
+    input = normalizeReminderInput(raw.body);
+  } catch (err) {
+    return jsonError(400, (err as Error).message || "Invalid reminder");
+  }
+
+  try {
     const [row] = await db
       .insert(reminders)
       .values({
@@ -38,8 +52,8 @@ export async function POST(req: NextRequest) {
       .returning();
 
     return NextResponse.json(row);
-  } catch (err) {
-    return NextResponse.json({ error: (err as Error).message || "Invalid reminder" }, { status: 400 });
+  } catch (error) {
+    return serverError(error);
   }
 }
 
@@ -47,38 +61,40 @@ export async function PUT(req: NextRequest) {
   const denied = checkApiKey(req);
   if (denied) return denied;
 
-  const body = await req.json();
-  const id = String(body.id || "").trim();
-  if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
+  const raw = await readJsonBody(req);
+  if (!raw.ok) return raw.res;
+  const parsed = parseBody(reminderUpdateSchema, raw.body);
+  if (!parsed.success) return parsed.res;
+  const body = parsed.data;
 
   const updates: Partial<typeof reminders.$inferInsert> = { updatedAt: new Date() };
 
-  if ("message" in body) updates.message = String(body.message || "").trim();
-  if ("dueAt" in body) {
+  if (body.message !== undefined) updates.message = body.message.trim();
+  if (body.dueAt !== undefined) {
     const dueAt = new Date(body.dueAt);
     if (Number.isNaN(dueAt.getTime())) {
-      return NextResponse.json({ error: "Valid dueAt is required" }, { status: 400 });
+      return jsonError(400, "Valid dueAt is required");
     }
     updates.dueAt = dueAt;
   }
-  if ("status" in body) {
-    const status = String(body.status || "").trim();
-    if (!VALID_STATUSES.has(status)) {
-      return NextResponse.json({ error: "Invalid status" }, { status: 400 });
-    }
-    updates.status = status;
-    if (status === "pending") updates.sentAt = null;
-    if (status === "done" && !("sentAt" in body)) updates.sentAt = null;
+  if (body.status !== undefined) {
+    updates.status = body.status;
+    if (body.status === "pending") updates.sentAt = null;
+    if (body.status === "done" && body.sentAt === undefined) updates.sentAt = null;
   }
 
-  const [row] = await db
-    .update(reminders)
-    .set(updates)
-    .where(eq(reminders.id, id))
-    .returning();
+  try {
+    const [row] = await db
+      .update(reminders)
+      .set(updates)
+      .where(eq(reminders.id, body.id))
+      .returning();
 
-  if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  return NextResponse.json(row);
+    if (!row) return jsonError(404, "Not found");
+    return NextResponse.json(row);
+  } catch (error) {
+    return serverError(error);
+  }
 }
 
 export async function DELETE(req: NextRequest) {
@@ -87,8 +103,12 @@ export async function DELETE(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id")?.trim();
-  if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
+  if (!id) return jsonError(400, "Missing id");
 
-  await db.delete(reminders).where(eq(reminders.id, id));
-  return NextResponse.json({ ok: true });
+  try {
+    await db.delete(reminders).where(eq(reminders.id, id));
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    return serverError(error);
+  }
 }

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { items, categories } from "@/db/schema";
 import { checkApiKey } from "@/lib/api-key";
+import { parseBody, readJsonBody, serverError } from "@/lib/api-errors";
+import { importSchema } from "@/lib/validation";
 
 /**
  * POST /api/import
@@ -13,7 +15,13 @@ export async function POST(req: NextRequest) {
   const denied = checkApiKey(req);
   if (denied) return denied;
 
-  const body = await req.json();
+  const raw = await readJsonBody(req);
+  if (!raw.ok) return raw.res;
+  const parsed = parseBody(importSchema, raw.body);
+  if (!parsed.success) return parsed.res;
+  const body = parsed.data;
+
+  try {
   let importedItems = 0;
   let importedCats = 0;
 
@@ -78,4 +86,7 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({ importedCategories: importedCats, importedItems });
+  } catch (error) {
+    return serverError(error);
+  }
 }

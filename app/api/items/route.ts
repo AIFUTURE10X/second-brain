@@ -7,6 +7,8 @@ import { checkApiKey } from "@/lib/api-key";
 import { aiTagAndCategorize } from "@/lib/ai-tagger";
 import { shouldEnrichUrlOnUpdate } from "@/lib/item-updates.mjs";
 import { buildItemSearchTsQuery } from "@/lib/item-search";
+import { jsonError, parseBody, readJsonBody, serverError } from "@/lib/api-errors";
+import { itemCreateSchema, itemUpdateSchema } from "@/lib/validation";
 import { deriveTaskCompletion, normalizeChecklistItems } from "@/lib/task-checklists";
 import { appendYouTubeDescriptionLinksToNotes, fetchYouTubeDescriptionLinks, type YouTubeDescriptionLink } from "@/lib/youtube";
 
@@ -48,7 +50,7 @@ function prepareTaskFields(
 export async function GET(req: NextRequest) {
   const denied = checkApiKey(req);
   if (denied) return denied;
-
+  try {
   const url = new URL(req.url);
   const id = url.searchParams.get("id");
   const q = url.searchParams.get("q")?.trim();
@@ -148,6 +150,9 @@ export async function GET(req: NextRequest) {
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(desc(items.pinned), desc(items.createdAt));
   return NextResponse.json(rows);
+  } catch (error) {
+    return serverError(error);
+  }
 }
 
 // POST create new item
@@ -155,7 +160,13 @@ export async function POST(req: NextRequest) {
   const denied = checkApiKey(req);
   if (denied) return denied;
 
-  const body = await req.json();
+  const raw = await readJsonBody(req);
+  if (!raw.ok) return raw.res;
+  const parsed = parseBody(itemCreateSchema, raw.body);
+  if (!parsed.success) return parsed.res;
+  const body = parsed.data;
+
+  try {
   const url = body.url?.trim() || "";
 
   // Auto-enrich if URL is provided and no og data was passed
@@ -235,6 +246,9 @@ export async function POST(req: NextRequest) {
     .returning();
 
   return NextResponse.json(row);
+  } catch (error) {
+    return serverError(error);
+  }
 }
 
 // PUT update item
@@ -242,15 +256,20 @@ export async function PUT(req: NextRequest) {
   const denied = checkApiKey(req);
   if (denied) return denied;
 
-  const body = await req.json();
-  const { id, ...updates } = body;
-  if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
+  const raw = await readJsonBody(req);
+  if (!raw.ok) return raw.res;
+  // itemUpdateSchema is strict: unknown body keys are rejected instead of
+  // being spread into the UPDATE (the old mass-assignment hole).
+  const parsed = parseBody(itemUpdateSchema, raw.body);
+  if (!parsed.success) return parsed.res;
+  const { id, ...updates } = parsed.data;
 
+  try {
   const [current] = await db.select().from(items).where(eq(items.id, id));
   if (!current) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const nextType = updates.type || current.type;
 
-  if (shouldEnrichUrlOnUpdate({ currentUrl: current.url, nextUrl: updates.url, nextOgTitle: updates.ogTitle })) {
+  if (updates.url && shouldEnrichUrlOnUpdate({ currentUrl: current.url, nextUrl: updates.url, nextOgTitle: updates.ogTitle })) {
     const og = await enrichUrl(updates.url);
     updates.ogTitle = og.ogTitle;
     updates.ogDescription = og.ogDescription;
@@ -261,14 +280,15 @@ export async function PUT(req: NextRequest) {
 
   // Auto-create category if it doesn't exist
   if (updates.category) {
-    updates.category = updates.category.trim();
+    const categoryName = updates.category.trim();
+    updates.category = categoryName;
     const existingCats = await db.select({ name: categories.name }).from(categories);
-    const match = existingCats.find(c => c.name.toLowerCase() === updates.category.toLowerCase());
+    const match = existingCats.find(c => c.name.toLowerCase() === categoryName.toLowerCase());
     if (match) {
       updates.category = match.name; // preserve existing casing
     } else {
       try {
-        await db.insert(categories).values({ name: updates.category });
+        await db.insert(categories).values({ name: categoryName });
       } catch {}
     }
   }
@@ -294,6 +314,9 @@ export async function PUT(req: NextRequest) {
     .returning();
 
   return NextResponse.json(row);
+  } catch (error) {
+    return serverError(error);
+  }
 }
 
 // DELETE item
@@ -303,8 +326,12 @@ export async function DELETE(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");
-  if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
+  if (!id) return jsonError(400, "Missing id");
 
-  await db.delete(items).where(eq(items.id, id));
-  return NextResponse.json({ ok: true });
+  try {
+    await db.delete(items).where(eq(items.id, id));
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    return serverError(error);
+  }
 }

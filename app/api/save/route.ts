@@ -6,6 +6,8 @@ import { checkApiKey } from "@/lib/api-key";
 import { aiTagAndCategorize } from "@/lib/ai-tagger";
 import { appendYouTubeDescriptionLinksToNotes, fetchYouTubeDescriptionLinks, type YouTubeDescriptionLink } from "@/lib/youtube";
 import { asc } from "drizzle-orm";
+import { parseBody, readJsonBody, serverError } from "@/lib/api-errors";
+import { saveSchema } from "@/lib/validation";
 
 /**
  * POST /api/save?key=API_SECRET
@@ -29,23 +31,19 @@ export async function POST(req: NextRequest) {
   const denied = checkApiKey(req);
   if (denied) return denied;
 
-  let body: Record<string, unknown>;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
-  }
+  const raw = await readJsonBody(req);
+  if (!raw.ok) return raw.res;
+  const parsed = parseBody(saveSchema, raw.body);
+  if (!parsed.success) return parsed.res;
+  const body = parsed.data as Record<string, unknown>;
 
+  try {
   const url = ((body.url as string) || "").trim();
   const text = ((body.text as string) || "").trim();
   const title = ((body.title as string) || "").trim();
   const content = ((body.content as string) || text).trim();
   const notes = ((body.notes as string) || "").trim();
   let category = ((body.category as string) || "").trim();
-
-  if (!url && !title && !content) {
-    return NextResponse.json({ error: "Provide at least url, text, title, or content" }, { status: 400 });
-  }
 
   // Parse tags: accept string[] or comma-separated string
   let tags: string[] = [];
@@ -120,4 +118,7 @@ export async function POST(req: NextRequest) {
     .returning();
 
   return NextResponse.json(row, { status: 201 });
+  } catch (error) {
+    return serverError(error);
+  }
 }

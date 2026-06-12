@@ -3,6 +3,7 @@ import { db, sql } from "@/db";
 import { itemRelations } from "@/db/schema";
 import { checkApiKey } from "@/lib/api-key";
 import { canonicalRelationPair } from "@/lib/item-relations.mjs";
+import { serverError } from "@/lib/api-errors";
 import { and, eq } from "drizzle-orm";
 
 type RelatedItemSummary = {
@@ -30,6 +31,7 @@ export async function GET(req: NextRequest) {
   const denied = checkApiKey(req);
   if (denied) return denied;
 
+  try {
   const itemId = new URL(req.url).searchParams.get("itemId");
 
   const rows = (itemId
@@ -102,6 +104,9 @@ export async function GET(req: NextRequest) {
     `) as RelationRow[];
 
   return NextResponse.json(rows);
+  } catch (error) {
+    return serverError(error);
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -118,13 +123,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: (err as Error).message }, { status: 400 });
   }
 
-  const [row] = await db
-    .insert(itemRelations)
-    .values(pair)
-    .onConflictDoNothing()
-    .returning();
+  try {
+    const [row] = await db
+      .insert(itemRelations)
+      .values(pair)
+      .onConflictDoNothing()
+      .returning();
 
-  return NextResponse.json(row || pair, { status: row ? 201 : 200 });
+    return NextResponse.json(row || pair, { status: row ? 201 : 200 });
+  } catch (error) {
+    return serverError(error);
+  }
 }
 
 export async function DELETE(req: NextRequest) {
@@ -146,9 +155,13 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: (err as Error).message }, { status: 400 });
   }
 
-  await db
-    .delete(itemRelations)
-    .where(and(eq(itemRelations.itemAId, pair.itemAId), eq(itemRelations.itemBId, pair.itemBId)));
+  try {
+    await db
+      .delete(itemRelations)
+      .where(and(eq(itemRelations.itemAId, pair.itemAId), eq(itemRelations.itemBId, pair.itemBId)));
 
-  return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    return serverError(error);
+  }
 }

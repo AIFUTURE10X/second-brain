@@ -1,114 +1,106 @@
 # ◆ Second Brain
 
-Clips, notes, links & thoughts — synced across all your devices.
+Clips, notes, links & thoughts — a single-user personal knowledge app.
 
-**Stack:** Next.js 14 · Neon Postgres · Drizzle ORM · NextAuth · Tailwind CSS
+**Stack:** Next.js 16 (App Router, Turbopack) · React 19 · Neon Postgres · Drizzle ORM · Vercel Blob · Anthropic (auto-tagging) · OpenAI (summaries) · Tailwind CSS
 
-## Quick Setup
+**Satellite clients:** browser extension (`extension/`), Tauri desktop wrapper (`desktop/`), Telegram bot.
 
-### 1. Clone & install
+## Security model (read this first)
+
+There is **deliberately no login** right now: the web UI is public to anyone
+who has the URL, and API routes accept either a same-origin browser request or
+the `API_SECRET` bearer token (`x-api-key` header) used by the extension and
+scripts. Don't store anything sensitive outside the encrypted vault. A complete
+single-user passphrase-auth implementation is parked on the
+`phase-0-security` branch, to be finished before the app is ever offered to
+other users.
+
+## Features
+
+- **Capture fast** — quick-capture bar mirroring the Telegram grammar: paste a
+  URL → link (auto-enriched + AI-tagged), plain text → thought, `/t` → task,
+  `/m` → memory. Voice input included.
+- **Find things later** — Postgres full-text search over a weighted, indexed
+  `tsvector` column (title > tags/category > body/notes > link metadata), with
+  a trigram fuzzy fallback for typos and structured `?tag=/?category=/?type=`
+  filters.
+- URL enrichment (OpenGraph + YouTube), AI auto-tagging and categorization,
+  category hierarchy, tasks with checklists, note entries per card, related
+  cards, Telegram reminders + daily digest + memory-of-the-week crons,
+  attachments on Vercel Blob, client-side encrypted vault, JSON/CSV/Markdown
+  export, offline read via service worker, cross-device edit-conflict
+  detection.
+
+## Setup
 
 ```bash
 git clone https://github.com/AIFUTURE10X/second-brain.git
 cd second-brain
 npm install
+cp .env.example .env.local   # fill in values — see comments in the file
 ```
 
-### 2. Create Neon database
-
-1. Go to [neon.tech](https://neon.tech) → your project
-2. Copy the connection string from the dashboard
-
-### 3. Create GitHub OAuth app
-
-1. Go to [github.com/settings/developers](https://github.com/settings/developers)
-2. Click **New OAuth App**
-3. Set:
-   - **App name:** Second Brain
-   - **Homepage URL:** `http://localhost:3000`
-   - **Callback URL:** `http://localhost:3000/api/auth/callback/github`
-4. Copy Client ID and Client Secret
-
-### 4. Configure environment
+Database (Neon Postgres):
 
 ```bash
-cp .env.example .env.local
+node scripts/run-db-setup.mjs   # one-time: pg_trgm extension (push can't create it)
+npm run db:push                 # apply schema (interactive — review prompts, never run in CI)
 ```
 
-Fill in your values:
-```
-DATABASE_URL=your-neon-connection-string
-BLOB_READ_WRITE_TOKEN=your-vercel-blob-read-write-token
-NEXTAUTH_URL=http://localhost:3000
-NEXTAUTH_SECRET=run-openssl-rand-base64-32
-GITHUB_CLIENT_ID=your-github-client-id
-GITHUB_CLIENT_SECRET=your-github-client-secret
-```
-
-Generate the secret:
-```bash
-openssl rand -base64 32
-```
-
-### 5. Push database schema
-
-```bash
-npx drizzle-kit push
-```
-
-### 6. Run locally
+Run:
 
 ```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000)
-
----
-
-## Deploy to Vercel
-
-### 1. Push to GitHub
+## Commands
 
 ```bash
-git init
-git add .
-git commit -m "Initial commit: Second Brain"
-git remote add origin https://github.com/AIFUTURE10X/second-brain.git
-git push -u origin main
+npm run dev        # dev server
+npm run build      # production build
+npm test           # node --test "tests/*.test.mjs"
+npm run lint       # eslint (flat config)
+npx tsc --noEmit   # typecheck
+npm run db:push    # drizzle-kit push (no migration files by design)
 ```
 
-### 2. Deploy on Vercel
+Every commit should pass typecheck + lint + test + build — CI
+(`.github/workflows/ci.yml`) enforces this on push.
 
-1. Go to [vercel.com/new](https://vercel.com/new)
-2. Import `AIFUTURE10X/second-brain`
-3. Add environment variables:
-   - `DATABASE_URL`
-   - `BLOB_READ_WRITE_TOKEN` (created by linking a Vercel Blob store to the project)
-   - `NEXTAUTH_URL` → your Vercel URL (e.g. `https://second-brain.vercel.app`)
-   - `NEXTAUTH_SECRET`
-   - `GITHUB_CLIENT_ID`
-   - `GITHUB_CLIENT_SECRET`
-4. Deploy
+## API
 
-### 3. Update GitHub OAuth callback
+All routes accept `x-api-key: $API_SECRET` (or same-origin browser requests).
 
-Go back to your GitHub OAuth app settings and update:
-- **Homepage URL:** `https://second-brain.vercel.app`
-- **Callback URL:** `https://second-brain.vercel.app/api/auth/callback/github`
+| Route | Purpose |
+|---|---|
+| `GET/POST/PUT/DELETE /api/items` | CRUD; `?q=` indexed FTS (+`x-search-fuzzy` header on typo fallback); `?tag=/?category=/?type=` filters; PUT supports optional `expectedUpdatedAt` → `409` + current row on conflict |
+| `POST /api/save` | Automation endpoint (extension/Telegram/scripts): `{url}` or `{text}` or `{title, content}` |
+| `GET/POST/PUT/PATCH/DELETE /api/categories` | Category CRUD, hierarchy, reorder |
+| `GET/POST/PUT/DELETE /api/reminders` | Telegram reminders |
+| `GET/POST/DELETE /api/item-relations` | Related-card links |
+| `POST /api/tags/merge` | Merge duplicate tags |
+| `GET /api/export?format=json\|csv\|markdown` | Backup |
+| `POST /api/import` | Restore from JSON export |
+| `POST /api/summarize` | OpenAI bullet summary appended to notes |
+| `POST /api/upload` | Vercel Blob client-upload handshake |
+| `POST /api/telegram` | Bot webhook |
+| `GET /api/cron/*` | Vercel crons (require `CRON_SECRET` bearer) |
 
----
+Request bodies are validated with zod; invalid payloads return
+`400 { error, fields }`.
 
-## Features
+## Satellites
 
-- **4 item types** — Notes, Links, Clips, Thoughts
-- **Full-text search** across all content
-- **Tag system** with clickable tag cloud
-- **Pin** important items to top
-- **Cross-device sync** via Neon Postgres
-- **GitHub sign-in** — one click, no passwords
-- **Mobile-first** dark UI
+- **Extension** (`extension/`): load unpacked in Chrome, set the deployment URL
+  + `API_SECRET` in the popup.
+- **Telegram bot**: set `TELEGRAM_BOT_TOKEN` + `TELEGRAM_ALLOWED_USER_ID`, then
+  register the webhook against `/api/telegram` (include
+  `&secret_token=$TELEGRAM_WEBHOOK_SECRET` if set).
+- **Desktop** (`desktop/`): Tauri WebView wrapper pointed at the production
+  URL; installer built by `.github/workflows/build-desktop.yml`.
 
-## License
+## Backups
 
-MIT
+`GET /api/export?format=json` returns everything. Take one before any
+`db:push` schema change.

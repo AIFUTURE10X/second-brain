@@ -3,7 +3,7 @@ import { db, sql } from "@/db";
 import { items, categories } from "@/db/schema";
 import { eq, desc, asc } from "drizzle-orm";
 import { enrichUrl } from "@/lib/enrich";
-import { checkApiKey } from "@/lib/api-key";
+import { requireAuth } from "@/lib/auth";
 import { aiTagAndCategorize } from "@/lib/ai-tagger";
 import { shouldEnrichUrlOnUpdate } from "@/lib/item-updates.mjs";
 import { buildItemSearchTsQuery } from "@/lib/item-search";
@@ -46,7 +46,7 @@ function prepareTaskFields(
 
 // GET all items — supports ?q= for full-text search
 export async function GET(req: NextRequest) {
-  const denied = checkApiKey(req);
+  const denied = await requireAuth(req);
   if (denied) return denied;
 
   const url = new URL(req.url);
@@ -109,7 +109,7 @@ export async function GET(req: NextRequest) {
 
 // POST create new item
 export async function POST(req: NextRequest) {
-  const denied = checkApiKey(req);
+  const denied = await requireAuth(req);
   if (denied) return denied;
 
   const body = await req.json();
@@ -196,7 +196,7 @@ export async function POST(req: NextRequest) {
 
 // PUT update item
 export async function PUT(req: NextRequest) {
-  const denied = checkApiKey(req);
+  const denied = await requireAuth(req);
   if (denied) return denied;
 
   const body = await req.json();
@@ -255,7 +255,7 @@ export async function PUT(req: NextRequest) {
 
 // DELETE item
 export async function DELETE(req: NextRequest) {
-  const denied = checkApiKey(req);
+  const denied = await requireAuth(req);
   if (denied) return denied;
 
   const { searchParams } = new URL(req.url);

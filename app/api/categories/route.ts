@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { categories } from "@/db/schema";
 import { eq, asc, inArray, sql } from "drizzle-orm";
-import { checkApiKey } from "@/lib/api-key";
+import { requireAuth } from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
-  const denied = checkApiKey(req);
+  const denied = await requireAuth(req);
   if (denied) return denied;
 
   const rows = await db
@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const denied = checkApiKey(req);
+  const denied = await requireAuth(req);
   if (denied) return denied;
 
   const body = await req.json();
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
 
 // PATCH — bulk reorder. Body: { orders: [{id, position}, ...] }
 export async function PATCH(req: NextRequest) {
-  const denied = checkApiKey(req);
+  const denied = await requireAuth(req);
   if (denied) return denied;
 
   const body = await req.json();
@@ -61,7 +61,7 @@ export async function PATCH(req: NextRequest) {
 
 // PUT — edit category (rename, recolor, reparent)
 export async function PUT(req: NextRequest) {
-  const denied = checkApiKey(req);
+  const denied = await requireAuth(req);
   if (denied) return denied;
 
   const body = await req.json();
@@ -93,7 +93,7 @@ export async function PUT(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const denied = checkApiKey(req);
+  const denied = await requireAuth(req);
   if (denied) return denied;
 
   const { searchParams } = new URL(req.url);

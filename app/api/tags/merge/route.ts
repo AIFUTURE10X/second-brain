@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db, sql } from "@/db";
 import { items } from "@/db/schema";
-import { checkApiKey } from "@/lib/api-key";
+import { requireAuth } from "@/lib/auth";
 
 /**
  * POST /api/tags/merge
@@ -11,7 +11,7 @@ import { checkApiKey } from "@/lib/api-key";
  * Case-insensitive matching on tag values. Deduplicates within an item after merge.
  */
 export async function POST(req: NextRequest) {
-  const denied = checkApiKey(req);
+  const denied = await requireAuth(req);
   if (denied) return denied;
 
   const body = await req.json();

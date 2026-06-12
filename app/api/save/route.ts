@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { items, categories } from "@/db/schema";
 import { enrichUrl } from "@/lib/enrich";
-import { checkApiKey } from "@/lib/api-key";
+import { requireAuth } from "@/lib/auth";
 import { aiTagAndCategorize } from "@/lib/ai-tagger";
 import { appendYouTubeDescriptionLinksToNotes, fetchYouTubeDescriptionLinks, type YouTubeDescriptionLink } from "@/lib/youtube";
 import { asc } from "drizzle-orm";
@@ -26,7 +26,7 @@ import { asc } from "drizzle-orm";
  * Claude suggests tags + category automatically.
  */
 export async function POST(req: NextRequest) {
-  const denied = checkApiKey(req);
+  const denied = await requireAuth(req);
   if (denied) return denied;
 
   let body: Record<string, unknown>;

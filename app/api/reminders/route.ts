@@ -2,13 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { asc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { reminders } from "@/db/schema";
-import { checkApiKey } from "@/lib/api-key";
+import { requireAuth } from "@/lib/auth";
 import { normalizeReminderInput } from "@/lib/reminders.mjs";
 
 const VALID_STATUSES = new Set(["pending", "sent", "done"]);
 
 export async function GET(req: NextRequest) {
-  const denied = checkApiKey(req);
+  const denied = await requireAuth(req);
   if (denied) return denied;
 
   const { searchParams } = new URL(req.url);
@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const denied = checkApiKey(req);
+  const denied = await requireAuth(req);
   if (denied) return denied;
 
   try {
@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PUT(req: NextRequest) {
-  const denied = checkApiKey(req);
+  const denied = await requireAuth(req);
   if (denied) return denied;
 
   const body = await req.json();
@@ -82,7 +82,7 @@ export async function PUT(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const denied = checkApiKey(req);
+  const denied = await requireAuth(req);
   if (denied) return denied;
 
   const { searchParams } = new URL(req.url);

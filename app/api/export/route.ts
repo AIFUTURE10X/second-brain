@@ -2,14 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { items, categories } from "@/db/schema";
 import { desc, asc } from "drizzle-orm";
-import { checkApiKey } from "@/lib/api-key";
+import { requireAuth } from "@/lib/auth";
 
 /**
  * GET /api/export?format=json|csv|markdown
  * Exports all items (and categories) for backup/migration.
  */
 export async function GET(req: NextRequest) {
-  const denied = checkApiKey(req);
+  const denied = await requireAuth(req);
   if (denied) return denied;
 
   const format = new URL(req.url).searchParams.get("format") || "json";

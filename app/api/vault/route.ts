@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { asc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { vaultConfigs, vaultItems } from "@/db/schema";
-import { checkApiKey } from "@/lib/api-key";
+import { requireAuth } from "@/lib/auth";
 
 const DEFAULT_CONFIG_ID = "default";
 const MAX_ENCRYPTED_FIELD_LENGTH = 200_000;
@@ -85,7 +85,7 @@ function parseItem(body: VaultItemBody) {
 }
 
 export async function GET(req: NextRequest) {
-  const denied = checkApiKey(req);
+  const denied = await requireAuth(req);
   if (denied) return denied;
 
   const [config] = await db.select().from(vaultConfigs).where(eq(vaultConfigs.id, DEFAULT_CONFIG_ID));
@@ -95,7 +95,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const denied = checkApiKey(req);
+  const denied = await requireAuth(req);
   if (denied) return denied;
 
   const body = await req.json().catch(() => null);
@@ -132,7 +132,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PUT(req: NextRequest) {
-  const denied = checkApiKey(req);
+  const denied = await requireAuth(req);
   if (denied) return denied;
 
   const body = await req.json().catch(() => null);
@@ -174,7 +174,7 @@ export async function PUT(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const denied = checkApiKey(req);
+  const denied = await requireAuth(req);
   if (denied) return denied;
 
   const id = new URL(req.url).searchParams.get("id");

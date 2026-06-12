@@ -2,12 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { settings } from "@/db/schema";
 import { eq, inArray } from "drizzle-orm";
-import { checkApiKey } from "@/lib/api-key";
+import { requireAuth } from "@/lib/auth";
 
 // GET /api/settings           → all settings as { key: value }
 // GET /api/settings?key=foo   → just that one
 export async function GET(req: NextRequest) {
-  const denied = checkApiKey(req);
+  const denied = await requireAuth(req);
   if (denied) return denied;
 
   const key = new URL(req.url).searchParams.get("key");
@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
 // PUT /api/settings  body: { key: string, value: any }
 // Upserts the key with the new value.
 export async function PUT(req: NextRequest) {
-  const denied = checkApiKey(req);
+  const denied = await requireAuth(req);
   if (denied) return denied;
 
   const body = await req.json();
@@ -47,7 +47,7 @@ export async function PUT(req: NextRequest) {
 
 // DELETE /api/settings?key=foo  (or body { keys: [...] })
 export async function DELETE(req: NextRequest) {
-  const denied = checkApiKey(req);
+  const denied = await requireAuth(req);
   if (denied) return denied;
 
   const url = new URL(req.url);

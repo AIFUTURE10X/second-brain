@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { items, type NoteEntry } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { checkApiKey } from "@/lib/api-key";
+import { requireAuth } from "@/lib/auth";
 import { isPrivateUrl } from "@/lib/enrich";
 import { rateLimit } from "@/lib/rate-limit";
 import { extractYouTubeId, fetchYouTubeTranscript } from "@/lib/youtube";
@@ -33,7 +33,7 @@ type OpenAIResponse = {
  * YouTube cards use captions/transcripts first, then fall back to card text.
  */
 export async function POST(req: NextRequest) {
-  const denied = checkApiKey(req);
+  const denied = await requireAuth(req);
   if (denied) return denied;
 
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";

@@ -58,6 +58,10 @@ export const itemCreateSchema = z.object(itemFields).strict();
 export const itemUpdateSchema = z
   .object({
     id: z.string().min(1, "Missing id"),
+    // Optimistic-concurrency token: the item's updatedAt as the client last
+    // saw it. When present, the UPDATE is guarded and a mismatch returns 409
+    // with the current server row. Absent (old clients) → last-write-wins.
+    expectedUpdatedAt: z.string().optional(),
     ...itemFields,
   })
   .strict();

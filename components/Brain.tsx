@@ -39,6 +39,8 @@ import { FilterBar } from "./brain/FilterBar";
 import { EmptyState } from "./brain/EmptyState";
 import { SkeletonCard } from "./brain/SkeletonCard";
 import { ItemFormModal } from "./brain/ItemFormModal";
+import { ConflictDialog } from "./brain/ConflictDialog";
+import { withConcurrencyGuard } from "@/lib/item-updates.mjs";
 
 const CLIENT_APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "dev";
 
@@ -72,6 +74,9 @@ export default function Brain() {
   const [showAdd, setShowAdd] = useState(false);
   const [showCatManager, setShowCatManager] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  // updatedAt of the item as of edit start — the optimistic-concurrency base.
+  const [editBaseUpdatedAt, setEditBaseUpdatedAt] = useState<string | null>(null);
+  const [conflict, setConflict] = useState<Item | null>(null);
   const [form, setForm] = useState({
     type: "note" as ItemType,
     title: "",
@@ -591,6 +596,7 @@ export default function Brain() {
       setShowAdd(false);
     }
     setEditingId(null);
+    setEditBaseUpdatedAt(null);
   };
 
   const closeForm = () => {
@@ -601,6 +607,7 @@ export default function Brain() {
     setForm({ type: "note", title: "", content: "", url: "", noteEntries: [], checklistItems: [], tags: "", category: "", attachments: [], favourite: false, actionRequired: false, reminderId: "", reminderDueAt: "", reminderMessage: "", relatedItemIds: [] });
     setShowAdd(false);
     setEditingId(null);
+    setEditBaseUpdatedAt(null);
   };
 
   const relatedItemsForId = useCallback((itemId: string): RelatedItemSummary[] => {
@@ -759,7 +766,7 @@ export default function Brain() {
     broadcastSync({ type: "reminders-updated", itemId });
   };
 
-  const handleSave = async (andAddAnother = false) => {
+  const handleSave = async (andAddAnother = false, force = false) => {
     if (!form.title.trim() && !form.content.trim() && !form.url.trim()) return;
     setSaving(true);
     const tags = form.tags.split(",").map(t => t.trim()).filter(Boolean);
@@ -771,7 +778,7 @@ export default function Brain() {
     // we don't double-render after the migration on next load.
     const legacyClear = noteEntries.length > 0 && editingId ? { notes: "" } : {};
     const payload = editingId
-      ? { id: editingId, ...itemForm, tags, noteEntries, checklistItems, ...legacyClear }
+      ? withConcurrencyGuard({ id: editingId, ...itemForm, tags, noteEntries, checklistItems, ...legacyClear }, editBaseUpdatedAt, force)
       : { ...itemForm, tags, noteEntries, checklistItems };
     try {
       const res = await fetch(editingId ? "/api/items" : "/api/items", {
@@ -779,6 +786,14 @@ export default function Brain() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
+      if (res.status === 409) {
+        const data = await res.json().catch(() => null);
+        if (data?.current) {
+          setConflict(data.current as Item);
+          setSaving(false);
+          return;
+        }
+      }
       if (!res.ok) {
         showToast("Failed to save item", "error");
         setSaving(false);
@@ -1094,6 +1109,7 @@ export default function Brain() {
       relatedItemIds: relatedItemsForId(item.id).map(related => related.id),
     });
     setEditingId(item.id);
+    setEditBaseUpdatedAt(item.updatedAt || null);
     restoredDraftKeyRef.current = null;
     setShowAdd(true);
   };
@@ -1656,6 +1672,21 @@ export default function Brain() {
           handleSmartPaste={handleSmartPaste}
           openCardInCurrentTab={openCardInCurrentTab}
           popOutCard={popOutCard}
+        />
+      )}
+
+      {conflict && (
+        <ConflictDialog
+          serverItem={conflict}
+          onUseServer={() => {
+            const server = conflict;
+            setConflict(null);
+            handleEdit(server);
+          }}
+          onOverwrite={() => {
+            setConflict(null);
+            handleSave(false, true);
+          }}
         />
       )}
 

@@ -262,7 +262,7 @@ export async function PUT(req: NextRequest) {
   // being spread into the UPDATE (the old mass-assignment hole).
   const parsed = parseBody(itemUpdateSchema, raw.body);
   if (!parsed.success) return parsed.res;
-  const { id, ...updates } = parsed.data;
+  const { id, expectedUpdatedAt, ...updates } = parsed.data;
 
   try {
   const [current] = await db.select().from(items).where(eq(items.id, id));
@@ -301,6 +301,10 @@ export async function PUT(req: NextRequest) {
     current.completedAt,
   );
 
+  // When the client supplies expectedUpdatedAt, guard the UPDATE so a row
+  // changed since the client loaded it matches nothing. Compare at
+  // millisecond precision: Postgres stores microseconds, but the client only
+  // ever saw the JSON-serialized (ms) timestamp.
   const [row] = await db
     .update(items)
     .set({
@@ -310,8 +314,28 @@ export async function PUT(req: NextRequest) {
       completedAt: taskFields.completedAt,
       updatedAt: new Date(),
     })
-    .where(eq(items.id, id))
+    .where(
+      expectedUpdatedAt
+        ? and(
+            eq(items.id, id),
+            sqlExpr`date_trunc('milliseconds', ${items.updatedAt}) = date_trunc('milliseconds', ${expectedUpdatedAt}::timestamptz)`
+          )
+        : eq(items.id, id)
+    )
     .returning();
+
+  if (!row) {
+    // Guarded update matched nothing: the item changed on another device
+    // (or was deleted). Hand back the current row so the client can resolve.
+    const [latest] = await db.select().from(items).where(eq(items.id, id));
+    if (latest) {
+      return NextResponse.json(
+        { error: "Conflict: item changed on another device", current: latest },
+        { status: 409 }
+      );
+    }
+    return jsonError(404, "Not found");
+  }
 
   return NextResponse.json(row);
   } catch (error) {

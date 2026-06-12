@@ -42,6 +42,7 @@ import {
 } from "@/lib/brain-format";
 import { TelegramHelpMenu } from "./brain/TelegramHelpMenu";
 import { ItemCard } from "./brain/ItemCard";
+import { QuickCaptureBar } from "./brain/QuickCaptureBar";
 
 const CLIENT_APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "dev";
 
@@ -70,6 +71,7 @@ export default function Brain() {
   const [quickTaskSaving, setQuickTaskSaving] = useState(false);
   const [quickMemoryText, setQuickMemoryText] = useState("");
   const [quickMemorySaving, setQuickMemorySaving] = useState(false);
+  const [quickCapturing, setQuickCapturing] = useState(false);
   const [memoryOfWeekEnabled, setMemoryOfWeekEnabled] = useState(true);
   const [memoryOfWeekSaving, setMemoryOfWeekSaving] = useState(false);
   const [vaultOpen, setVaultOpen] = useState(false);
@@ -1065,6 +1067,49 @@ export default function Brain() {
     setQuickMemorySaving(false);
   };
 
+  // Quick capture — mirrors the Telegram bot grammar: URL → link,
+  // "/t text" → task, "/m text" → memory, anything else → thought.
+  const captureQuick = async (raw: string): Promise<boolean> => {
+    const text = raw.trim();
+    if (!text || quickCapturing) return false;
+    let payload: { type: ItemType; title?: string; url?: string };
+    let label: string;
+    const taskMatch = text.match(/^\/t\s+(.+)$/i);
+    const memoryMatch = text.match(/^\/m\s+(.+)$/i);
+    if (taskMatch) {
+      payload = { type: "task", title: taskMatch[1] };
+      label = "Task";
+    } else if (memoryMatch) {
+      payload = { type: "memory", title: memoryMatch[1] };
+      label = "Memory";
+    } else if (/^https?:\/\/\S+$/i.test(text)) {
+      payload = { type: "link", url: text };
+      label = "Link";
+    } else {
+      payload = { type: "thought", title: text };
+      label = "Thought";
+    }
+    setQuickCapturing(true);
+    try {
+      const res = await fetch("/api/items", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tags: [], category: "", ...payload }),
+      });
+      if (!res.ok) throw new Error("Quick capture failed");
+      const row: Item = await res.json();
+      setItems(prev => [row, ...prev]);
+      showToast(`${label} saved`, "success");
+      fetchItems(search.trim() || undefined); // reconcile order and any late enrichment in the background
+      return true;
+    } catch {
+      showToast("Failed to save", "error");
+      return false;
+    } finally {
+      setQuickCapturing(false);
+    }
+  };
+
   const mergeTags = async (from: string[], to: string) => {
     setTagMergeLoading(true);
     try {
@@ -1612,6 +1657,9 @@ export default function Brain() {
             >+</button>
           </div>
         </div>
+
+        {/* Quick capture */}
+        <QuickCaptureBar saving={quickCapturing} onCapture={captureQuick} />
 
         {/* Search */}
         <div className="relative mb-3">

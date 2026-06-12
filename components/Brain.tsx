@@ -51,6 +51,16 @@ import { SkeletonCard } from "./brain/SkeletonCard";
 import { ItemFormModal } from "./brain/ItemFormModal";
 import { ConflictDialog } from "./brain/ConflictDialog";
 import { withConcurrencyGuard } from "@/lib/item-updates.mjs";
+import {
+  SAVED_SEARCHES_SETTINGS_KEY,
+  addSavedSearch,
+  captureFilterState,
+  expandFilterState,
+  normalizeSavedSearches,
+  removeSavedSearch,
+} from "@/lib/saved-searches.mjs";
+import { groupItemsByDay, itemInDateRange } from "@/lib/date-range.mjs";
+import { BulkActionsBar } from "./brain/BulkActionsBar";
 
 const CLIENT_APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "dev";
 
@@ -72,6 +82,15 @@ export default function Brain() {
   const [favouritesOnly, setFavouritesOnly] = useState(false);
   const [actionOnly, setActionOnly] = useState(false);
   const [remindersOnly, setRemindersOnly] = useState(false);
+  const [archivedOnly, setArchivedOnly] = useState(false);
+  const [datePreset, setDatePreset] = useState<"all" | "today" | "week" | "month" | "custom">("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [savedSearches, setSavedSearches] = useState<{ id: string; name: string; state: Record<string, unknown> }[]>([]);
+  const savedSearchesLoaded = useRef(false);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [quickTaskText, setQuickTaskText] = useState("");
   const [quickTaskSaving, setQuickTaskSaving] = useState(false);
@@ -219,6 +238,82 @@ export default function Brain() {
     if (typeof window !== "undefined") window.localStorage.setItem("sb_collapsed_cats", JSON.stringify(Array.from(collapsedCats)));
   }, [collapsedCats]);
 
+  // Saved searches — synced via /api/settings under one JSON key.
+  useEffect(() => {
+    fetch(`/api/settings?key=${SAVED_SEARCHES_SETTINGS_KEY}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        setSavedSearches(normalizeSavedSearches(data?.[SAVED_SEARCHES_SETTINGS_KEY]) as { id: string; name: string; state: Record<string, unknown> }[]);
+      })
+      .catch(() => {})
+      .finally(() => { savedSearchesLoaded.current = true; });
+  }, []);
+
+  const persistSavedSearches = useCallback((list: { id: string; name: string; state: Record<string, unknown> }[]) => {
+    setSavedSearches(list);
+    if (!savedSearchesLoaded.current) return;
+    fetch("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: SAVED_SEARCHES_SETTINGS_KEY, value: list }),
+    }).catch(() => {});
+  }, []);
+
+  const currentFilterState = () => ({
+    search: search.trim(),
+    view,
+    catFilter,
+    tagFilter,
+    sourceFilter,
+    withNotesOnly,
+    favouritesOnly,
+    actionOnly,
+    remindersOnly,
+    reviewMode,
+    archivedOnly,
+    sortBy,
+    datePreset,
+    dateFrom,
+    dateTo,
+  });
+
+  const handleSaveCurrentSearch = () => {
+    const state = captureFilterState(currentFilterState());
+    if (Object.keys(state).length === 0) {
+      showToast("Nothing to save — set a search or filters first", "error");
+      return;
+    }
+    const name = prompt("Name this saved search:");
+    if (!name?.trim()) return;
+    const { list, entry } = addSavedSearch(savedSearches, name, currentFilterState());
+    if (!entry) return;
+    persistSavedSearches(list as { id: string; name: string; state: Record<string, unknown> }[]);
+    showToast(`Saved "${entry.name}"`, "success");
+  };
+
+  const applySavedSearch = (entry: { id: string; name: string; state: Record<string, unknown> }) => {
+    const state = expandFilterState(entry.state);
+    setSearch(state.search as string);
+    setView(state.view as "all" | ItemType);
+    setCatFilter(state.catFilter as string);
+    setTagFilter(state.tagFilter as string | null);
+    setSourceFilter(state.sourceFilter as string | null);
+    setWithNotesOnly(Boolean(state.withNotesOnly));
+    setFavouritesOnly(Boolean(state.favouritesOnly));
+    setActionOnly(Boolean(state.actionOnly));
+    setRemindersOnly(Boolean(state.remindersOnly));
+    setReviewMode(Boolean(state.reviewMode));
+    setArchivedOnly(Boolean(state.archivedOnly));
+    setSortBy(state.sortBy as "newest" | "oldest");
+    setDatePreset(state.datePreset as "all" | "today" | "week" | "month" | "custom");
+    setDateFrom(state.dateFrom as string);
+    setDateTo(state.dateTo as string);
+  };
+
+  const deleteSavedSearch = (id: string) => {
+    persistSavedSearches(removeSavedSearch(savedSearches, id));
+  };
+
   const toggleCatCollapsed = (id: string) => {
     setCollapsedCats(prev => {
       const next = new Set(prev);
@@ -253,7 +348,11 @@ export default function Brain() {
   const fetchItems = useCallback(async (query?: string) => {
     if (query) setSearching(true);
     try {
-      const url = query ? `/api/items?q=${encodeURIComponent(query)}` : "/api/items";
+      const params = new URLSearchParams();
+      if (query) params.set("q", query);
+      if (archivedOnly) params.set("archived", "1");
+      const qs = params.toString();
+      const url = qs ? `/api/items?${qs}` : "/api/items";
       const res = await fetch(url, { cache: "no-store" });
       if (res.ok) {
         setItems(await res.json());
@@ -275,7 +374,7 @@ export default function Brain() {
     }
     setSearching(false);
     setLoading(false);
-  }, []);
+  }, [archivedOnly]);
 
   const fetchRelations = useCallback(async () => {
     try {
@@ -482,7 +581,7 @@ export default function Brain() {
   // them into local state. Deletes propagate via tombstones. Returning to a
   // hidden tab is covered by the visibilitychange full refresh below.
   useEffect(() => {
-    if (search.trim()) return;
+    if (search.trim() || archivedOnly) return;
     let inFlight = false;
     const poll = async () => {
       if (inFlight || document.visibilityState !== "visible") return;
@@ -507,7 +606,7 @@ export default function Brain() {
     };
     const interval = setInterval(poll, SYNC_POLL_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [search, fetchCategories, fetchRelations]);
+  }, [search, archivedOnly, fetchCategories, fetchRelations]);
 
   // Auto-refresh when user returns to the tab (e.g. after clipping from extension)
   useEffect(() => {
@@ -528,7 +627,7 @@ export default function Brain() {
   }, [fetchItems, fetchCategories, fetchRelations, fetchReminders, search]);
 
   // Reset pagination when filters change
-  useEffect(() => { setVisibleCount(50); }, [view, catFilter, search, sortBy, sourceFilter, tagFilter, withNotesOnly, favouritesOnly, actionOnly, remindersOnly, reviewMode]);
+  useEffect(() => { setVisibleCount(50); }, [view, catFilter, search, sortBy, sourceFilter, tagFilter, withNotesOnly, favouritesOnly, actionOnly, remindersOnly, reviewMode, archivedOnly, datePreset, dateFrom, dateTo]);
 
   // Close modals on Escape, focus search on Cmd/Ctrl+K
   useEffect(() => {
@@ -1013,6 +1112,10 @@ export default function Brain() {
     setActionOnly(false);
     setRemindersOnly(false);
     setReviewMode(false);
+    setArchivedOnly(false);
+    setDatePreset("all");
+    setDateFrom("");
+    setDateTo("");
     setSearch("");
   };
 
@@ -1241,6 +1344,121 @@ export default function Brain() {
     }
   };
 
+  const handleArchive = async (id: string) => {
+    const item = items.find(i => i.id === id);
+    if (!item || isOfflineTempId(id)) return;
+    const archivedAt = item.archivedAt ? null : new Date().toISOString();
+    try {
+      const res = await fetch("/api/items", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, archivedAt }),
+      });
+      if (!res.ok) {
+        showToast("Failed to archive item", "error");
+        return;
+      }
+      try {
+        const saved = await res.clone().json();
+        if (saved && saved.id) broadcastSync({ type: "item-updated", item: saved });
+      } catch {}
+      // The card leaves the current view either way (active grid ↔ archive).
+      setItems(prev => prev.filter(i => i.id !== id));
+      if (expandedId === id) setExpandedId(null);
+      showToast(archivedAt ? "Archived — find it under More → Archived" : "Restored from archive", "success");
+    } catch {
+      if (await queueWriteOffline({ kind: "update", payload: { id, archivedAt } })) {
+        setItems(prev => prev.filter(i => i.id !== id));
+        showToast("Offline — change queued for sync", "success");
+      } else {
+        showToast("Failed to archive item", "error");
+      }
+    }
+  };
+
+  // ── Bulk actions (roadmap 2.5) ─────────────────────────────────────────────
+  const toggleSelected = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const exitSelectMode = () => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  };
+
+  // Sequential PUT per item — reuses single-item validation and keeps payloads
+  // small. Fine at personal-app scale (tens of selected cards).
+  const runBulk = async (
+    ids: string[],
+    request: (item: Item) => { method: "PUT" | "DELETE"; url: string; body?: Record<string, unknown> },
+    label: string,
+  ) => {
+    setBulkBusy(true);
+    let ok = 0;
+    let failed = 0;
+    for (const id of ids) {
+      const item = items.find(i => i.id === id);
+      if (!item || isOfflineTempId(id)) { failed++; continue; }
+      try {
+        const { method, url, body } = request(item);
+        const res = await fetch(url, {
+          method,
+          ...(body ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {}),
+        });
+        if (res.ok) ok++;
+        else failed++;
+      } catch {
+        failed++;
+      }
+    }
+    setBulkBusy(false);
+    exitSelectMode();
+    showToast(failed > 0 ? `${label}: ${ok} done, ${failed} failed` : `${label}: ${ok} item${ok === 1 ? "" : "s"}`, failed > 0 ? "error" : "success");
+    await Promise.all([fetchItems(search.trim() || undefined), fetchCategories(), fetchRelations(), fetchReminders()]);
+  };
+
+  const bulkAddTag = (tag: string) => {
+    const ids = Array.from(selectedIds);
+    runBulk(ids, item => ({
+      method: "PUT",
+      url: "/api/items",
+      body: { id: item.id, tags: [...new Set([...(item.tags || []), tag])] },
+    }), `Tagged #${tag}`);
+  };
+
+  const bulkSetCategory = (name: string) => {
+    const ids = Array.from(selectedIds);
+    runBulk(ids, item => ({
+      method: "PUT",
+      url: "/api/items",
+      body: { id: item.id, category: name },
+    }), `Moved to ${name}`);
+  };
+
+  const bulkArchive = (archive: boolean) => {
+    const ids = Array.from(selectedIds);
+    const archivedAt = archive ? new Date().toISOString() : null;
+    runBulk(ids, item => ({
+      method: "PUT",
+      url: "/api/items",
+      body: { id: item.id, archivedAt },
+    }), archive ? "Archived" : "Unarchived");
+  };
+
+  const bulkDelete = () => {
+    const ids = Array.from(selectedIds);
+    if (!confirm(`Delete ${ids.length} item${ids.length === 1 ? "" : "s"}? This cannot be undone.`)) return;
+    runBulk(ids, item => ({
+      method: "DELETE",
+      url: `/api/items?id=${encodeURIComponent(item.id)}`,
+    }), "Deleted");
+  };
+
   const handleSummarize = async (id: string) => {
     setSummarizing(id);
     try {
@@ -1419,6 +1637,10 @@ export default function Brain() {
 
   // Text search is now server-side; client filters only type + category + source
   const filtered = items
+    // Server already scopes archived/active, but poll deltas and broadcast
+    // messages can slip cards from the other side into local state.
+    .filter(i => (archivedOnly ? !!i.archivedAt : !i.archivedAt))
+    .filter(i => itemInDateRange(i, { preset: datePreset, from: dateFrom, to: dateTo }))
     .filter(i => view === "all" || i.type === view)
     .filter(i => {
       if (catFilter === "all") return true;
@@ -1460,6 +1682,30 @@ export default function Brain() {
   // Reset pagination when filters change
   const visibleItems = filtered.slice(0, visibleCount);
   const hasMore = filtered.length > visibleCount;
+
+  const activeFilterCount = [
+    view !== "all",
+    catFilter !== "all",
+    sourceFilter !== null,
+    tagFilter !== null,
+    withNotesOnly,
+    favouritesOnly,
+    actionOnly,
+    remindersOnly,
+    reviewMode,
+    archivedOnly,
+    datePreset !== "all",
+    search.trim().length > 0,
+  ].filter(Boolean).length;
+
+  // Timeline view (roadmap 2.3): when a date filter is active, group the
+  // visible cards into day buckets with col-span headers.
+  const timelineGroups = datePreset !== "all" ? groupItemsByDay(visibleItems) : null;
+  const timelineHeaderLabel = (key: string) => {
+    const date = new Date(`${key}T12:00:00`);
+    if (Number.isNaN(date.getTime())) return key;
+    return date.toLocaleDateString(undefined, { weekday: "short", year: "numeric", month: "short", day: "numeric" });
+  };
 
   const allTags = [...new Set(items.flatMap(i => i.tags || []))];
   const withNotesCount = items.filter(i => {
@@ -1666,9 +1912,56 @@ export default function Brain() {
           reviewMode={reviewMode}
           onReviewMode={setReviewMode}
           reviewCount={reviewCount}
+          archivedOnly={archivedOnly}
+          onArchivedOnly={setArchivedOnly}
+          datePreset={datePreset}
+          onDatePreset={setDatePreset}
+          dateFrom={dateFrom}
+          onDateFrom={setDateFrom}
+          dateTo={dateTo}
+          onDateTo={setDateTo}
+          selectMode={selectMode}
+          onSelectMode={(v) => { setSelectMode(v); if (!v) setSelectedIds(new Set()); }}
         />
       </div>
 
+      {/* Saved searches — named filter snapshots, synced via settings */}
+      {(savedSearches.length > 0 || activeFilterCount > 0) && (
+        <div className="px-5 pt-2 pb-1 flex gap-1.5 items-center flex-wrap">
+          <span className="text-[10px] font-mono text-gray-600">Saved:</span>
+          {savedSearches.map(entry => (
+            <span
+              key={entry.id}
+              className="inline-flex items-center rounded-full border border-[#9B51E050] bg-[#9B51E012] text-[#C39BE8]"
+            >
+              <button
+                onClick={() => applySavedSearch(entry)}
+                className="px-2.5 py-0.5 text-[11px] font-mono whitespace-nowrap hover:text-[#E8A838] transition"
+                title="Apply this saved search"
+              >
+                ◈ {entry.name}
+              </button>
+              <button
+                onClick={() => deleteSavedSearch(entry.id)}
+                className="pr-2 text-[11px] opacity-50 hover:opacity-100 transition"
+                aria-label={`Delete saved search ${entry.name}`}
+                title="Delete saved search"
+              >
+                ×
+              </button>
+            </span>
+          ))}
+          {activeFilterCount > 0 && (
+            <button
+              onClick={handleSaveCurrentSearch}
+              className="px-2.5 py-0.5 rounded-full text-[11px] font-mono whitespace-nowrap border border-dashed border-gray-600 text-gray-400 hover:text-[#E8A838] hover:border-[#E8A83860] transition"
+              title="Save the current search + filters as a chip"
+            >
+              + Save current
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Active structured-filter chips */}
       {(view !== "all" || catFilter !== "all" || sourceFilter || tagFilter) && (
@@ -1777,6 +2070,19 @@ export default function Brain() {
             No exact matches for &ldquo;{search.trim()}&rdquo; — showing close matches
           </div>
         )}
+        {archivedOnly && (
+          <div className={`mb-2 rounded-lg border border-[#9aa1ad40] bg-[#9aa1ad10] px-3 py-2 text-[11px] font-mono text-gray-300 ${density === "compact" ? "col-span-full" : ""}`}>
+            Viewing archived cards — restore with ↩ on a card, or toggle Archived off under More
+          </div>
+        )}
+        {selectMode && selectedIds.size === 0 && (
+          <div className={`mb-2 flex items-center justify-between gap-3 rounded-lg border border-[#E8A83840] bg-[#E8A83810] px-3 py-2 text-[11px] font-mono text-[#E8A838] ${density === "compact" ? "col-span-full" : ""}`}>
+            <span>Select mode — tap cards to select them for bulk actions</span>
+            <button onClick={exitSelectMode} className="shrink-0 underline underline-offset-2 hover:opacity-80">
+              Exit
+            </button>
+          </div>
+        )}
         {pendingOffline > 0 && (
           <div className={`mb-2 flex items-center justify-between gap-3 rounded-lg border border-[#E8A83840] bg-[#E8A83810] px-3 py-2 text-[11px] font-mono text-[#E8A838] ${density === "compact" ? "col-span-full" : ""}`}>
             <span>{pendingOffline} change{pendingOffline === 1 ? "" : "s"} waiting to sync — will retry when back online</span>
@@ -1795,33 +2101,79 @@ export default function Brain() {
           />
         )}
 
-        {visibleItems.map((item, idx) => (
-          <ItemCard
-            key={item.id}
-            item={item}
-            idx={idx}
-            expanded={expandedId === item.id}
-            density={density}
-            isSummarizing={summarizing === item.id}
-            isDragTarget={dragOverCardId === item.id}
-            relatedItems={relatedItemsForId(item.id)}
-            reminder={activeReminderForId(item.id)}
-            failedPreviewUrls={failedPreviewUrls}
-            getCatColor={getCatColor}
-            onToggleExpanded={() => setExpandedId(expandedId === item.id ? null : item.id)}
-            setDragTargetId={setDragOverCardId}
-            onAttachFiles={files => attachFilesToItem(item.id, files)}
-            onEdit={() => handleEdit(item)}
-            onPopOut={() => popOutCard(item.id)}
-            onDelete={() => handleDelete(item.id)}
-            onPreviewImageFailed={markPreviewImageFailed}
-            onToggleChecklistRow={rowId => toggleChecklistItemOnCard(item, rowId)}
-            onOpenCard={openCardInCurrentTab}
-            onToggleFlag={flag => handleToggleFlag(item.id, flag)}
-            onPin={() => handlePin(item.id)}
-            onSummarize={() => handleSummarize(item.id)}
-          />
-        ))}
+        {(timelineGroups ?? [{ key: "", items: visibleItems }]).map(group => {
+          let runningIdx = 0;
+          return (
+            <div key={group.key || "all"} className="contents">
+              {group.key && (
+                <div className={`mb-1 mt-2 first:mt-0 text-[11px] font-mono uppercase tracking-[0.15em] text-gray-500 ${density === "compact" ? "col-span-full" : ""}`}>
+                  {timelineHeaderLabel(group.key)} <span className="opacity-50">· {group.items.length}</span>
+                </div>
+              )}
+              {group.items.map(item => {
+                const idx = runningIdx++;
+                const card = (
+                  <ItemCard
+                    key={item.id}
+                    item={item}
+                    idx={idx}
+                    expanded={expandedId === item.id}
+                    density={density}
+                    isSummarizing={summarizing === item.id}
+                    isDragTarget={dragOverCardId === item.id}
+                    relatedItems={relatedItemsForId(item.id)}
+                    reminder={activeReminderForId(item.id)}
+                    failedPreviewUrls={failedPreviewUrls}
+                    getCatColor={getCatColor}
+                    onToggleExpanded={() => setExpandedId(expandedId === item.id ? null : item.id)}
+                    setDragTargetId={setDragOverCardId}
+                    onAttachFiles={files => attachFilesToItem(item.id, files)}
+                    onEdit={() => handleEdit(item)}
+                    onPopOut={() => popOutCard(item.id)}
+                    onDelete={() => handleDelete(item.id)}
+                    onArchive={() => handleArchive(item.id)}
+                    onPreviewImageFailed={markPreviewImageFailed}
+                    onToggleChecklistRow={rowId => toggleChecklistItemOnCard(item, rowId)}
+                    onOpenCard={openCardInCurrentTab}
+                    onToggleFlag={flag => handleToggleFlag(item.id, flag)}
+                    onPin={() => handlePin(item.id)}
+                    onSummarize={() => handleSummarize(item.id)}
+                  />
+                );
+                if (!selectMode) return card;
+                const selected = selectedIds.has(item.id);
+                // Selection overlay: captures the click so the card below
+                // never expands; visual ring marks selected cards.
+                return (
+                  <div key={item.id} className="relative">
+                    {card}
+                    <button
+                      onClick={() => toggleSelected(item.id)}
+                      className="absolute inset-0 z-20 rounded-xl transition"
+                      style={{
+                        border: selected ? "2px solid #E8A838" : "2px solid transparent",
+                        background: selected ? "#E8A83812" : "transparent",
+                      }}
+                      aria-label={selected ? "Deselect card" : "Select card"}
+                      aria-pressed={selected}
+                    >
+                      <span
+                        className="absolute left-2 top-2 flex h-5 w-5 items-center justify-center rounded-full border text-[11px] font-bold"
+                        style={{
+                          borderColor: selected ? "#E8A838" : "#9aa1ad80",
+                          background: selected ? "#E8A838" : "#0D0F12C0",
+                          color: selected ? "#13161B" : "#9aa1ad",
+                        }}
+                      >
+                        {selected ? "✓" : ""}
+                      </span>
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
 
         {hasMore && (
           <button
@@ -1832,6 +2184,22 @@ export default function Brain() {
           </button>
         )}
       </div>
+
+      {/* Bulk actions bar (roadmap 2.5) */}
+      {selectMode && selectedIds.size > 0 && (
+        <BulkActionsBar
+          count={selectedIds.size}
+          categories={categories}
+          archivedView={archivedOnly}
+          busy={bulkBusy}
+          onAddTag={bulkAddTag}
+          onSetCategory={bulkSetCategory}
+          onArchive={bulkArchive}
+          onDelete={bulkDelete}
+          onSelectAll={() => setSelectedIds(new Set(filtered.filter(i => !isOfflineTempId(i.id)).map(i => i.id)))}
+          onClear={exitSelectMode}
+        />
+      )}
 
       {vaultOpen && <Vault onClose={() => setVaultOpen(false)} />}
 

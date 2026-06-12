@@ -28,6 +28,10 @@ other users.
   fallback for typos and structured `?tag=/?category=/?type=` filters.
   Semantic ranking activates when `OPENAI_API_KEY` is set; embeddings are
   generated after every save.
+- **Organize at scale** — saved searches (named filter snapshots as chips),
+  archive (hide done/stale cards from the grid without deleting), multi-select
+  bulk actions (tag, category, archive, delete), and timeline date filters
+  (today/week/month/custom with day-grouped headers).
 - URL enrichment (OpenGraph + YouTube), AI auto-tagging and categorization,
   category hierarchy, tasks with checklists, note entries per card, related
   cards, Telegram reminders + daily digest + memory-of-the-week crons,
@@ -81,7 +85,7 @@ All routes accept `x-api-key: $API_SECRET` (or same-origin browser requests).
 
 | Route | Purpose |
 |---|---|
-| `GET/POST/PUT/DELETE /api/items` | CRUD; `?q=` hybrid search — indexed FTS merged with pgvector semantic ranking (`x-search-semantic: 1` header when active; `?semantic=0` FTS-only, `?semantic=1` semantic-only) + `x-search-fuzzy` header on typo fallback; `?tag=/?category=/?type=` filters; `?since=<ISO8601>` polling-sync delta → `{ items, deletedIds, serverTime }`; PUT supports optional `expectedUpdatedAt` → `409` + current row on conflict |
+| `GET/POST/PUT/DELETE /api/items` | CRUD; `?q=` hybrid search — indexed FTS merged with pgvector semantic ranking (`x-search-semantic: 1` header when active; `?semantic=0` FTS-only, `?semantic=1` semantic-only) + `x-search-fuzzy` header on typo fallback; `?tag=/?category=/?type=` filters; `?since=<ISO8601>` polling-sync delta → `{ items, deletedIds, serverTime }`; `?archived=1` archive view (default excludes archived); PUT supports optional `expectedUpdatedAt` → `409` + current row on conflict, and `archivedAt` (ISO / null) to archive/restore |
 | `POST /api/save` | Automation endpoint (extension/Telegram/scripts): `{url}` or `{text}` or `{title, content}` |
 | `GET/POST/PUT/PATCH/DELETE /api/categories` | Category CRUD, hierarchy, reorder |
 | `GET/POST/PUT/DELETE /api/reminders` | Telegram reminders |

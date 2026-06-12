@@ -42,6 +42,8 @@ const itemFields = {
   completedAt: z.string().nullable().optional(),
   favourite: z.boolean().optional(),
   actionRequired: z.boolean().optional(),
+  // ISO timestamp to archive, null to unarchive (roadmap 2.4).
+  archivedAt: z.string().nullable().optional(),
   attachments: z.array(attachmentSchema).optional(),
   ogTitle: z.string().optional(),
   ogDescription: z.string().optional(),

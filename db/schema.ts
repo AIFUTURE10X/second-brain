@@ -58,6 +58,9 @@ export const items = pgTable("items", {
   completedAt: timestamp("completed_at", { mode: "date" }),
   favourite: boolean("favourite").default(false),
   actionRequired: boolean("action_required").default(false),
+  // Archive (roadmap 2.4): archived cards are hidden from the default grid
+  // and search; null = active. Set/cleared via PUT { archivedAt }.
+  archivedAt: timestamp("archived_at", { mode: "date" }),
   attachments: jsonb("attachments").$type<Attachment[]>().default([]),
   // OpenGraph / link preview data (auto-filled on save)
   ogTitle: text("og_title").default(""),

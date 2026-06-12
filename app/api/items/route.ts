@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { db, sql } from "@/db";
 import { items, categories, deletedItems } from "@/db/schema";
-import { eq, gt, desc, asc, and, sql as sqlExpr, type SQL } from "drizzle-orm";
+import { eq, gt, desc, asc, and, isNull, isNotNull, sql as sqlExpr, type SQL } from "drizzle-orm";
 import { enrichUrl } from "@/lib/enrich";
 import { checkApiKey } from "@/lib/api-key";
 import { aiTagAndCategorize } from "@/lib/ai-tagger";
@@ -37,12 +37,13 @@ const ITEM_COLUMNS_SQL = `
 
 // Nearest-neighbour lookup over item embeddings (cosine distance, HNSW
 // index). Rows past the distance cutoff are noise and excluded entirely.
-async function semanticSearchRows(queryVector: number[]) {
+async function semanticSearchRows(queryVector: number[], archivedFilterSql: string) {
   return await sql.query(
     `SELECT ${ITEM_COLUMNS_SQL}
      FROM items
      WHERE embedding IS NOT NULL
        AND (embedding <=> $1::vector) < $2
+       ${archivedFilterSql}
      ORDER BY embedding <=> $1::vector
      LIMIT $3`,
     [vectorLiteral(queryVector), SEMANTIC_DISTANCE_CUTOFF, SEMANTIC_SEARCH_LIMIT]
@@ -95,6 +96,11 @@ export async function GET(req: NextRequest) {
   const category = url.searchParams.get("category")?.trim();
   const type = url.searchParams.get("type")?.trim();
   const since = url.searchParams.get("since")?.trim();
+  // Archive (roadmap 2.4): the default grid and search exclude archived
+  // cards; ?archived=1 returns only the archive. ?since= deltas are exempt —
+  // pollers must see archive/unarchive transitions to stay in sync.
+  const archivedOnly = url.searchParams.get("archived") === "1";
+  const archivedFilterSql = archivedOnly ? "AND archived_at IS NOT NULL" : "AND archived_at IS NULL";
 
   if (id) {
     const [row] = await db.select().from(items).where(eq(items.id, id));
@@ -157,6 +163,7 @@ export async function GET(req: NextRequest) {
         `SELECT ${ITEM_COLUMNS_SQL}
          FROM items, to_tsquery('english', $1) AS query
          WHERE search_tsv @@ query
+           ${archivedFilterSql}
          ORDER BY pinned DESC,
                   ts_rank_cd(search_tsv, query) DESC,
                   created_at DESC`,
@@ -170,7 +177,7 @@ export async function GET(req: NextRequest) {
       try {
         const queryVector = await generateEmbedding(q);
         if (queryVector) {
-          semanticRows = await semanticSearchRows(queryVector);
+          semanticRows = await semanticSearchRows(queryVector, archivedFilterSql);
           semanticUsed = true;
         }
       } catch (error) {
@@ -197,6 +204,7 @@ export async function GET(req: NextRequest) {
         `SELECT ${ITEM_COLUMNS_SQL}
          FROM items
          WHERE word_similarity($1, title) > 0.3
+           ${archivedFilterSql}
          ORDER BY pinned DESC,
                   word_similarity($1, title) DESC,
                   created_at DESC
@@ -215,11 +223,12 @@ export async function GET(req: NextRequest) {
   if (tag) conditions.push(sqlExpr`${items.tags} @> ${JSON.stringify([tag])}::jsonb`);
   if (category) conditions.push(eq(items.category, category));
   if (type) conditions.push(eq(items.type, type));
+  conditions.push(archivedOnly ? isNotNull(items.archivedAt) : isNull(items.archivedAt));
 
   const rows = await db
     .select()
     .from(items)
-    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .where(and(...conditions))
     .orderBy(desc(items.pinned), desc(items.createdAt));
   return NextResponse.json(rows);
   } catch (error) {
@@ -376,6 +385,20 @@ export async function PUT(req: NextRequest) {
     current.completedAt,
   );
 
+  // archivedAt arrives as an ISO string (or null to unarchive) but the
+  // timestamp column needs a Date.
+  const { archivedAt: archivedAtRaw, ...fieldUpdates } = updates;
+  let archivedAtUpdate: { archivedAt: Date | null } | Record<string, never> = {};
+  if (archivedAtRaw !== undefined) {
+    if (archivedAtRaw === null) {
+      archivedAtUpdate = { archivedAt: null };
+    } else {
+      const parsedDate = new Date(archivedAtRaw);
+      if (Number.isNaN(parsedDate.getTime())) return jsonError(400, "Invalid archivedAt timestamp");
+      archivedAtUpdate = { archivedAt: parsedDate };
+    }
+  }
+
   // When the client supplies expectedUpdatedAt, guard the UPDATE so a row
   // changed since the client loaded it matches nothing. Compare at
   // millisecond precision: Postgres stores microseconds, but the client only
@@ -383,7 +406,8 @@ export async function PUT(req: NextRequest) {
   const [row] = await db
     .update(items)
     .set({
-      ...updates,
+      ...fieldUpdates,
+      ...archivedAtUpdate,
       checklistItems: taskFields.checklistItems,
       completed: taskFields.completed,
       completedAt: taskFields.completedAt,

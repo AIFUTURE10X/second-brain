@@ -47,6 +47,16 @@ interface FilterBarProps {
   reviewMode: boolean;
   onReviewMode: (v: boolean) => void;
   reviewCount: number;
+  archivedOnly: boolean;
+  onArchivedOnly: (v: boolean) => void;
+  datePreset: "all" | "today" | "week" | "month" | "custom";
+  onDatePreset: (preset: "all" | "today" | "week" | "month" | "custom") => void;
+  dateFrom: string;
+  onDateFrom: (v: string) => void;
+  dateTo: string;
+  onDateTo: (v: string) => void;
+  selectMode: boolean;
+  onSelectMode: (v: boolean) => void;
 }
 
 const panelClass = "absolute left-0 right-0 top-full z-40 mt-2 rounded-xl border border-brand-border bg-[#0D0F12] p-3 shadow-2xl";
@@ -68,6 +78,9 @@ export function FilterBar(props: FilterBarProps) {
     actionOnly, onActionOnly, actionCount,
     remindersOnly, onRemindersOnly, reminderCount,
     reviewMode, onReviewMode, reviewCount,
+    archivedOnly, onArchivedOnly,
+    datePreset, onDatePreset, dateFrom, onDateFrom, dateTo, onDateTo,
+    selectMode, onSelectMode,
   } = props;
 
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null);
@@ -123,7 +136,8 @@ export function FilterBar(props: FilterBarProps) {
     ? sourceCounts.filter(src => src.label.toLowerCase().includes(sourceMenuQuery) || src.key.toLowerCase().includes(sourceMenuQuery))
     : sourceCounts;
 
-  const secondaryActive = [withNotesOnly, favouritesOnly, actionOnly, remindersOnly, reviewMode, sourceFilter !== null].filter(Boolean).length;
+  const dateActive = datePreset !== "all";
+  const secondaryActive = [withNotesOnly, favouritesOnly, actionOnly, remindersOnly, reviewMode, archivedOnly, dateActive, sourceFilter !== null].filter(Boolean).length;
   const activeCount = [
     view !== "all",
     catFilter !== "all",
@@ -134,6 +148,8 @@ export function FilterBar(props: FilterBarProps) {
     actionOnly,
     remindersOnly,
     reviewMode,
+    archivedOnly,
+    dateActive,
     search.trim().length > 0,
   ].filter(Boolean).length;
 
@@ -147,6 +163,10 @@ export function FilterBar(props: FilterBarProps) {
     onActionOnly(false);
     onRemindersOnly(false);
     onReviewMode(false);
+    onArchivedOnly(false);
+    onDatePreset("all");
+    onDateFrom("");
+    onDateTo("");
     onSearchChange("");
     closeMenus();
   };
@@ -495,6 +515,81 @@ export function FilterBar(props: FilterBarProps) {
             {actionCount > 0 && togglePill(actionOnly, onActionOnly, "#EB5757", "⚡ Needs action", actionCount, "Show only items needing action")}
             {reminderCount > 0 && togglePill(remindersOnly, onRemindersOnly, "#56CCF2", "⏰ Reminders", reminderCount, "Show cards with pending reminders")}
             {reviewCount > 0 && togglePill(reviewMode, onReviewMode, "#EB5757", "⚑ Review", reviewCount, "Items needing attention: no category, no tags, short title, or stale tasks")}
+            <button
+              onClick={() => onArchivedOnly(!archivedOnly)}
+              className="px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-mono font-medium transition-all shrink-0"
+              style={{
+                border: archivedOnly ? "1px solid #9aa1ad90" : "1px solid #9aa1ad30",
+                background: archivedOnly ? "#9aa1ad25" : "transparent",
+                color: archivedOnly ? "#cfd4dc" : "#9aa1ad90",
+              }}
+              title="Show archived cards instead of the active grid"
+            >
+              ⊟ Archived
+            </button>
+            <button
+              onClick={() => { onSelectMode(!selectMode); closeMenus(); }}
+              className="px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-mono font-medium transition-all shrink-0"
+              style={{
+                border: selectMode ? "1px solid #E8A83890" : "1px solid #E8A83830",
+                background: selectMode ? "#E8A83825" : "transparent",
+                color: selectMode ? "#E8A838" : "#E8A83890",
+              }}
+              title="Multi-select cards for bulk tag/category/archive/delete"
+            >
+              ☑ Select
+            </button>
+          </div>
+
+          <div className="mt-3 pt-3 border-t border-brand-border">
+            <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-gray-500 mb-2">Created</p>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {([
+                { key: "all", label: "Any time" },
+                { key: "today", label: "Today" },
+                { key: "week", label: "This week" },
+                { key: "month", label: "This month" },
+                { key: "custom", label: "Custom" },
+              ] as const).map(opt => {
+                const active = datePreset === opt.key;
+                return (
+                  <button
+                    key={opt.key}
+                    onClick={() => onDatePreset(opt.key)}
+                    className="px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-mono font-medium transition-all shrink-0"
+                    style={{
+                      border: active ? "1px solid #56CCF290" : "1px solid #56CCF230",
+                      background: active ? "#56CCF225" : "transparent",
+                      color: active ? "#56CCF2" : "#56CCF290",
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+            {datePreset === "custom" && (
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs font-mono text-gray-400">
+                <label className="flex items-center gap-1.5">
+                  from
+                  <input
+                    type="date"
+                    value={dateFrom}
+                    onChange={e => onDateFrom(e.target.value)}
+                    className="rounded-lg border border-brand-border bg-[#13161B] px-2 py-1 text-xs text-gray-200 outline-none focus:border-gray-500"
+                  />
+                </label>
+                <label className="flex items-center gap-1.5">
+                  to
+                  <input
+                    type="date"
+                    value={dateTo}
+                    onChange={e => onDateTo(e.target.value)}
+                    className="rounded-lg border border-brand-border bg-[#13161B] px-2 py-1 text-xs text-gray-200 outline-none focus:border-gray-500"
+                  />
+                </label>
+              </div>
+            )}
           </div>
 
           {sourceCounts.length > 0 && (

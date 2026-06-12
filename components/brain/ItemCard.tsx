@@ -22,6 +22,7 @@ interface ItemCardProps {
   setDragTargetId: Dispatch<SetStateAction<string | null>>;
   onAttachFiles: (files: FileList) => void;
   onEdit: () => void;
+  onArchive: () => void;
   onPopOut: () => void;
   onDelete: () => void;
   onPreviewImageFailed: (src?: string) => void;
@@ -47,6 +48,7 @@ export function ItemCard({
   setDragTargetId,
   onAttachFiles,
   onEdit,
+  onArchive,
   onPopOut,
   onDelete,
   onPreviewImageFailed,
@@ -133,6 +135,12 @@ export function ItemCard({
           aria-label="Pop out in new window"
           title="Pop out"
         >⇱</button>
+        <button
+          onClick={e => { e.stopPropagation(); onArchive(); }}
+          className="w-8 h-8 sm:w-6 sm:h-6 rounded-full bg-black/70 backdrop-blur-sm text-gray-400 hover:text-[#E8A838] hover:bg-[#E8A83820] active:scale-90 transition flex items-center justify-center text-[11px]"
+          aria-label={item.archivedAt ? "Unarchive item" : "Archive item"}
+          title={item.archivedAt ? "Unarchive" : "Archive"}
+        >{item.archivedAt ? "↩" : "⊟"}</button>
         <button
           onClick={e => { e.stopPropagation(); onDelete(); }}
           className="w-8 h-8 sm:w-6 sm:h-6 rounded-full bg-black/70 backdrop-blur-sm text-gray-400 hover:text-red-400 hover:bg-red-500/20 active:scale-90 transition flex items-center justify-center text-sm"

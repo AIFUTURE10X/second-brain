@@ -32,6 +32,7 @@ export interface Item {
   completedAt?: string | null;
   favourite?: boolean;
   actionRequired?: boolean;
+  archivedAt?: string | null;
   attachments?: Attachment[];
   ogTitle: string;
   ogDescription: string;

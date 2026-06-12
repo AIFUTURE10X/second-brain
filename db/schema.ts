@@ -83,6 +83,8 @@ export const items = pgTable("items", {
 }, (table) => [
   index("items_category_idx").on(table.category),
   index("items_pinned_created_idx").on(table.pinned, table.createdAt),
+  // Polling sync (?since=) scans by last modification time.
+  index("items_updated_idx").on(table.updatedAt),
   index("items_search_tsv_idx").using("gin", table.searchTsv),
   // Trigram index for the zero-result fuzzy fallback. Requires the pg_trgm
   // extension (scripts/db-setup.sql); declared here so db:push won't drop it.
@@ -90,6 +92,16 @@ export const items = pgTable("items", {
   // Approximate-nearest-neighbour index for semantic search (cosine distance).
   // Requires the pgvector extension (scripts/db-setup.sql).
   index("items_embedding_hnsw_idx").using("hnsw", table.embedding.op("vector_cosine_ops")),
+]);
+
+// Tombstones for polling sync: clients catching up via /api/items?since=
+// need to learn about hard deletes, which `updated_at > since` can't surface.
+// Only the id and deletion time are retained — no card content.
+export const deletedItems = pgTable("deleted_items", {
+  id: uuid("id").primaryKey(),
+  deletedAt: timestamp("deleted_at", { mode: "date" }).defaultNow().notNull(),
+}, (table) => [
+  index("deleted_items_deleted_idx").on(table.deletedAt),
 ]);
 
 export const itemRelations = pgTable("item_relations", {

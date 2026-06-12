@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { db, sql } from "@/db";
-import { items, categories } from "@/db/schema";
-import { eq, desc, asc, and, sql as sqlExpr, type SQL } from "drizzle-orm";
+import { items, categories, deletedItems } from "@/db/schema";
+import { eq, gt, desc, asc, and, sql as sqlExpr, type SQL } from "drizzle-orm";
 import { enrichUrl } from "@/lib/enrich";
 import { checkApiKey } from "@/lib/api-key";
 import { aiTagAndCategorize } from "@/lib/ai-tagger";
@@ -9,6 +9,7 @@ import { shouldEnrichUrlOnUpdate } from "@/lib/item-updates.mjs";
 import { buildItemSearchTsQuery } from "@/lib/item-search";
 import { embeddingsEnabled, generateEmbedding, vectorLiteral, SEMANTIC_DISTANCE_CUTOFF, SEMANTIC_SEARCH_LIMIT } from "@/lib/embeddings.mjs";
 import { mergeHybridResults } from "@/lib/hybrid-search.mjs";
+import { SYNC_CURSOR_OVERLAP_MS } from "@/lib/polling-sync.mjs";
 import { embeddingInputChanged, updateItemEmbedding } from "@/lib/embedding-store";
 import { jsonError, parseBody, readJsonBody, serverError } from "@/lib/api-errors";
 import { itemCreateSchema, itemUpdateSchema } from "@/lib/validation";
@@ -93,11 +94,37 @@ export async function GET(req: NextRequest) {
   const tag = url.searchParams.get("tag")?.trim();
   const category = url.searchParams.get("category")?.trim();
   const type = url.searchParams.get("type")?.trim();
+  const since = url.searchParams.get("since")?.trim();
 
   if (id) {
     const [row] = await db.select().from(items).where(eq(items.id, id));
     if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
     return NextResponse.json(row);
+  }
+
+  // Polling sync: delta of everything that changed after `since`. Returns a
+  // different shape from the list/search paths — { items, deletedIds,
+  // serverTime } — where serverTime is the cursor for the next poll
+  // (captured before the queries run, minus an overlap, so writes that race
+  // this request are re-delivered rather than skipped).
+  if (since) {
+    const sinceDate = new Date(since);
+    if (Number.isNaN(sinceDate.getTime())) return jsonError(400, "Invalid since timestamp");
+    const serverTime = new Date(Date.now() - SYNC_CURSOR_OVERLAP_MS).toISOString();
+    const changed = await db
+      .select()
+      .from(items)
+      .where(gt(items.updatedAt, sinceDate))
+      .orderBy(asc(items.updatedAt));
+    const tombstones = await db
+      .select({ id: deletedItems.id })
+      .from(deletedItems)
+      .where(gt(deletedItems.deletedAt, sinceDate));
+    return NextResponse.json({
+      items: changed,
+      deletedIds: tombstones.map(t => t.id),
+      serverTime,
+    });
   }
 
   // Structured filters (?tag= / ?category= / ?type=) — combinable with each
@@ -408,6 +435,11 @@ export async function DELETE(req: NextRequest) {
 
   try {
     await db.delete(items).where(eq(items.id, id));
+    // Tombstone so ?since= pollers on other devices learn about the delete.
+    await db
+      .insert(deletedItems)
+      .values({ id })
+      .onConflictDoUpdate({ target: deletedItems.id, set: { deletedAt: new Date() } });
     return NextResponse.json({ ok: true });
   } catch (error) {
     return serverError(error);

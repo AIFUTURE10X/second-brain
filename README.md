@@ -33,7 +33,8 @@ other users.
   cards, Telegram reminders + daily digest + memory-of-the-week crons,
   attachments on Vercel Blob, client-side encrypted vault, JSON/CSV/Markdown
   export, offline read via service worker, cross-device edit-conflict
-  detection.
+  detection, near-realtime cross-device sync (focused tabs poll `?since=`
+  deltas every 45s; deletes propagate via tombstones).
 
 ## Setup
 
@@ -78,7 +79,7 @@ All routes accept `x-api-key: $API_SECRET` (or same-origin browser requests).
 
 | Route | Purpose |
 |---|---|
-| `GET/POST/PUT/DELETE /api/items` | CRUD; `?q=` hybrid search — indexed FTS merged with pgvector semantic ranking (`x-search-semantic: 1` header when active; `?semantic=0` FTS-only, `?semantic=1` semantic-only) + `x-search-fuzzy` header on typo fallback; `?tag=/?category=/?type=` filters; PUT supports optional `expectedUpdatedAt` → `409` + current row on conflict |
+| `GET/POST/PUT/DELETE /api/items` | CRUD; `?q=` hybrid search — indexed FTS merged with pgvector semantic ranking (`x-search-semantic: 1` header when active; `?semantic=0` FTS-only, `?semantic=1` semantic-only) + `x-search-fuzzy` header on typo fallback; `?tag=/?category=/?type=` filters; `?since=<ISO8601>` polling-sync delta → `{ items, deletedIds, serverTime }`; PUT supports optional `expectedUpdatedAt` → `409` + current row on conflict |
 | `POST /api/save` | Automation endpoint (extension/Telegram/scripts): `{url}` or `{text}` or `{title, content}` |
 | `GET/POST/PUT/PATCH/DELETE /api/categories` | Category CRUD, hierarchy, reorder |
 | `GET/POST/PUT/DELETE /api/reminders` | Telegram reminders |

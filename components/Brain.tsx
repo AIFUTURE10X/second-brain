@@ -6,6 +6,7 @@ import { showToast } from "./Toast";
 import { VoiceButton } from "./VoiceButton";
 import Vault from "./Vault";
 import { SYNC_CHANNEL, getSyncClientId, type SyncMessage, type SyncPayload } from "@/lib/sync";
+import { SYNC_POLL_INTERVAL_MS, mergeSyncedItems, parseSyncDelta } from "@/lib/polling-sync.mjs";
 import { isMemoryOfWeekEnabled, MEMORY_OF_WEEK_ENABLED_KEY } from "@/lib/telegram-memory-settings.mjs";
 import { nextViewMode, parseViewMode, type ViewMode } from "@/lib/view-mode";
 import { compressImageForUpload } from "@/lib/image-compression";
@@ -100,6 +101,9 @@ export default function Brain() {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const syncChannelRef = useRef<BroadcastChannel | null>(null);
   const syncClientIdRef = useRef<string>("");
+  // Cursor for the ?since= polling sync — the server time of the last full
+  // fetch or delta poll. Null until the first full item list has loaded.
+  const syncCursorRef = useRef<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [failedPreviewUrls, setFailedPreviewUrls] = useState<Set<string>>(new Set());
   const [sortBy, setSortBy] = useState<"newest" | "oldest">("newest");
@@ -245,6 +249,12 @@ export default function Brain() {
         setItems(await res.json());
         setSearchFuzzy(res.headers.get("x-search-fuzzy") === "1");
         setItemsError(false);
+        if (!query) {
+          // Anchor the polling-sync cursor to the server's clock (Date
+          // header) so client clock skew can't make polls miss changes.
+          const serverDate = new Date(res.headers.get("date") || Date.now());
+          syncCursorRef.current = (Number.isNaN(serverDate.getTime()) ? new Date() : serverDate).toISOString();
+        }
       } else {
         showToast("Failed to load items", "error");
         setItemsError(true);
@@ -409,6 +419,38 @@ export default function Brain() {
       window.history.replaceState({}, "", window.location.pathname);
     }
   }, []);
+
+  // Polling sync: while the tab is visible and no search is active (the items
+  // state holds server search results then), fetch ?since= deltas and merge
+  // them into local state. Deletes propagate via tombstones. Returning to a
+  // hidden tab is covered by the visibilitychange full refresh below.
+  useEffect(() => {
+    if (search.trim()) return;
+    let inFlight = false;
+    const poll = async () => {
+      if (inFlight || document.visibilityState !== "visible") return;
+      const cursor = syncCursorRef.current;
+      if (!cursor) return;
+      inFlight = true;
+      try {
+        const res = await fetch(`/api/items?since=${encodeURIComponent(cursor)}`, { cache: "no-store" });
+        if (!res.ok) return;
+        const delta = parseSyncDelta(await res.json());
+        if (!delta) return;
+        if (delta.serverTime) syncCursorRef.current = delta.serverTime;
+        if (delta.items.length === 0 && delta.deletedIds.length === 0) return;
+        setItems(prev => mergeSyncedItems(prev, delta.items, delta.deletedIds) as Item[]);
+        if (delta.items.length > 0) fetchCategories();
+        if (delta.deletedIds.length > 0) fetchRelations();
+      } catch {
+        // Offline or transient failure — try again on the next tick.
+      } finally {
+        inFlight = false;
+      }
+    };
+    const interval = setInterval(poll, SYNC_POLL_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [search, fetchCategories, fetchRelations]);
 
   // Auto-refresh when user returns to the tab (e.g. after clipping from extension)
   useEffect(() => {

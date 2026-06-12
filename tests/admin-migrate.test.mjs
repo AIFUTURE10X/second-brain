@@ -39,6 +39,14 @@ test("migration matches the drizzle schema's recurrence columns on both tables",
   assert.match(schemaSource, /recurrence: text\("recurrence"\)/);
 });
 
+test("the app self-migrates once when the items API 500s after a deploy", async () => {
+  const brainSource = await readFile(new URL("../components/Brain.tsx", import.meta.url), "utf8");
+  assert.match(brainSource, /trySelfMigrate/);
+  assert.match(brainSource, /\/api\/admin\/migrate/);
+  // Guarded so an unrelated 500 can't cause a reload loop.
+  assert.match(brainSource, /sb_self_migrate_attempted/);
+});
+
 test("serverless embedding backfill is batched, resumable, and auth-checked", () => {
   assert.match(backfillSource, /checkApiKey/);
   assert.match(backfillSource, /WHERE embedding IS NULL/);

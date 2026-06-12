@@ -411,6 +411,24 @@ export default function Brain() {
     setCustomCatColors(prev => prev.filter(c => c.toLowerCase() !== normalized));
   };
 
+  // Self-healing schema migration: a 500 from /api/items right after a
+  // deploy usually means the database is missing newly added columns. The
+  // app is same-origin (authorized), so it can run the idempotent
+  // /api/admin/migrate itself and reload. The sessionStorage flag survives
+  // the reload, so a 500 with a different cause can never loop.
+  const trySelfMigrate = useCallback(async (): Promise<boolean> => {
+    if (typeof window === "undefined") return false;
+    const flag = "sb_self_migrate_attempted";
+    if (window.sessionStorage.getItem(flag)) return false;
+    window.sessionStorage.setItem(flag, "1");
+    try {
+      const res = await fetch("/api/admin/migrate", { method: "POST" });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }, []);
+
   const fetchItems = useCallback(async (query?: string) => {
     if (query) setSearching(true);
     try {
@@ -420,6 +438,11 @@ export default function Brain() {
       const qs = params.toString();
       const url = qs ? `/api/items?${qs}` : "/api/items";
       const res = await fetch(url, { cache: "no-store" });
+      if (res.status >= 500 && await trySelfMigrate()) {
+        showToast("Database updated — reloading…", "success");
+        window.location.reload();
+        return;
+      }
       if (res.ok) {
         setItems(await res.json());
         setSearchFuzzy(res.headers.get("x-search-fuzzy") === "1");
@@ -440,7 +463,7 @@ export default function Brain() {
     }
     setSearching(false);
     setLoading(false);
-  }, [archivedOnly]);
+  }, [archivedOnly, trySelfMigrate]);
 
   const fetchRelations = useCallback(async () => {
     try {

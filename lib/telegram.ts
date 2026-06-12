@@ -1,8 +1,18 @@
-export async function sendTelegram(token: string, chatId: number | string, text: string) {
+export async function sendTelegram(
+  token: string,
+  chatId: number | string,
+  text: string,
+  options?: { replyMarkup?: unknown },
+) {
   await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ chat_id: chatId, text, disable_web_page_preview: false }),
+    body: JSON.stringify({
+      chat_id: chatId,
+      text,
+      disable_web_page_preview: false,
+      ...(options?.replyMarkup ? { reply_markup: options.replyMarkup } : {}),
+    }),
   });
 }
 

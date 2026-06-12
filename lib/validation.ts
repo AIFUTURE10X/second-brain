@@ -46,6 +46,8 @@ const itemFields = {
   archivedAt: z.string().nullable().optional(),
   // Read-later tracking on link cards (roadmap 2.9).
   readingStatus: z.enum(["unread", "reading", "done"]).nullable().optional(),
+  // Recurring tasks (roadmap 2.11).
+  recurrence: z.enum(["daily", "weekly", "monthly"]).nullable().optional(),
   attachments: z.array(attachmentSchema).optional(),
   ogTitle: z.string().optional(),
   ogDescription: z.string().optional(),
@@ -129,10 +131,16 @@ export const settingsDeleteSchema = z
 export const reminderUpdateSchema = z
   .object({
     id: z.string().min(1, "Missing id"),
+    // Sent by the card form's create/update path; reminders can't move
+    // between cards, so it's accepted and ignored.
+    itemId: z.string().optional(),
     message: z.string().optional(),
     dueAt: z.union([z.string(), z.number()]).optional(),
     status: z.enum(["pending", "sent", "done"]).optional(),
     sentAt: z.string().nullable().optional(),
+    // Snooze + recurrence (roadmap 2.8).
+    snoozedUntil: z.string().nullable().optional(),
+    recurrence: z.enum(["daily", "weekly", "monthly"]).nullable().optional(),
   })
   .strict();
 

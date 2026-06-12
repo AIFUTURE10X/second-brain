@@ -30,8 +30,13 @@ other users.
   generated after every save.
 - **Organize at scale** — saved searches (named filter snapshots as chips),
   archive (hide done/stale cards from the grid without deleting), multi-select
-  bulk actions (tag, category, archive, delete), and timeline date filters
-  (today/week/month/custom with day-grouped headers).
+  bulk actions (tag, category, archive, delete), timeline date filters
+  (today/week/month/custom with day-grouped headers), and read-later tracking
+  on links (unread → reading → read cycle + "To read" filter).
+- **Connect knowledge** — `[[wiki links]]` in card text auto-create related-card
+  links on save, card templates prefill type/tags/category/checklist, recurring
+  tasks respawn on completion, and reminders support snooze (Telegram inline
+  buttons) + daily/weekly/monthly recurrence.
 - URL enrichment (OpenGraph + YouTube), AI auto-tagging and categorization,
   category hierarchy, tasks with checklists, note entries per card, related
   cards, Telegram reminders + daily digest + memory-of-the-week crons,
@@ -108,7 +113,9 @@ Request bodies are validated with zod; invalid payloads return
   selection to Brain" (result flashes on the toolbar badge).
 - **Telegram bot**: set `TELEGRAM_BOT_TOKEN` + `TELEGRAM_ALLOWED_USER_ID`, then
   register the webhook against `/api/telegram` (include
-  `&secret_token=$TELEGRAM_WEBHOOK_SECRET` if set).
+  `&secret_token=$TELEGRAM_WEBHOOK_SECRET` if set). Commands: send a URL/text
+  to capture, `/t` task, `/m` memory, `/find <query>` (same hybrid search as
+  the app), `/done <task title or id>`.
 - **Desktop** (`desktop/`): Tauri WebView wrapper pointed at the production
   URL; installer built by `.github/workflows/build-desktop.yml`.
 

@@ -61,6 +61,12 @@ import {
 } from "@/lib/saved-searches.mjs";
 import { groupItemsByDay, itemInDateRange } from "@/lib/date-range.mjs";
 import { isToRead, nextReadingStatus } from "@/lib/reading-status.mjs";
+import {
+  CARD_TEMPLATES_SETTINGS_KEY,
+  applyTemplateToForm,
+  buildTemplateFromForm,
+  normalizeCardTemplates,
+} from "@/lib/card-templates.mjs";
 import { BulkActionsBar } from "./brain/BulkActionsBar";
 
 const CLIENT_APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "dev";
@@ -90,6 +96,9 @@ export default function Brain() {
   const [dateTo, setDateTo] = useState("");
   const [savedSearches, setSavedSearches] = useState<{ id: string; name: string; state: Record<string, unknown> }[]>([]);
   const savedSearchesLoaded = useRef(false);
+  type CardTemplate = ReturnType<typeof normalizeCardTemplates>[number];
+  const [cardTemplates, setCardTemplates] = useState<CardTemplate[]>([]);
+  const cardTemplatesLoaded = useRef(false);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -121,9 +130,11 @@ export default function Brain() {
     attachments: [] as Attachment[],
     favourite: false,
     actionRequired: false,
+    recurrence: "",
     reminderId: "",
     reminderDueAt: "",
     reminderMessage: "",
+    reminderRecurrence: "",
     relatedItemIds: [] as string[],
   });
   const [uploading, setUploading] = useState(false);
@@ -316,6 +327,47 @@ export default function Brain() {
 
   const deleteSavedSearch = (id: string) => {
     persistSavedSearches(removeSavedSearch(savedSearches, id));
+  };
+
+  // Card templates (roadmap 2.10) — synced via /api/settings like saved searches.
+  useEffect(() => {
+    fetch(`/api/settings?key=${CARD_TEMPLATES_SETTINGS_KEY}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        setCardTemplates(normalizeCardTemplates(data?.[CARD_TEMPLATES_SETTINGS_KEY]));
+      })
+      .catch(() => {})
+      .finally(() => { cardTemplatesLoaded.current = true; });
+  }, []);
+
+  const persistCardTemplates = useCallback((list: CardTemplate[]) => {
+    setCardTemplates(list);
+    if (!cardTemplatesLoaded.current) return;
+    fetch("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: CARD_TEMPLATES_SETTINGS_KEY, value: list }),
+    }).catch(() => {});
+  }, []);
+
+  const applyCardTemplate = (id: string) => {
+    const template = cardTemplates.find(t => t.id === id);
+    if (!template) return;
+    setForm(f => applyTemplateToForm(f, template) as typeof f);
+    showToast(`Template "${template.name}" applied`, "success");
+  };
+
+  const saveCurrentAsTemplate = () => {
+    const name = prompt("Name this template:");
+    if (!name?.trim()) return;
+    const template = buildTemplateFromForm(name, form);
+    if (!template) return;
+    persistCardTemplates([...cardTemplates, template as CardTemplate]);
+    showToast(`Template "${template.name}" saved`, "success");
+  };
+
+  const deleteCardTemplate = (id: string) => {
+    persistCardTemplates(cardTemplates.filter(t => t.id !== id));
   };
 
   const toggleCatCollapsed = (id: string) => {
@@ -793,7 +845,7 @@ export default function Brain() {
       window.localStorage.removeItem(draftStorageKey(editingId));
     }
     restoredDraftKeyRef.current = null;
-    setForm({ type: lastType, title: "", content: "", url: "", noteEntries: [], checklistItems: [], tags: "", category: lastCategory, attachments: [], favourite: false, actionRequired: false, reminderId: "", reminderDueAt: "", reminderMessage: "", relatedItemIds: [] });
+    setForm({ type: lastType, title: "", content: "", url: "", noteEntries: [], checklistItems: [], tags: "", category: lastCategory, attachments: [], favourite: false, actionRequired: false, recurrence: "", reminderId: "", reminderDueAt: "", reminderMessage: "", reminderRecurrence: "", relatedItemIds: [] });
     if (!keepOpen) {
       setShowAdd(false);
     }
@@ -806,7 +858,7 @@ export default function Brain() {
       window.localStorage.removeItem(draftStorageKey(editingId));
     }
     restoredDraftKeyRef.current = null;
-    setForm({ type: "note", title: "", content: "", url: "", noteEntries: [], checklistItems: [], tags: "", category: "", attachments: [], favourite: false, actionRequired: false, reminderId: "", reminderDueAt: "", reminderMessage: "", relatedItemIds: [] });
+    setForm({ type: "note", title: "", content: "", url: "", noteEntries: [], checklistItems: [], tags: "", category: "", attachments: [], favourite: false, actionRequired: false, recurrence: "", reminderId: "", reminderDueAt: "", reminderMessage: "", reminderRecurrence: "", relatedItemIds: [] });
     setShowAdd(false);
     setEditingId(null);
     setEditBaseUpdatedAt(null);
@@ -955,7 +1007,13 @@ export default function Brain() {
       return;
     }
 
-    const payload = { itemId, message, dueAt: dueAt.toISOString(), status: "pending" };
+    const payload = {
+      itemId,
+      message,
+      dueAt: dueAt.toISOString(),
+      status: "pending",
+      recurrence: form.reminderRecurrence || null,
+    };
     const res = await fetch("/api/reminders", {
       method: reminderId ? "PUT" : "POST",
       headers: { "Content-Type": "application/json" },
@@ -974,14 +1032,16 @@ export default function Brain() {
     const tags = form.tags.split(",").map(t => t.trim()).filter(Boolean);
     const noteEntries = form.noteEntries.filter(e => e.body.trim().length > 0);
     const checklistItems = normalizeChecklistItems(form.checklistItems);
-    const { relatedItemIds, reminderId, reminderDueAt, reminderMessage, ...itemForm } = form;
+    const { relatedItemIds, reminderId, reminderDueAt, reminderMessage, reminderRecurrence, recurrence, ...itemForm } = form;
+    // "" (no recurrence) → null; only tasks carry recurrence.
+    const recurrenceValue = form.type === "task" && recurrence ? recurrence : null;
     const previousRelatedIds = editingId ? relatedItemsForId(editingId).map(item => item.id) : [];
     // Once entries exist, clear the legacy single-blob field on the server so
     // we don't double-render after the migration on next load.
     const legacyClear = noteEntries.length > 0 && editingId ? { notes: "" } : {};
     const payload = editingId
-      ? withConcurrencyGuard({ id: editingId, ...itemForm, tags, noteEntries, checklistItems, ...legacyClear }, editBaseUpdatedAt, force)
-      : { ...itemForm, tags, noteEntries, checklistItems };
+      ? withConcurrencyGuard({ id: editingId, ...itemForm, tags, noteEntries, checklistItems, recurrence: recurrenceValue, ...legacyClear }, editBaseUpdatedAt, force)
+      : { ...itemForm, tags, noteEntries, checklistItems, recurrence: recurrenceValue };
     try {
       const res = await fetch(editingId ? "/api/items" : "/api/items", {
         method: editingId ? "PUT" : "POST",
@@ -1538,9 +1598,11 @@ export default function Brain() {
       attachments: item.attachments || [],
       favourite: !!item.favourite,
       actionRequired: !!item.actionRequired,
+      recurrence: item.recurrence || "",
       reminderId: reminder?.id || "",
       reminderDueAt: toDateTimeLocal(reminder?.dueAt),
       reminderMessage: reminder?.message || "",
+      reminderRecurrence: reminder?.recurrence || "",
       relatedItemIds: relatedItemsForId(item.id).map(related => related.id),
     });
     setEditingId(item.id);
@@ -2249,6 +2311,10 @@ export default function Brain() {
         <ItemFormModal
           form={form}
           setForm={setForm}
+          templates={cardTemplates}
+          onApplyTemplate={applyCardTemplate}
+          onSaveTemplate={saveCurrentAsTemplate}
+          onDeleteTemplate={deleteCardTemplate}
           editingId={editingId}
           saving={saving}
           uploading={uploading}

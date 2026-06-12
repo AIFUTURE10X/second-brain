@@ -18,6 +18,7 @@ test("normalizeReminderInput trims message and rejects invalid due dates", () =>
     itemId: "item-1",
     message: "Cancel before renewal",
     dueAt: "2026-05-15T09:00:00.000Z",
+    recurrence: null,
   });
 
   assert.throws(

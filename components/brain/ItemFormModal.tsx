@@ -32,9 +32,13 @@ export interface ItemFormState {
   attachments: Attachment[];
   favourite: boolean;
   actionRequired: boolean;
+  // Recurring tasks (roadmap 2.11): "" = none, else daily|weekly|monthly.
+  recurrence: string;
   reminderId: string;
   reminderDueAt: string;
   reminderMessage: string;
+  // Recurring reminders (roadmap 2.8): "" = one-shot.
+  reminderRecurrence: string;
   relatedItemIds: string[];
 }
 
@@ -64,6 +68,10 @@ interface ItemFormModalProps {
   handleSmartPaste: (field: "content") => (e: ClipboardEvent<HTMLTextAreaElement>) => void;
   openCardInCurrentTab: (id: string) => void;
   popOutCard: (id: string) => void;
+  templates: { id: string; name: string }[];
+  onApplyTemplate: (id: string) => void;
+  onSaveTemplate: () => void;
+  onDeleteTemplate: (id: string) => void;
 }
 
 // Add/edit bottom sheet plus the two card pickers it spawns. Form state stays
@@ -97,6 +105,10 @@ export function ItemFormModal({
   handleSmartPaste,
   openCardInCurrentTab,
   popOutCard,
+  templates,
+  onApplyTemplate,
+  onSaveTemplate,
+  onDeleteTemplate,
 }: ItemFormModalProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const contentRef = useRef<HTMLTextAreaElement>(null);
@@ -347,6 +359,40 @@ export function ItemFormModal({
               ))}
             </div>
 
+            {/* Card templates (roadmap 2.10) — prefill type/tags/category/checklist */}
+            {(templates.length > 0 || !editingId) && (
+              <div className="flex flex-wrap items-center gap-1.5 mb-3">
+                <span className="text-[10px] font-mono text-gray-600">Template:</span>
+                {templates.map(template => (
+                  <span key={template.id} className="inline-flex items-center rounded-full border border-[#6FCF9750] bg-[#6FCF9710] text-[#6FCF97]">
+                    <button
+                      type="button"
+                      onClick={() => onApplyTemplate(template.id)}
+                      className="px-2.5 py-0.5 text-[11px] font-mono whitespace-nowrap hover:text-white transition"
+                      title={`Apply template: ${template.name}`}
+                    >
+                      ▤ {template.name}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onDeleteTemplate(template.id)}
+                      className="pr-2 text-[11px] opacity-50 hover:opacity-100 transition"
+                      aria-label={`Delete template ${template.name}`}
+                      title="Delete template"
+                    >×</button>
+                  </span>
+                ))}
+                <button
+                  type="button"
+                  onClick={onSaveTemplate}
+                  className="px-2.5 py-0.5 rounded-full text-[11px] font-mono whitespace-nowrap border border-dashed border-gray-600 text-gray-400 hover:text-[#6FCF97] hover:border-[#6FCF9760] transition"
+                  title="Save the current type, tags, category, content, and checklist as a template"
+                >
+                  + Save as template
+                </button>
+              </div>
+            )}
+
             {/* Flags */}
             <div className="flex gap-1.5 mb-4">
               <button
@@ -433,6 +479,20 @@ export function ItemFormModal({
                 aria-label="Reminder message"
                 className="w-full px-3 py-2 bg-[#101318] border border-brand-border rounded-lg text-sm text-gray-300 outline-none placeholder:text-gray-500"
               />
+              <div className="mt-2 flex items-center gap-2">
+                <label className="text-[11px] font-mono text-gray-500" htmlFor="reminder-recurrence">↻ Repeats</label>
+                <select
+                  id="reminder-recurrence"
+                  value={form.reminderRecurrence}
+                  onChange={e => setForm(f => ({ ...f, reminderRecurrence: e.target.value }))}
+                  className="px-2 py-1 bg-[#101318] border border-brand-border rounded-lg text-xs font-mono text-gray-300 outline-none"
+                >
+                  <option value="">once</option>
+                  <option value="daily">daily</option>
+                  <option value="weekly">weekly</option>
+                  <option value="monthly">monthly</option>
+                </select>
+              </div>
                   </>
                 );
               })()}
@@ -508,6 +568,25 @@ export function ItemFormModal({
                 onTextChange={updateChecklistRowText}
                 onRemove={deleteChecklistRow}
               />
+            )}
+            {form.type === "task" && (
+              <div className="flex items-center gap-2 mb-2.5">
+                <label className="text-[11px] font-mono text-gray-400" htmlFor="task-recurrence">↻ Repeats</label>
+                <select
+                  id="task-recurrence"
+                  value={form.recurrence}
+                  onChange={e => setForm(f => ({ ...f, recurrence: e.target.value }))}
+                  className="px-2 py-1.5 bg-brand-muted border border-brand-border rounded-lg text-xs font-mono text-gray-300 outline-none"
+                >
+                  <option value="">never</option>
+                  <option value="daily">daily</option>
+                  <option value="weekly">weekly</option>
+                  <option value="monthly">monthly</option>
+                </select>
+                {form.recurrence && (
+                  <span className="text-[10px] font-mono text-gray-600">completing spawns the next occurrence</span>
+                )}
+              </div>
             )}
             <textarea
               ref={contentRef}

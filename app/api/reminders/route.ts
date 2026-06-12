@@ -48,6 +48,7 @@ export async function POST(req: NextRequest) {
         message: input.message,
         dueAt: new Date(input.dueAt),
         status: "pending",
+        recurrence: input.recurrence,
       })
       .returning();
 
@@ -81,6 +82,18 @@ export async function PUT(req: NextRequest) {
     updates.status = body.status;
     if (body.status === "pending") updates.sentAt = null;
     if (body.status === "done" && body.sentAt === undefined) updates.sentAt = null;
+  }
+  if (body.recurrence !== undefined) updates.recurrence = body.recurrence;
+  if (body.snoozedUntil !== undefined) {
+    if (body.snoozedUntil === null) {
+      updates.snoozedUntil = null;
+    } else {
+      const snoozedUntil = new Date(body.snoozedUntil);
+      if (Number.isNaN(snoozedUntil.getTime())) {
+        return jsonError(400, "Valid snoozedUntil is required");
+      }
+      updates.snoozedUntil = snoozedUntil;
+    }
   }
 
   try {

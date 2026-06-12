@@ -64,6 +64,9 @@ export const items = pgTable("items", {
   // Read-later (roadmap 2.9): unread | reading | done on link cards;
   // null = not tracked (non-link types, pre-feature links).
   readingStatus: text("reading_status"),
+  // Recurring tasks (roadmap 2.11): daily | weekly | monthly. Completing a
+  // recurring task spawns the next open occurrence.
+  recurrence: text("recurrence"),
   attachments: jsonb("attachments").$type<Attachment[]>().default([]),
   // OpenGraph / link preview data (auto-filled on save)
   ogTitle: text("og_title").default(""),
@@ -154,6 +157,11 @@ export const reminders = pgTable("reminders", {
   dueAt: timestamp("due_at", { mode: "date" }).notNull(),
   status: text("status").notNull().default("pending"), // pending | sent | done
   sentAt: timestamp("sent_at", { mode: "date" }),
+  // Snooze (roadmap 2.8): cron skips pending reminders until this passes.
+  snoozedUntil: timestamp("snoozed_until", { mode: "date" }),
+  // Recurring reminders (roadmap 2.8): daily | weekly | monthly — cron
+  // advances due_at instead of marking sent.
+  recurrence: text("recurrence"),
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
 }, (table) => [

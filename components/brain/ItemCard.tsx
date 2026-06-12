@@ -267,6 +267,11 @@ export function ItemCard({
                   {taskProgress.completed}/{taskProgress.total}
                 </span>
               )}
+              {item.type === "task" && item.recurrence && (
+                <span className="text-[10px] font-mono text-[#56CCF2] shrink-0" title={`Repeats ${item.recurrence}`}>
+                  ↻ {item.recurrence}
+                </span>
+              )}
             </div>
 
             {/* YouTube channel/author name */}

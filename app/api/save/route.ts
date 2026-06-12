@@ -6,6 +6,7 @@ import { checkApiKey } from "@/lib/api-key";
 import { embeddingsEnabled } from "@/lib/embeddings.mjs";
 import { updateItemEmbedding } from "@/lib/embedding-store";
 import { initialReadingStatus } from "@/lib/reading-status.mjs";
+import { syncWikiRelations } from "@/lib/wiki-link-store";
 import { aiTagAndCategorize } from "@/lib/ai-tagger";
 import { appendYouTubeDescriptionLinksToNotes, fetchYouTubeDescriptionLinks, type YouTubeDescriptionLink } from "@/lib/youtube";
 import { asc } from "drizzle-orm";
@@ -123,6 +124,8 @@ export async function POST(req: NextRequest) {
 
   // Embed post-response so saves never block on (or fail because of) OpenAI.
   if (embeddingsEnabled()) after(() => updateItemEmbedding(row.id));
+  // Resolve [[wiki links]] into item_relations (roadmap 2.2).
+  after(() => syncWikiRelations(row.id));
 
   return NextResponse.json(row, { status: 201 });
   } catch (error) {

@@ -11,6 +11,8 @@ import { hybridSearchItems } from "@/lib/search-items";
 import { initialReadingStatus } from "@/lib/reading-status.mjs";
 import { SYNC_CURSOR_OVERLAP_MS } from "@/lib/polling-sync.mjs";
 import { embeddingInputChanged, updateItemEmbedding } from "@/lib/embedding-store";
+import { syncWikiRelations } from "@/lib/wiki-link-store";
+import { spawnNextTaskOccurrence } from "@/lib/recurring-tasks";
 import { jsonError, parseBody, readJsonBody, serverError } from "@/lib/api-errors";
 import { itemCreateSchema, itemUpdateSchema } from "@/lib/validation";
 import { deriveTaskCompletion, normalizeChecklistItems } from "@/lib/task-checklists";
@@ -221,6 +223,7 @@ export async function POST(req: NextRequest) {
       category: itemCategory,
       pinned: body.pinned || false,
       readingStatus: body.readingStatus ?? initialReadingStatus(body.type || "note"),
+      recurrence: (body.type || "note") === "task" ? body.recurrence ?? null : null,
       checklistItems: taskFields.checklistItems,
       completed: taskFields.completed,
       completedAt: taskFields.completedAt,
@@ -235,6 +238,8 @@ export async function POST(req: NextRequest) {
 
   // Embed post-response so saves never block on (or fail because of) OpenAI.
   if (embeddingsEnabled()) after(() => updateItemEmbedding(row.id));
+  // Resolve [[wiki links]] into item_relations (roadmap 2.2).
+  after(() => syncWikiRelations(row.id));
 
   return NextResponse.json(row);
   } catch (error) {
@@ -347,6 +352,12 @@ export async function PUT(req: NextRequest) {
   // input actually changed (quick mutations like pin/favourite don't).
   if (embeddingsEnabled() && embeddingInputChanged(current, row)) {
     after(() => updateItemEmbedding(row.id));
+  }
+  // Resolve [[wiki links]] into item_relations (roadmap 2.2).
+  after(() => syncWikiRelations(row.id));
+  // Completing a recurring task spawns its next occurrence (roadmap 2.11).
+  if (row.type === "task" && row.completed && !current.completed) {
+    after(() => spawnNextTaskOccurrence(row));
   }
 
   return NextResponse.json(row);

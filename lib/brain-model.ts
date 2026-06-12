@@ -34,6 +34,7 @@ export interface Item {
   actionRequired?: boolean;
   archivedAt?: string | null;
   readingStatus?: "unread" | "reading" | "done" | null;
+  recurrence?: "daily" | "weekly" | "monthly" | null;
   attachments?: Attachment[];
   ogTitle: string;
   ogDescription: string;
@@ -51,6 +52,8 @@ export interface Reminder {
   dueAt: string;
   status: "pending" | "sent" | "done";
   sentAt?: string | null;
+  snoozedUntil?: string | null;
+  recurrence?: "daily" | "weekly" | "monthly" | null;
   createdAt: string;
   updatedAt: string;
 }

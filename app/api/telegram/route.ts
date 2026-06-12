@@ -22,6 +22,10 @@ import {
   parseFindCommand,
 } from "@/lib/telegram-commands.mjs";
 import { normalizeChecklistItems } from "@/lib/task-checklists";
+import { syncWikiRelations } from "@/lib/wiki-link-store";
+import { spawnNextTaskOccurrence } from "@/lib/recurring-tasks";
+import { parseSnoozeCallback } from "@/lib/reminder-snooze.mjs";
+import { reminders } from "@/db/schema";
 
 /**
  * POST /api/telegram
@@ -52,6 +56,12 @@ export async function POST(req: NextRequest) {
   }
 
   const update = await req.json();
+
+  // Inline-button callbacks (reminder snooze, roadmap 2.8).
+  if (update.callback_query) {
+    return handleCallbackQuery(botToken, update.callback_query);
+  }
+
   const message = update.message || update.channel_post;
   if (!message) return NextResponse.json({ ok: true });
 
@@ -105,7 +115,7 @@ export async function POST(req: NextRequest) {
   if (doneArg) {
     try {
       const openTasks = await db
-        .select({ id: items.id, title: items.title, checklistItems: items.checklistItems })
+        .select()
         .from(items)
         .where(and(eq(items.type, "task"), eq(items.completed, false), isNull(items.archivedAt)));
       const candidates = matchTaskCandidates(doneArg, openTasks);
@@ -114,7 +124,7 @@ export async function POST(req: NextRequest) {
       } else if (candidates.length > 1) {
         await sendTelegram(botToken, chatId, formatDoneAmbiguous(candidates));
       } else {
-        const task = candidates[0] as { id: string; title: string | null; checklistItems: unknown };
+        const task = candidates[0] as typeof openTasks[number];
         const now = new Date();
         // Completing a checklist task means completing every row — the app
         // derives task completion from its checklist.
@@ -127,7 +137,10 @@ export async function POST(req: NextRequest) {
           .update(items)
           .set({ completed: true, completedAt: now, checklistItems, updatedAt: now })
           .where(eq(items.id, task.id));
-        await sendTelegram(botToken, chatId, `☑ Done: ${task.title || "Untitled"}`);
+        // Completing a recurring task spawns its next occurrence (2.11).
+        await spawnNextTaskOccurrence(task);
+        const recurringNote = task.recurrence ? `\n↻ Recurs ${task.recurrence} — next occurrence created.` : "";
+        await sendTelegram(botToken, chatId, `☑ Done: ${task.title || "Untitled"}${recurringNote}`);
       }
     } catch {
       await sendTelegram(botToken, chatId, "✗ Couldn't update the task. Try again.");
@@ -222,6 +235,8 @@ export async function POST(req: NextRequest) {
 
     // Embed post-response so captures never block on (or fail because of) OpenAI.
     if (embeddingsEnabled()) after(() => updateItemEmbedding(row.id));
+    // Resolve [[wiki links]] into item_relations (roadmap 2.2).
+    after(() => syncWikiRelations(row.id));
 
     // Reply with confirmation
     const emoji = type === "task" ? "☐" : type === "memory" ? "💡" : type === "link" ? "◈" : "◉";
@@ -235,6 +250,56 @@ export async function POST(req: NextRequest) {
     await sendTelegram(botToken, chatId, "✗ Failed to save. Try again.");
     return NextResponse.json({ ok: true });
   }
+}
+
+// Reminder snooze buttons (roadmap 2.8): callback_data "snooze:<id>:<1h|3h|1d>".
+// Sets the reminder back to pending with snoozed_until = now + duration; the
+// cron re-fires it once the snooze passes.
+async function handleCallbackQuery(
+  botToken: string,
+  callbackQuery: {
+    id: string;
+    data?: string;
+    from?: { id?: number };
+    message?: { chat?: { id?: number } };
+  },
+) {
+  const answer = (text: string) =>
+    fetch(`https://api.telegram.org/bot${botToken}/answerCallbackQuery`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ callback_query_id: callbackQuery.id, text }),
+    }).catch(() => {});
+
+  const allowedIds = allowedTelegramIds();
+  const senderId = callbackQuery.from?.id?.toString();
+  if (allowedIds.length > 0 && (!senderId || !allowedIds.includes(senderId))) {
+    await answer("This bot is private.");
+    return NextResponse.json({ ok: true });
+  }
+
+  const snooze = parseSnoozeCallback(callbackQuery.data);
+  if (!snooze) {
+    await answer("Unknown action.");
+    return NextResponse.json({ ok: true });
+  }
+
+  try {
+    const snoozedUntil = new Date(Date.now() + snooze.ms);
+    const [row] = await db
+      .update(reminders)
+      .set({ status: "pending", snoozedUntil, sentAt: null, updatedAt: new Date() })
+      .where(eq(reminders.id, snooze.reminderId))
+      .returning();
+    await answer(row ? `Snoozed — ${snooze.label}.` : "Reminder not found.");
+    const chatId = callbackQuery.message?.chat?.id;
+    if (row && chatId) {
+      await sendTelegram(botToken, chatId, `⏰ Snoozed "${row.message || "reminder"}" — ${snooze.label}.`);
+    }
+  } catch {
+    await answer("Snooze failed. Try again.");
+  }
+  return NextResponse.json({ ok: true });
 }
 
 async function handleMemoryToggleCommand(action: string): Promise<string> {

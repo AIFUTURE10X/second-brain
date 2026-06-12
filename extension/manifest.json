@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Second Brain — Save to Brain",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "One-click save any page or selected text to your Second Brain",
   "permissions": ["activeTab", "storage", "scripting", "contextMenus"],
   "host_permissions": ["https://*.vercel.app/*"],

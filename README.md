@@ -68,6 +68,10 @@ npm run db:push                 # apply schema (interactive — review prompts, 
 node scripts/backfill-embeddings.mjs   # optional: embed pre-existing cards for semantic search
 ```
 
+No local setup? The deployed app can migrate its own database — open
+`/api/admin/migrate` on your deployment (idempotent, additive only), then
+`/api/admin/backfill-embeddings` repeatedly until it reports `remaining: 0`.
+
 Run:
 
 ```bash

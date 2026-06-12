@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db, sql } from "@/db";
 import { items, categories } from "@/db/schema";
-import { eq, desc, asc } from "drizzle-orm";
+import { eq, desc, asc, and, sql as sqlExpr, type SQL } from "drizzle-orm";
 import { enrichUrl } from "@/lib/enrich";
 import { checkApiKey } from "@/lib/api-key";
 import { aiTagAndCategorize } from "@/lib/ai-tagger";
@@ -52,12 +52,23 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const id = url.searchParams.get("id");
   const q = url.searchParams.get("q")?.trim();
+  const tag = url.searchParams.get("tag")?.trim();
+  const category = url.searchParams.get("category")?.trim();
+  const type = url.searchParams.get("type")?.trim();
 
   if (id) {
     const [row] = await db.select().from(items).where(eq(items.id, id));
     if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
     return NextResponse.json(row);
   }
+
+  // Structured filters (?tag= / ?category= / ?type=) — combinable with each
+  // other and with ?q=. On the search paths the rows are already in hand, so
+  // they're filtered in JS; the no-search path filters in SQL.
+  const matchesStructuredFilters = (row: { tags?: unknown; category?: string | null; type?: string | null }) =>
+    (!tag || (Array.isArray(row.tags) && row.tags.includes(tag))) &&
+    (!category || row.category === category) &&
+    (!type || row.type === type);
 
   if (q) {
     // Full-text search against the weighted, GIN-indexed search_tsv column
@@ -89,7 +100,8 @@ export async function GET(req: NextRequest) {
                ts_rank_cd(search_tsv, query) DESC,
                created_at DESC
     `;
-    if (rows.length > 0) return NextResponse.json(rows);
+    const matched = rows.filter(matchesStructuredFilters);
+    if (matched.length > 0) return NextResponse.json(matched);
     // Zero exact hits — trigram fallback over titles so typos still surface
     // cards ("recat" finds "react"). Flagged via header rather than a body
     // shape change so existing clients that expect a bare array keep working.
@@ -117,7 +129,7 @@ export async function GET(req: NextRequest) {
                  created_at DESC
         LIMIT 25
       `;
-      return NextResponse.json(fuzzy, { headers: { "x-search-fuzzy": "1" } });
+      return NextResponse.json(fuzzy.filter(matchesStructuredFilters), { headers: { "x-search-fuzzy": "1" } });
     } catch (error) {
       // pg_trgm not installed yet (scripts/db-setup.sql) — degrade to no results.
       console.error("Fuzzy search fallback failed:", error);
@@ -125,7 +137,16 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const rows = await db.select().from(items).orderBy(desc(items.pinned), desc(items.createdAt));
+  const conditions: SQL[] = [];
+  if (tag) conditions.push(sqlExpr`${items.tags} @> ${JSON.stringify([tag])}::jsonb`);
+  if (category) conditions.push(eq(items.category, category));
+  if (type) conditions.push(eq(items.type, type));
+
+  const rows = await db
+    .select()
+    .from(items)
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .orderBy(desc(items.pinned), desc(items.createdAt));
   return NextResponse.json(rows);
 }
 

@@ -58,6 +58,7 @@ export default function Brain() {
   const [view, setView] = useState<"all" | ItemType>("all");
   const [catFilter, setCatFilter] = useState<string>("all");
   const [sourceFilter, setSourceFilter] = useState<string | null>(null);
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [withNotesOnly, setWithNotesOnly] = useState(false);
   const [favouritesOnly, setFavouritesOnly] = useState(false);
   const [actionOnly, setActionOnly] = useState(false);
@@ -427,7 +428,7 @@ export default function Brain() {
   }, [fetchItems, fetchCategories, fetchRelations, fetchReminders, search]);
 
   // Reset pagination when filters change
-  useEffect(() => { setVisibleCount(50); }, [view, catFilter, search, sortBy, sourceFilter, withNotesOnly, favouritesOnly, actionOnly, remindersOnly, reviewMode]);
+  useEffect(() => { setVisibleCount(50); }, [view, catFilter, search, sortBy, sourceFilter, tagFilter, withNotesOnly, favouritesOnly, actionOnly, remindersOnly, reviewMode]);
 
   // Close modals on Escape, focus search on Cmd/Ctrl+K
   useEffect(() => {
@@ -1388,6 +1389,7 @@ export default function Brain() {
       if (!sourceFilter) return true;
       return sourceFromUrl(i.url)?.key === sourceFilter;
     })
+    .filter(i => !tagFilter || (i.tags || []).includes(tagFilter))
     .filter(i => {
       if (!withNotesOnly) return true;
       const hasLegacy = (i.notes?.trim().length ?? 0) > 0;
@@ -2013,11 +2015,11 @@ export default function Brain() {
           <div className="flex gap-1.5 items-center flex-wrap">
             {inlineTags.map(tag => {
               const color = tagColor(tag);
-              const active = search === tag;
+              const active = tagFilter === tag;
               return (
                 <button
                   key={tag}
-                  onClick={() => setSearch(active ? "" : tag)}
+                  onClick={() => setTagFilter(active ? null : tag)}
                   className="px-2.5 py-0.5 rounded-full text-[11px] font-mono transition whitespace-nowrap"
                   style={{
                     border: `1px solid ${color}30`,
@@ -2058,12 +2060,12 @@ export default function Brain() {
                   <div className="flex gap-1.5 flex-wrap">
                     {menuTags.map(tag => {
                       const color = tagColor(tag);
-                      const active = search === tag;
+                      const active = tagFilter === tag;
                       return (
                         <button
                           key={tag}
                           onClick={() => {
-                            setSearch(active ? "" : tag);
+                            setTagFilter(active ? null : tag);
                             setTagMenuOpen(false);
                             setTagMenuSearch("");
                           }}
@@ -2096,6 +2098,48 @@ export default function Brain() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Active structured-filter chips */}
+      {(view !== "all" || catFilter !== "all" || sourceFilter || tagFilter) && (
+        <div className="px-5 pt-2 pb-1 flex gap-1.5 items-center flex-wrap">
+          <span className="text-[10px] font-mono text-gray-600">Filtered:</span>
+          {view !== "all" && (
+            <button
+              onClick={() => setView("all")}
+              className="px-2.5 py-0.5 rounded-full text-[11px] font-mono transition whitespace-nowrap"
+              style={{ border: `1px solid ${TYPES[view].color}50`, background: `${TYPES[view].color}15`, color: TYPES[view].color }}
+              title="Clear type filter"
+            >{TYPES[view].icon} {TYPES[view].label} ×</button>
+          )}
+          {catFilter !== "all" && (
+            <button
+              onClick={() => setCatFilter("all")}
+              className="px-2.5 py-0.5 rounded-full text-[11px] font-mono transition whitespace-nowrap"
+              style={{ border: `1px solid ${getCatColor(catFilter)}50`, background: `${getCatColor(catFilter)}15`, color: getCatColor(catFilter) }}
+              title="Clear category filter"
+            >⊞ {catFilter} ×</button>
+          )}
+          {sourceFilter && (
+            <button
+              onClick={() => setSourceFilter(null)}
+              className="px-2.5 py-0.5 rounded-full text-[11px] font-mono transition whitespace-nowrap border border-gray-600 text-gray-300 hover:border-gray-400"
+              title="Clear source filter"
+            >◈ {sourceCounts.find(src => src.key === sourceFilter)?.label || sourceFilter} ×</button>
+          )}
+          {tagFilter && (
+            <button
+              onClick={() => setTagFilter(null)}
+              className="px-2.5 py-0.5 rounded-full text-[11px] font-mono transition whitespace-nowrap"
+              style={{ border: `1px solid ${tagColor(tagFilter)}50`, background: `${tagColor(tagFilter)}15`, color: tagColor(tagFilter) }}
+              title="Clear tag filter"
+            >#{tagFilter} ×</button>
+          )}
+          <button
+            onClick={() => { setView("all"); setCatFilter("all"); setSourceFilter(null); setTagFilter(null); }}
+            className="text-[10px] font-mono text-gray-600 hover:text-gray-300 transition ml-1"
+          >Clear all</button>
         </div>
       )}
 

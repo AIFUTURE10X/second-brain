@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 type SpeechRecognitionLike = {
   continuous: boolean;
@@ -13,6 +13,17 @@ type SpeechRecognitionLike = {
   onend: (() => void) | null;
 };
 
+function getSpeechRecognitionCtor(): (new () => SpeechRecognitionLike) | undefined {
+  if (typeof window === "undefined") return undefined;
+  const w = window as unknown as {
+    SpeechRecognition?: new () => SpeechRecognitionLike;
+    webkitSpeechRecognition?: new () => SpeechRecognitionLike;
+  };
+  return w.SpeechRecognition || w.webkitSpeechRecognition;
+}
+
+const subscribeNoop = () => () => {};
+
 export function VoiceButton({
   onTranscript,
   disabled,
@@ -20,17 +31,14 @@ export function VoiceButton({
   onTranscript: (text: string) => void;
   disabled?: boolean;
 }) {
-  const [supported, setSupported] = useState(false);
+  // SSR-safe capability check: server snapshot is false, client snapshot reflects the browser.
+  const supported = useSyncExternalStore(subscribeNoop, () => !!getSpeechRecognitionCtor(), () => false);
   const [listening, setListening] = useState(false);
   const recRef = useRef<SpeechRecognitionLike | null>(null);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const Ctor =
-      (window as unknown as { SpeechRecognition?: new () => SpeechRecognitionLike; webkitSpeechRecognition?: new () => SpeechRecognitionLike }).SpeechRecognition ||
-      (window as unknown as { SpeechRecognition?: new () => SpeechRecognitionLike; webkitSpeechRecognition?: new () => SpeechRecognitionLike }).webkitSpeechRecognition;
+    const Ctor = getSpeechRecognitionCtor();
     if (!Ctor) return;
-    setSupported(true);
     const rec = new Ctor();
     rec.continuous = false;
     rec.interimResults = false;

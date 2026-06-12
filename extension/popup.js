@@ -106,8 +106,8 @@ async function saveConfig() {
   document.getElementById("setupError").classList.remove("show");
 
   try {
-    const res = await fetch(`${host}/api/categories?key=${encodeURIComponent(key)}`, {
-      headers: { "x-api-key": key },
+    const res = await fetch(`${host}/api/categories`, {
+      headers: { Authorization: `Bearer ${key}` },
     });
     if (res.ok) {
       config = { host, key };
@@ -162,7 +162,7 @@ async function saveItem() {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": config.key,
+        Authorization: `Bearer ${config.key}`,
       },
       body: JSON.stringify(payload),
     });

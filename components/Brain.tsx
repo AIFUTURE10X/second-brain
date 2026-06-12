@@ -7,6 +7,15 @@ import { VoiceButton } from "./VoiceButton";
 import Vault from "./Vault";
 import { SYNC_CHANNEL, getSyncClientId, type SyncMessage, type SyncPayload } from "@/lib/sync";
 import { SYNC_POLL_INTERVAL_MS, mergeSyncedItems, parseSyncDelta } from "@/lib/polling-sync.mjs";
+import { applyOfflineUpdate, buildOfflineTempItem, isOfflineTempId } from "@/lib/offline-replay.mjs";
+import {
+  enqueueWrite,
+  isOfflineQueueSupported,
+  pendingWriteCount,
+  removeQueuedCreate,
+  replayQueuedWrites,
+  type QueuedWriteInput,
+} from "@/lib/offline-queue";
 import { isMemoryOfWeekEnabled, MEMORY_OF_WEEK_ENABLED_KEY } from "@/lib/telegram-memory-settings.mjs";
 import { nextViewMode, parseViewMode, type ViewMode } from "@/lib/view-mode";
 import { compressImageForUpload } from "@/lib/image-compression";
@@ -47,6 +56,7 @@ const CLIENT_APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "dev";
 
 export default function Brain() {
   const [items, setItems] = useState<Item[]>([]);
+  const [pendingOffline, setPendingOffline] = useState(0);
   const [relations, setRelations] = useState<ItemRelation[]>([]);
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -291,6 +301,44 @@ export default function Brain() {
     }
   }, []);
 
+  const refreshPendingOffline = useCallback(async () => {
+    if (!isOfflineQueueSupported()) return;
+    try {
+      setPendingOffline(await pendingWriteCount());
+    } catch {}
+  }, []);
+
+  // Queue a write that failed at the network level for replay on reconnect.
+  // Returns false when queueing isn't possible (no IndexedDB / quota error)
+  // so callers fall back to the normal failure toast.
+  const queueWriteOffline = useCallback(async (input: QueuedWriteInput): Promise<boolean> => {
+    if (!isOfflineQueueSupported()) return false;
+    try {
+      await enqueueWrite(input);
+      await refreshPendingOffline();
+      return true;
+    } catch {
+      return false;
+    }
+  }, [refreshPendingOffline]);
+
+  const replayOfflineQueue = useCallback(async () => {
+    if (!isOfflineQueueSupported()) return;
+    try {
+      const summary = await replayQueuedWrites();
+      if (summary.done > 0) {
+        showToast(`Synced ${summary.done} offline change${summary.done === 1 ? "" : "s"}`, "success");
+      }
+      if (summary.conflicts > 0) {
+        showToast(`${summary.conflicts} offline edit${summary.conflicts === 1 ? "" : "s"} conflicted — server version kept`, "error");
+      }
+      if (summary.done > 0 || summary.conflicts > 0 || summary.dropped > 0) {
+        await Promise.all([fetchItems(search.trim() || undefined), fetchCategories(), fetchRelations(), fetchReminders()]);
+      }
+    } catch {}
+    refreshPendingOffline();
+  }, [fetchItems, fetchCategories, fetchRelations, fetchReminders, refreshPendingOffline, search]);
+
   const clearRuntimeCaches = useCallback(async () => {
     if (typeof window === "undefined") return;
 
@@ -419,6 +467,15 @@ export default function Brain() {
       window.history.replaceState({}, "", window.location.pathname);
     }
   }, []);
+
+  // Offline write queue: replay queued writes on load and whenever the
+  // browser reports connectivity is back.
+  useEffect(() => {
+    replayOfflineQueue();
+    const onOnline = () => { replayOfflineQueue(); };
+    window.addEventListener("online", onOnline);
+    return () => window.removeEventListener("online", onOnline);
+  }, [replayOfflineQueue]);
 
   // Polling sync: while the tab is visible and no search is active (the items
   // state holds server search results then), fetch ?since= deltas and merge
@@ -861,7 +918,26 @@ export default function Brain() {
         resetForm(true);
       }
     } catch {
-      showToast("Failed to save item", "error");
+      // Network-level failure (offline) — queue the write and update the
+      // local state optimistically; replay happens on reconnect.
+      const queued = editingId
+        ? await queueWriteOffline({ kind: "update", payload: payload as { id: string } & Record<string, unknown> })
+        : await (async () => {
+            const temp = buildOfflineTempItem(payload) as Item;
+            const ok = await queueWriteOffline({ kind: "create", payload, tempId: temp.id });
+            if (ok) setItems(prev => [temp, ...prev]);
+            return ok;
+          })();
+      if (queued) {
+        if (editingId) {
+          setItems(prev => prev.map(i => i.id === editingId ? applyOfflineUpdate(i, payload) as Item : i));
+        }
+        showToast("Offline — saved to sync queue", "success");
+        if (editingId && !andAddAnother) closeForm();
+        else resetForm(true);
+      } else {
+        showToast("Failed to save item", "error");
+      }
     }
     setSaving(false);
   };
@@ -870,11 +946,12 @@ export default function Brain() {
     const text = quickTaskText.trim();
     if (!text || quickTaskSaving) return;
     setQuickTaskSaving(true);
+    const payload = { type: "task", title: text, tags: [], category: "" };
     try {
       const res = await fetch("/api/items", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "task", title: text, tags: [], category: "" }),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) {
         showToast("Failed to add task", "error");
@@ -883,7 +960,14 @@ export default function Brain() {
         await fetchItems();
       }
     } catch {
-      showToast("Failed to add task", "error");
+      const temp = buildOfflineTempItem(payload) as Item;
+      if (await queueWriteOffline({ kind: "create", payload, tempId: temp.id })) {
+        setItems(prev => [temp, ...prev]);
+        setQuickTaskText("");
+        showToast("Task saved offline — will sync", "success");
+      } else {
+        showToast("Failed to add task", "error");
+      }
     }
     setQuickTaskSaving(false);
   };
@@ -892,11 +976,12 @@ export default function Brain() {
     const text = quickMemoryText.trim();
     if (!text || quickMemorySaving) return;
     setQuickMemorySaving(true);
+    const payload = { type: "memory", title: text, tags: [], category: "" };
     try {
       const res = await fetch("/api/items", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "memory", title: text, tags: [], category: "" }),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) {
         showToast("Failed to save memory", "error");
@@ -905,7 +990,14 @@ export default function Brain() {
         await fetchItems();
       }
     } catch {
-      showToast("Failed to save memory", "error");
+      const temp = buildOfflineTempItem(payload) as Item;
+      if (await queueWriteOffline({ kind: "create", payload, tempId: temp.id })) {
+        setItems(prev => [temp, ...prev]);
+        setQuickMemoryText("");
+        showToast("Memory saved offline — will sync", "success");
+      } else {
+        showToast("Failed to save memory", "error");
+      }
     }
     setQuickMemorySaving(false);
   };
@@ -947,19 +1039,30 @@ export default function Brain() {
       label = "Thought";
     }
     setQuickCapturing(true);
+    const fullPayload = { tags: [], category: "", ...payload };
     try {
       const res = await fetch("/api/items", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tags: [], category: "", ...payload }),
+        body: JSON.stringify(fullPayload),
       });
-      if (!res.ok) throw new Error("Quick capture failed");
+      if (!res.ok) {
+        // Server reachable but rejected — not an offline situation.
+        showToast("Failed to save", "error");
+        return false;
+      }
       const row: Item = await res.json();
       setItems(prev => [row, ...prev]);
       showToast(`${label} saved`, "success");
       fetchItems(search.trim() || undefined); // reconcile order and any late enrichment in the background
       return true;
     } catch {
+      const temp = buildOfflineTempItem(fullPayload) as Item;
+      if (await queueWriteOffline({ kind: "create", payload: fullPayload, tempId: temp.id })) {
+        setItems(prev => [temp, ...prev]);
+        showToast(`${label} saved offline — will sync`, "success");
+        return true;
+      }
       showToast("Failed to save", "error");
       return false;
     } finally {
@@ -1013,6 +1116,7 @@ export default function Brain() {
   };
 
   const toggleChecklistItemOnCard = async (item: Item, checklistId: string) => {
+    if (isOfflineTempId(item.id)) return;
     const currentRows = item.checklistItems || [];
     const now = new Date().toISOString();
     const checklistItems = currentRows.map(row => (
@@ -1035,12 +1139,28 @@ export default function Brain() {
       setItems(prev => prev.map(existing => existing.id === saved.id ? saved : existing));
       broadcastSync({ type: "item-updated", item: saved });
     } catch {
-      showToast("Failed to update checklist item", "error");
+      if (await queueWriteOffline({ kind: "update", payload: { id: item.id, checklistItems } })) {
+        setItems(prev => prev.map(existing => existing.id === item.id ? { ...existing, checklistItems } : existing));
+        showToast("Offline — change queued for sync", "success");
+      } else {
+        showToast("Failed to update checklist item", "error");
+      }
     }
   };
 
   const handleDelete = async (id: string) => {
     if (!confirm("Delete this item?")) return;
+    // Optimistic placeholder from an offline create — cancel the queued
+    // write instead of calling the API (the server has never seen this id).
+    if (isOfflineTempId(id)) {
+      try {
+        await removeQueuedCreate(id);
+      } catch {}
+      setItems(prev => prev.filter(i => i.id !== id));
+      if (expandedId === id) setExpandedId(null);
+      refreshPendingOffline();
+      return;
+    }
     try {
       const res = await fetch(`/api/items?id=${id}`, { method: "DELETE" });
       if (!res.ok) {
@@ -1053,13 +1173,20 @@ export default function Brain() {
       await fetchRelations();
       broadcastSync({ type: "item-deleted", id });
     } catch {
-      showToast("Failed to delete item", "error");
+      if (await queueWriteOffline({ kind: "delete", id })) {
+        setItems(prev => prev.filter(i => i.id !== id));
+        setReminders(prev => prev.filter(r => r.itemId !== id));
+        if (expandedId === id) setExpandedId(null);
+        showToast("Offline — delete queued for sync", "success");
+      } else {
+        showToast("Failed to delete item", "error");
+      }
     }
   };
 
   const handlePin = async (id: string) => {
     const item = items.find(i => i.id === id);
-    if (!item) return;
+    if (!item || isOfflineTempId(id)) return;
     try {
       const res = await fetch("/api/items", {
         method: "PUT",
@@ -1076,13 +1203,18 @@ export default function Brain() {
       } catch {}
       setItems(prev => prev.map(i => i.id === id ? { ...i, pinned: !i.pinned } : i));
     } catch {
-      showToast("Failed to update pin", "error");
+      if (await queueWriteOffline({ kind: "update", payload: { id, pinned: !item.pinned } })) {
+        setItems(prev => prev.map(i => i.id === id ? { ...i, pinned: !i.pinned } : i));
+        showToast("Offline — change queued for sync", "success");
+      } else {
+        showToast("Failed to update pin", "error");
+      }
     }
   };
 
   const handleToggleFlag = async (id: string, flag: "favourite" | "actionRequired") => {
     const item = items.find(i => i.id === id);
-    if (!item) return;
+    if (!item || isOfflineTempId(id)) return;
     const next = !item[flag];
     try {
       const res = await fetch("/api/items", {
@@ -1100,7 +1232,12 @@ export default function Brain() {
       } catch {}
       setItems(prev => prev.map(i => i.id === id ? { ...i, [flag]: next } : i));
     } catch {
-      showToast("Failed to update", "error");
+      if (await queueWriteOffline({ kind: "update", payload: { id, [flag]: next } })) {
+        setItems(prev => prev.map(i => i.id === id ? { ...i, [flag]: next } : i));
+        showToast("Offline — change queued for sync", "success");
+      } else {
+        showToast("Failed to update", "error");
+      }
     }
   };
 
@@ -1127,6 +1264,10 @@ export default function Brain() {
   };
 
   const handleEdit = (item: Item) => {
+    if (isOfflineTempId(item.id)) {
+      showToast("This card is waiting to sync — editable after reconnecting", "error");
+      return;
+    }
     let entries = Array.isArray(item.noteEntries) ? item.noteEntries : [];
     if (entries.length === 0 && item.notes && item.notes.trim()) {
       const stamp = item.createdAt || new Date().toISOString();
@@ -1634,6 +1775,14 @@ export default function Brain() {
         {searchFuzzy && search.trim() && filtered.length > 0 && (
           <div className={`mb-2 rounded-lg border border-[#E8A83840] bg-[#E8A83810] px-3 py-2 text-[11px] font-mono text-[#E8A838] ${density === "compact" ? "col-span-full" : ""}`}>
             No exact matches for &ldquo;{search.trim()}&rdquo; — showing close matches
+          </div>
+        )}
+        {pendingOffline > 0 && (
+          <div className={`mb-2 flex items-center justify-between gap-3 rounded-lg border border-[#E8A83840] bg-[#E8A83810] px-3 py-2 text-[11px] font-mono text-[#E8A838] ${density === "compact" ? "col-span-full" : ""}`}>
+            <span>{pendingOffline} change{pendingOffline === 1 ? "" : "s"} waiting to sync — will retry when back online</span>
+            <button onClick={() => replayOfflineQueue()} className="shrink-0 underline underline-offset-2 hover:opacity-80">
+              Sync now
+            </button>
           </div>
         )}
         {filtered.length === 0 && (

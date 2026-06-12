@@ -34,7 +34,9 @@ other users.
   attachments on Vercel Blob, client-side encrypted vault, JSON/CSV/Markdown
   export, offline read via service worker, cross-device edit-conflict
   detection, near-realtime cross-device sync (focused tabs poll `?since=`
-  deltas every 45s; deletes propagate via tombstones).
+  deltas every 45s; deletes propagate via tombstones), offline write queue
+  (failed creates/updates/deletes land in IndexedDB and replay on reconnect
+  through the same conflict machinery; the service worker stays read-only).
 
 ## Setup
 

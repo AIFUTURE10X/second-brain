@@ -90,14 +90,16 @@ export function formatSize(bytes: number): string {
 }
 
 export function viewModeIcon(mode: ViewMode): string {
-  if (mode === "comfortable") return "▦";
   if (mode === "list") return "☰";
+  if (mode === "table") return "▦";
+  if (mode === "board") return "▥";
   return "≡";
 }
 
 export function viewModeLabel(mode: ViewMode): string {
-  if (mode === "comfortable") return "Comfortable";
   if (mode === "list") return "List";
+  if (mode === "table") return "Table";
+  if (mode === "board") return "Board";
   return "Compact";
 }
 

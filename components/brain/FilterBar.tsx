@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type RefObject } from "react";
+import { Fragment, useEffect, useState, type RefObject } from "react";
 import { TYPES, type Category, type ItemType } from "@/lib/brain-model";
 
 type OpenMenu = null | "type" | "category" | "tags" | "more";
@@ -47,6 +47,9 @@ interface FilterBarProps {
   readLaterOnly: boolean;
   onReadLaterOnly: (v: boolean) => void;
   readLaterCount: number;
+  inboxOnly: boolean;
+  onInboxOnly: (v: boolean) => void;
+  inboxCount: number;
   reviewMode: boolean;
   onReviewMode: (v: boolean) => void;
   reviewCount: number;
@@ -81,6 +84,7 @@ export function FilterBar(props: FilterBarProps) {
     actionOnly, onActionOnly, actionCount,
     remindersOnly, onRemindersOnly, reminderCount,
     readLaterOnly, onReadLaterOnly, readLaterCount,
+    inboxOnly, onInboxOnly, inboxCount,
     reviewMode, onReviewMode, reviewCount,
     archivedOnly, onArchivedOnly,
     datePreset, onDatePreset, dateFrom, onDateFrom, dateTo, onDateTo,
@@ -141,7 +145,7 @@ export function FilterBar(props: FilterBarProps) {
     : sourceCounts;
 
   const dateActive = datePreset !== "all";
-  const secondaryActive = [withNotesOnly, favouritesOnly, actionOnly, remindersOnly, readLaterOnly, reviewMode, archivedOnly, dateActive, sourceFilter !== null].filter(Boolean).length;
+  const secondaryActive = [withNotesOnly, favouritesOnly, actionOnly, remindersOnly, readLaterOnly, inboxOnly, reviewMode, archivedOnly, dateActive, sourceFilter !== null].filter(Boolean).length;
   const activeCount = [
     view !== "all",
     catFilter !== "all",
@@ -152,6 +156,7 @@ export function FilterBar(props: FilterBarProps) {
     actionOnly,
     remindersOnly,
     readLaterOnly,
+    inboxOnly,
     reviewMode,
     archivedOnly,
     dateActive,
@@ -168,6 +173,7 @@ export function FilterBar(props: FilterBarProps) {
     onActionOnly(false);
     onRemindersOnly(false);
     onReadLaterOnly(false);
+    onInboxOnly(false);
     onReviewMode(false);
     onArchivedOnly(false);
     onDatePreset("all");
@@ -178,7 +184,9 @@ export function FilterBar(props: FilterBarProps) {
   };
 
   const viewColor = view === "all" ? "#E8A838" : TYPES[view].color;
-  const triggerClass = "px-3 py-1.5 min-h-[44px] sm:min-h-0 rounded-lg text-xs whitespace-nowrap font-mono font-medium transition-all shrink-0 flex items-center gap-1.5";
+  const triggerClass = "px-3 min-[1800px]:px-2.5 py-1.5 min-[1800px]:py-1 min-h-[44px] sm:min-h-0 min-[1800px]:min-h-[34px] rounded-lg text-xs min-[1800px]:text-[11px] whitespace-nowrap font-mono font-medium transition-all shrink-0 flex items-center gap-1.5 min-[1800px]:gap-1";
+  const menuChipClass = "inline-flex h-[30px] max-w-[11rem] shrink-0 items-center gap-1.5 overflow-hidden whitespace-nowrap rounded-lg border px-3 text-left font-mono text-xs font-medium leading-none transition-all";
+  const childMenuChipClass = menuChipClass.replace("max-w-[11rem]", "max-w-[10rem]");
 
   const togglePill = (
     active: boolean,
@@ -190,7 +198,7 @@ export function FilterBar(props: FilterBarProps) {
   ) => (
     <button
       onClick={() => onToggle(!active)}
-      className="px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-mono font-medium transition-all shrink-0"
+      className="px-3 min-[1800px]:px-2.5 py-1.5 min-[1800px]:py-1 rounded-lg text-xs min-[1800px]:text-[11px] whitespace-nowrap font-mono font-medium transition-all shrink-0"
       style={{
         border: active ? `1px solid ${color}90` : `1px solid ${color}30`,
         background: active ? `${color}25` : "transparent",
@@ -203,17 +211,17 @@ export function FilterBar(props: FilterBarProps) {
   );
 
   return (
-    <div className="relative pb-2" data-filter-bar>
-      <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-0.5 sm:flex-wrap sm:overflow-visible sm:pb-0">
+    <div className="relative pb-2 min-[1800px]:pb-1" data-filter-bar>
+      <div className="flex items-center gap-1.5 min-[1800px]:gap-1 overflow-x-auto no-scrollbar pb-0.5 sm:flex-wrap sm:overflow-visible sm:pb-0">
         {/* Search */}
-        <div className="relative min-w-[180px] flex-1">
+        <div className="relative min-w-[180px] min-[1800px]:min-w-[150px] flex-1">
           <input
             ref={searchInputRef}
             value={search}
             onChange={e => onSearchChange(e.target.value)}
             placeholder="Search… (Ctrl+K)"
             aria-label="Search items"
-            className="w-full py-2 min-h-[44px] sm:min-h-0 pl-8 pr-3 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none placeholder:text-gray-500"
+            className="w-full py-2 min-[1800px]:py-1.5 min-h-[44px] sm:min-h-0 min-[1800px]:min-h-[34px] pl-8 min-[1800px]:pl-7 pr-3 bg-brand-muted border border-brand-border rounded-lg text-sm min-[1800px]:text-xs text-gray-300 outline-none placeholder:text-gray-500"
           />
           {searching ? (
             <span
@@ -359,7 +367,7 @@ export function FilterBar(props: FilterBarProps) {
             className={menuSearchClass}
           />
           <div className="max-h-72 overflow-y-auto no-scrollbar">
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-1.5">
               <button
                 type="button"
                 onClick={() => {
@@ -367,15 +375,15 @@ export function FilterBar(props: FilterBarProps) {
                   onViewChange("all");
                   closeMenus();
                 }}
-                className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-left transition"
+                className={menuChipClass}
                 style={{
                   borderColor: catFilter === "all" ? "#E8A83860" : "#343842",
                   background: catFilter === "all" ? "#E8A83815" : "#13161B",
                   color: catFilter === "all" ? "#E8A838" : "#ddd",
                 }}
               >
-                <span className="font-mono text-[11px] whitespace-nowrap">All categories</span>
-                <span className="text-[10px] opacity-60">{itemCount}</span>
+                <span className="truncate">All categories</span>
+                <span className="shrink-0 text-[10px] opacity-60">{itemCount}</span>
               </button>
 
               {categoryMenuGroups.length === 0 ? (
@@ -394,61 +402,59 @@ export function FilterBar(props: FilterBarProps) {
                           onCatFilterChange(parentActive ? "all" : parent.name);
                           closeMenus();
                         }}
-                        className="inline-flex max-w-full items-center gap-2 rounded-full border px-3 py-1.5 text-left transition"
+                        className={menuChipClass}
                         style={{
                           borderColor: `${parent.color}${parentActive ? "70" : "35"}`,
                           background: parentActive ? `${parent.color}20` : `${parent.color}10`,
                           color: parent.color,
                         }}
                       >
-                        <span className="truncate font-mono text-[11px]">{parent.name}</span>
+                        <span className="truncate">{parent.name}</span>
                         <span className="shrink-0 text-[10px] opacity-60">{parentCount}</span>
                       </button>
                     );
                   }
 
                   return (
-                    <div key={parent.id} className="inline-flex max-w-full flex-col gap-1">
+                    <Fragment key={parent.id}>
                       <button
                         type="button"
                         onClick={() => {
                           onCatFilterChange(parentActive ? "all" : parent.name);
                           closeMenus();
                         }}
-                        className="inline-flex max-w-full items-center gap-2 self-start rounded-full border px-3 py-1.5 text-left transition"
+                        className={menuChipClass}
                         style={{
                           borderColor: `${parent.color}${parentActive ? "70" : "35"}`,
                           background: parentActive ? `${parent.color}20` : `${parent.color}10`,
                           color: parent.color,
                         }}
                       >
-                        <span className="truncate font-mono text-[11px]">{parent.name}</span>
+                        <span className="truncate">{parent.name}</span>
                         <span className="shrink-0 text-[10px] opacity-60">{parentCount}</span>
                       </button>
-                      <div className="flex max-w-full flex-wrap gap-1.5 pl-2">
-                        {children.map(child => {
-                          const childActive = catFilter === child.name;
-                          return (
-                            <button
-                              key={child.id}
-                              type="button"
-                              onClick={() => {
-                                onCatFilterChange(child.name);
-                                closeMenus();
-                              }}
-                              className="rounded-full border px-2.5 py-1 text-[10px] font-mono transition"
-                              style={{
-                                borderColor: childActive ? `${child.color}60` : `${child.color}25`,
-                                background: childActive ? `${child.color}15` : "transparent",
-                                color: childActive ? child.color : "#7b8190",
-                              }}
-                            >
-                              {child.name}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
+                      {children.map(child => {
+                        const childActive = catFilter === child.name;
+                        return (
+                          <button
+                            key={child.id}
+                            type="button"
+                            onClick={() => {
+                              onCatFilterChange(child.name);
+                              closeMenus();
+                            }}
+                            className={childMenuChipClass}
+                            style={{
+                              borderColor: childActive ? `${child.color}60` : `${child.color}25`,
+                              background: childActive ? `${child.color}15` : "transparent",
+                              color: childActive ? child.color : "#7b8190",
+                            }}
+                          >
+                            <span className="truncate">{child.name}</span>
+                          </button>
+                        );
+                      })}
+                    </Fragment>
                   );
                 })
               )}
@@ -482,7 +488,7 @@ export function FilterBar(props: FilterBarProps) {
                         onTagFilterChange(active ? null : tag);
                         closeMenus();
                       }}
-                      className="px-2.5 py-0.5 rounded-full text-[11px] font-mono transition whitespace-nowrap"
+                      className="max-w-[11rem] truncate rounded-lg px-2.5 py-1 text-[11px] font-mono transition"
                       style={{
                         border: `1px solid ${color}30`,
                         background: active ? `${color}20` : "transparent",
@@ -521,6 +527,7 @@ export function FilterBar(props: FilterBarProps) {
             {actionCount > 0 && togglePill(actionOnly, onActionOnly, "#EB5757", "⚡ Needs action", actionCount, "Show only items needing action")}
             {reminderCount > 0 && togglePill(remindersOnly, onRemindersOnly, "#56CCF2", "⏰ Reminders", reminderCount, "Show cards with pending reminders")}
             {readLaterCount > 0 && togglePill(readLaterOnly, onReadLaterOnly, "#9B51E0", "◐ To read", readLaterCount, "Show unread and in-progress link cards")}
+            {inboxCount > 0 && togglePill(inboxOnly, onInboxOnly, "#5B8DEF", "Inbox", inboxCount, "Show new captures waiting for review")}
             {reviewCount > 0 && togglePill(reviewMode, onReviewMode, "#EB5757", "⚑ Review", reviewCount, "Items needing attention: no category, no tags, short title, or stale tasks")}
             <button
               onClick={() => onArchivedOnly(!archivedOnly)}
@@ -614,14 +621,14 @@ export function FilterBar(props: FilterBarProps) {
                   <button
                     type="button"
                     onClick={() => onSourceFilterChange(null)}
-                    className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-left transition"
+                    className={menuChipClass}
                     style={{
                       borderColor: sourceFilter === null ? "#E8A83860" : "#343842",
                       background: sourceFilter === null ? "#E8A83815" : "#13161B",
                       color: sourceFilter === null ? "#E8A838" : "#ddd",
                     }}
                   >
-                    <span className="font-mono text-[11px] whitespace-nowrap">All sources</span>
+                    <span className="truncate">All sources</span>
                     <span className="text-[10px] opacity-60">{sourceCounts.reduce((sum, src) => sum + src.count, 0)}</span>
                   </button>
                   {sourceMenuItems.length === 0 ? (
@@ -634,7 +641,7 @@ export function FilterBar(props: FilterBarProps) {
                           key={src.key}
                           type="button"
                           onClick={() => onSourceFilterChange(active ? null : src.key)}
-                          className="inline-flex max-w-full items-center gap-2 rounded-full border px-2.5 py-1.5 text-left transition"
+                          className={menuChipClass}
                           style={{
                             border: `1px solid ${active ? "#E8A83870" : "#44444460"}`,
                             background: active ? "#E8A83820" : "#13161B",

@@ -56,6 +56,8 @@ export const items = pgTable("items", {
   pinned: boolean("pinned").default(false),
   completed: boolean("completed").default(false),
   completedAt: timestamp("completed_at", { mode: "date" }),
+  reviewedAt: timestamp("reviewed_at", { mode: "date" }).defaultNow(),
+  workflowStatus: text("workflow_status").notNull().default("active"),
   favourite: boolean("favourite").default(false),
   actionRequired: boolean("action_required").default(false),
   // Archive (roadmap 2.4): archived cards are hidden from the default grid

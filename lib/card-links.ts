@@ -9,16 +9,16 @@ type CardLinkSource = {
   noteEntries?: CardLinkEntry[];
 };
 
-const URL_PATTERN = /https?:\/\/[^\s<>"']+/gi;
+const URL_PATTERN = /(?:https?|file):\/\/[^\s<>"']+/gi;
 
 function stripTrailingUrlPunctuation(url: string): string {
   return url.replace(/[.,;:!?)}\]]+$/g, "");
 }
 
-function isHttpUrl(value: string): boolean {
+function isSupportedCardLinkUrl(value: string): boolean {
   try {
     const url = new URL(value);
-    return url.protocol === "http:" || url.protocol === "https:";
+    return url.protocol === "http:" || url.protocol === "https:" || url.protocol === "file:";
   } catch {
     return false;
   }
@@ -30,7 +30,7 @@ function extractTextUrls(text: string): string[] {
   for (const match of text.matchAll(URL_PATTERN)) {
     const raw = match[0] || "";
     const cleaned = stripTrailingUrlPunctuation(raw);
-    if (!cleaned || !isHttpUrl(cleaned)) continue;
+    if (!cleaned || !isSupportedCardLinkUrl(cleaned)) continue;
     urls.push(normalizeCardLinkUrl(cleaned));
   }
 
@@ -51,6 +51,7 @@ export function normalizeCardLinkUrl(url: string): string {
     }
 
     parsed.hash = "";
+    if (parsed.protocol === "file:") return parsed.toString();
     if (parsed.pathname === "/" && !parsed.search) return parsed.origin;
     return parsed.toString();
   } catch {
@@ -82,6 +83,12 @@ export function extractCardLinks(source: CardLinkSource): string[] {
 export function formatCardLinkLabel(url: string): string {
   try {
     const parsed = new URL(normalizeCardLinkUrl(url));
+    if (parsed.protocol === "file:") {
+      const localPath = decodeURIComponent(parsed.pathname || "").replace(/^\/([A-Za-z]:\/)/, "$1");
+      const label = `Local file: ${localPath || parsed.href}`;
+      return label.length > 80 ? `${label.slice(0, 77)}...` : label;
+    }
+
     const host = parsed.hostname.replace(/^www\./, "");
     const path = parsed.pathname.replace(/\/$/, "");
     const suffix = path && path !== "/" ? path : "";

@@ -1,6 +1,7 @@
 import type { ChecklistItem } from "./task-checklists";
 
 export type ItemType = "note" | "link" | "clip" | "thought" | "task" | "memory";
+export type WorkflowStatus = "inbox" | "active" | "waiting" | "done" | "archived";
 
 export interface Attachment {
   url: string;
@@ -35,6 +36,8 @@ export interface Item {
   archivedAt?: string | null;
   readingStatus?: "unread" | "reading" | "done" | null;
   recurrence?: "daily" | "weekly" | "monthly" | null;
+  reviewedAt?: string | null;
+  workflowStatus?: WorkflowStatus;
   attachments?: Attachment[];
   ogTitle: string;
   ogDescription: string;
@@ -94,6 +97,14 @@ export const TYPES: Record<ItemType, { icon: string; label: string; color: strin
   thought: { icon: "◉", label: "Thought", color: "#BB6BD9" },
   task: { icon: "☐", label: "Task", color: "#56CCF2" },
   memory: { icon: "💡", label: "Memory", color: "#F2C94C" },
+};
+
+export const WORKFLOW_STATUS_META: Record<WorkflowStatus, { label: string; color: string }> = {
+  inbox: { label: "Inbox", color: "#5B8DEF" },
+  active: { label: "Active", color: "#6FCF97" },
+  waiting: { label: "Waiting", color: "#F2C94C" },
+  done: { label: "Done", color: "#56CCF2" },
+  archived: { label: "Archived", color: "#9CA3AF" },
 };
 
 export const TAG_COLORS = ["#E8A838", "#5B8DEF", "#6FCF97", "#BB6BD9", "#EB5757", "#56CCF2", "#F2994A", "#9B51E0"];

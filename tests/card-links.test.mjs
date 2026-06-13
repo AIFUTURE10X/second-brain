@@ -66,3 +66,19 @@ test("extractCardLinks unwraps YouTube redirect links to their real destination"
     "https://app.example.com/download",
   ]);
 });
+
+test("extractCardLinks keeps local file URLs so saved HTML pages have a source link", () => {
+  const localHtml = "file:///C:/Projects/Second%20Brain/docs/second-brain-feature-guide.html";
+  const links = cardLinks.extractCardLinks({
+    url: localHtml,
+    content: `Reference saved from ${localHtml}`,
+    notes: "",
+    noteEntries: [],
+  });
+
+  assert.deepEqual(links, [localHtml]);
+  assert.equal(
+    cardLinks.formatCardLinkLabel(localHtml),
+    "Local file: C:/Projects/Second Brain/docs/second-brain-feature-guide.html",
+  );
+});

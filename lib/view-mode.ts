@@ -1,11 +1,12 @@
-export type ViewMode = "comfortable" | "list" | "compact";
+export type ViewMode = "list" | "compact" | "table" | "board";
 
 export function parseViewMode(value: unknown): ViewMode | null {
-  return value === "comfortable" || value === "list" || value === "compact" ? value : null;
+  return value === "list" || value === "compact" || value === "table" || value === "board" ? value : null;
 }
 
 export function nextViewMode(mode: ViewMode): ViewMode {
-  if (mode === "comfortable") return "list";
   if (mode === "list") return "compact";
-  return "comfortable";
+  if (mode === "compact") return "table";
+  if (mode === "table") return "board";
+  return "list";
 }

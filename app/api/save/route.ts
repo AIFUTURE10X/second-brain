@@ -13,6 +13,7 @@ import { asc, eq, sql as sqlExpr } from "drizzle-orm";
 import { findUrlDuplicates } from "@/lib/duplicate-detection.mjs";
 import { parseBody, readJsonBody, serverError } from "@/lib/api-errors";
 import { saveSchema } from "@/lib/validation";
+import { fallbackTitleFromUrl } from "@/lib/url-title";
 
 /**
  * POST /api/save?key=API_SECRET
@@ -87,12 +88,13 @@ export async function POST(req: NextRequest) {
     og = await enrichUrl(url);
     descriptionLinks = await fetchYouTubeDescriptionLinks(url);
   }
+  const fallbackTitle = fallbackTitleFromUrl(url);
 
   // AI auto-tag + auto-categorize when no tags/category provided
   if (tags.length === 0 && !category && process.env.ANTHROPIC_API_KEY) {
     const existingCats = await db.select({ name: categories.name }).from(categories).orderBy(asc(categories.name));
     const ai = await aiTagAndCategorize({
-      title: title || og.ogTitle,
+      title: title || og.ogTitle || fallbackTitle,
       content,
       url,
       ogTitle: og.ogTitle,
@@ -121,7 +123,7 @@ export async function POST(req: NextRequest) {
     .insert(items)
     .values({
       type,
-      title: title || og.ogTitle || "",
+      title: title || og.ogTitle || fallbackTitle || "",
       content: type === "thought" ? content : (body.content as string || ""),
       url,
       notes: appendYouTubeDescriptionLinksToNotes(notes, descriptionLinks),
@@ -129,6 +131,8 @@ export async function POST(req: NextRequest) {
       category,
       pinned: false,
       readingStatus: initialReadingStatus(type),
+      reviewedAt: null,
+      workflowStatus: "inbox",
       ogTitle: og.ogTitle,
       ogDescription: og.ogDescription,
       ogImage: og.ogImage,

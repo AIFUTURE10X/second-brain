@@ -2,7 +2,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 // Signed share links (roadmap 3.3): /shared/<id>?share=<HMAC(id)> gives
 // read-only access to one card without any auth. Tokens are deterministic
-// per card — revoke them all by rotating SHARE_SECRET.
+// per card: revoke them all by rotating SHARE_SECRET.
 
 export function shareSecret(): string {
   return process.env.SHARE_SECRET || process.env.API_SECRET || "";

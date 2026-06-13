@@ -1,0 +1,1168 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Second Brain Feature Guide</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #100d0b;
+      --bg-deep: #090b0c;
+      --panel: #181413;
+      --panel-soft: #211915;
+      --panel-strong: #2a1d17;
+      --text: #fff7ec;
+      --muted: #c6b5a4;
+      --line: #3a2b25;
+      --line-strong: #604234;
+      --accent: #e3a23a;
+      --accent-strong: #ffbf63;
+      --accent-soft: rgba(227, 162, 58, 0.16);
+      --rose: #e97865;
+      --sage: #8fc7a3;
+      --link: #91c6ff;
+      --code-bg: #251c17;
+      --shadow: 0 20px 50px rgba(0, 0, 0, 0.32);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      background:
+        linear-gradient(180deg, rgba(96, 52, 35, 0.36) 0%, rgba(16, 13, 11, 0.92) 260px, var(--bg-deep) 100%),
+        linear-gradient(135deg, #17110e 0%, #101416 55%, #0b0d0e 100%);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.65;
+    }
+
+    .shell {
+      display: grid;
+      grid-template-columns: 250px minmax(0, 980px);
+      gap: 32px;
+      align-items: start;
+      width: min(1260px, calc(100% - 32px));
+      margin: 0 auto;
+    }
+
+    .page {
+      min-width: 0;
+      padding: 48px 0 72px;
+    }
+
+    .toc {
+      position: sticky;
+      top: 18px;
+      max-height: calc(100vh - 36px);
+      margin-top: 48px;
+      padding: 14px;
+      overflow: auto;
+      border: 1px solid var(--line-strong);
+      border-radius: 14px;
+      background: linear-gradient(180deg, rgba(42, 29, 23, 0.94), rgba(24, 20, 19, 0.96));
+      box-shadow: var(--shadow);
+    }
+
+    .toc-title {
+      margin: 2px 4px 10px;
+      color: #ffd292;
+      font-size: 0.78rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .toc a {
+      display: block;
+      padding: 8px 10px;
+      border-radius: 8px;
+      color: var(--muted);
+      font-size: 0.92rem;
+      line-height: 1.2;
+      text-decoration: none;
+      text-decoration-color: transparent;
+    }
+
+    .toc a:hover,
+    .toc a:focus {
+      background: var(--accent-soft);
+      color: var(--text);
+      outline: none;
+    }
+
+    h1,
+    h2,
+    h3 {
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    h1 {
+      max-width: 850px;
+      margin: 0 0 14px;
+      background: linear-gradient(90deg, #fff7ec 0%, #ffcf88 48%, #e97865 100%);
+      background-clip: text;
+      color: transparent;
+      font-size: clamp(2rem, 5vw, 3.5rem);
+      font-weight: 800;
+    }
+
+    h2 {
+      margin: 52px 0 18px;
+      padding-top: 26px;
+      border-top: 1px solid var(--line-strong);
+      color: #ffd292;
+      font-size: 1.55rem;
+      font-weight: 760;
+      scroll-margin-top: 24px;
+    }
+
+    h3 {
+      margin: 30px 0 10px;
+      color: #fff7ec;
+      font-size: 1.12rem;
+      font-weight: 760;
+    }
+
+    p {
+      margin: 0 0 14px;
+      color: var(--muted);
+    }
+
+    strong {
+      color: var(--text);
+    }
+
+    a {
+      color: var(--link);
+      text-decoration-color: rgba(145, 198, 255, 0.45);
+      text-underline-offset: 0.18em;
+    }
+
+    ul,
+    ol {
+      margin: 8px 0 20px;
+      padding-left: 1.35rem;
+      color: var(--muted);
+    }
+
+    li {
+      margin: 5px 0;
+    }
+
+    li::marker {
+      color: var(--accent-strong);
+    }
+
+    code {
+      padding: 0.14rem 0.36rem;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--code-bg);
+      color: #ffd38c;
+      font-family: "Cascadia Code", Consolas, monospace;
+      font-size: 0.92em;
+    }
+
+    blockquote {
+      margin: 20px 0;
+      padding: 12px 16px;
+      border-left: 3px solid var(--accent);
+      background: var(--accent-soft);
+      color: var(--text);
+    }
+
+    main > p:first-of-type {
+      display: inline-flex;
+      margin-bottom: 18px;
+      padding: 7px 12px;
+      border: 1px solid rgba(227, 162, 58, 0.38);
+      border-radius: 999px;
+      background: rgba(227, 162, 58, 0.12);
+      color: #ffd292;
+      font-size: 0.92rem;
+    }
+
+    main > p:nth-of-type(2) {
+      max-width: 820px;
+      margin-bottom: 10px;
+      padding: 18px 20px;
+      border: 1px solid var(--line-strong);
+      border-radius: 12px;
+      background: linear-gradient(135deg, rgba(42, 29, 23, 0.92), rgba(24, 20, 19, 0.96));
+      box-shadow: var(--shadow);
+      color: var(--text);
+    }
+
+    h3 + p {
+      padding: 16px 18px 5px;
+      border-top: 1px solid var(--line);
+      border-right: 1px solid var(--line);
+      border-left: 1px solid var(--line);
+      border-radius: 10px 10px 0 0;
+      background: linear-gradient(180deg, var(--panel-soft), var(--panel));
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.22);
+    }
+
+    h3 + p + p {
+      padding: 0 18px 6px;
+      border-right: 1px solid var(--line);
+      border-left: 1px solid var(--line);
+      background: var(--panel);
+    }
+
+    h3 + p + p + ul,
+    h3 + p + p + ol {
+      margin-top: 0;
+      padding: 2px 18px 18px 2.65rem;
+      border-right: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      border-left: 1px solid var(--line);
+      border-radius: 0 0 10px 10px;
+      background:
+        linear-gradient(90deg, rgba(227, 162, 58, 0.08), transparent 38%),
+        var(--panel);
+    }
+
+    @media (max-width: 960px) {
+      .shell {
+        display: block;
+        width: min(100% - 24px, 980px);
+      }
+
+      .toc {
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        display: flex;
+        gap: 6px;
+        max-height: none;
+        margin: 0 -12px 18px;
+        padding: 10px 12px;
+        overflow-x: auto;
+        border-radius: 0 0 14px 14px;
+      }
+
+      .toc-title {
+        display: none;
+      }
+
+      .toc a {
+        flex: 0 0 auto;
+        white-space: nowrap;
+      }
+
+      .page {
+        padding: 28px 0 52px;
+      }
+
+      h2 {
+        margin-top: 36px;
+        scroll-margin-top: 74px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="toc" aria-label="Feature guide sections">
+      <div class="toc-title">Sections</div>
+      <a href="#core-app">Core App</a>
+      <a href="#capture-sources">Capture Sources</a>
+      <a href="#views">Views</a>
+      <a href="#finding-and-filtering">Finding And Filtering</a>
+      <a href="#organization">Organization</a>
+      <a href="#item-types">Item Types</a>
+      <a href="#item-editor-settings">Item Editor Settings</a>
+      <a href="#card-details">Card Details</a>
+      <a href="#review-workflows">Review Workflows</a>
+      <a href="#import-export-and-backup">Import, Export, And Backup</a>
+      <a href="#automation">Automation</a>
+      <a href="#settings-and-configuration">Settings And Configuration</a>
+      <a href="#security-and-privacy">Security And Privacy</a>
+      <a href="#offline-and-sync">Offline And Sync</a>
+      <a href="#admin-and-maintenance">Admin And Maintenance</a>
+      <a href="#recommended-daily-workflow">Daily Workflow</a>
+    </aside>
+    <main class="page"><h1>Second Brain Feature Guide</h1>
+<p>Last updated: 2026-06-13</p>
+<p>This guide lists the main features available in Second Brain, what each feature does, and how to use it. It covers the core web app, the Chrome extension, the Telegram bot, the desktop wrapper, and the latest sandbox work on saved views, inbox review, workflow status, and richer table/board views.</p>
+<h2 id="core-app">Core App</h2>
+<h3>Brain dashboard</h3>
+<p><strong>What it does:</strong> The main workspace for capturing, finding, reviewing, organizing, and editing everything in your Second Brain.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Open the Second Brain web app.</li>
+<li>Use the capture bar at the top to add new items.</li>
+<li>Use saved view chips, search, filters, and view controls to change what you are looking at.</li>
+<li>Open any card to edit notes, tags, categories, reminders, relations, attachments, and AI features.</li>
+</ul>
+<h3>Quick capture bar</h3>
+<p><strong>What it does:</strong> Lets you quickly add links, thoughts, tasks, and memories without opening a full editor.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Paste a URL to save it as a link.</li>
+<li>Type normal text to save a thought.</li>
+<li>Start with <code>/t</code> to create a task.</li>
+<li>Start with <code>/m</code> to create a memory.</li>
+<li>Add tags or a category after saving from the item editor if needed.</li>
+<li>Use the voice button when available to dictate capture text into the bar.</li>
+</ul>
+<h3>Card editor</h3>
+<p><strong>What it does:</strong> Opens the full details for an item so you can update its title, body, notes, tags, category, type, reminders, attachments, and related cards.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Click a card to expand or open it.</li>
+<li>Edit the fields you want to change.</li>
+<li>Save the item when finished.</li>
+<li>If another browser window changed the same item first, Second Brain will show a conflict warning so you do not overwrite newer work by accident.</li>
+</ul>
+<h3>Pop-out item window</h3>
+<p><strong>What it does:</strong> Opens an item in a separate focused window for deeper editing or review.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Open an item.</li>
+<li>Click the pop-out/open action.</li>
+<li>Edit or review the item in the separate window.</li>
+<li>Changes sync back to the main app.</li>
+</ul>
+<h2 id="capture-sources">Capture Sources</h2>
+<h3>Chrome extension context menu</h3>
+<p><strong>What it does:</strong> Saves the current page, a link, or selected text directly from Chrome into Second Brain.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>In Chrome, go to <code>chrome://extensions</code>.</li>
+<li>Make sure <code>Second Brain - Save to Brain</code> is enabled.</li>
+<li>Click reload on the extension after code changes.</li>
+<li>Right-click a page, link, or selected text.</li>
+<li>Choose <code>Save to Second Brain</code>.</li>
+<li>Open Second Brain and check the Inbox or All view for the saved card.</li>
+</ul>
+<h3>Chrome extension popup</h3>
+<p><strong>What it does:</strong> Lets you save the current tab from the extension button, with optional tags and category.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Click the Second Brain extension icon in Chrome.</li>
+<li>Set the Second Brain host URL and API secret if prompted.</li>
+<li>Add optional tags or category.</li>
+<li>Click <code>Save to Brain</code>.</li>
+</ul>
+<h3>Web share target</h3>
+<p><strong>What it does:</strong> Accepts shared text, links, and files from the browser or operating system share sheet.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Use your browser or device share action.</li>
+<li>Choose Second Brain as the destination when available.</li>
+<li>Share text, title, URL, or image files.</li>
+<li>Second Brain saves the shared content and uploads shared files as attachments.</li>
+</ul>
+<h3>PWA install and shortcut</h3>
+<p><strong>What it does:</strong> Lets the browser install Second Brain as a standalone app and exposes a quick shortcut for new clips.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Use the browser install option when it appears for the site.</li>
+<li>Launch the installed app like a normal app; it starts at the main brain dashboard.</li>
+<li>Use the browser/app shortcut named <code>New clip</code> when available; it opens <code>/?new=1</code>.</li>
+<li>The installed app also keeps the share target active for title, text, URL, and image sharing.</li>
+</ul>
+<h3>Telegram bot capture</h3>
+<p><strong>What it does:</strong> Lets you send links or notes to Second Brain from Telegram.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Configure the Telegram bot token and webhook in the environment.</li>
+<li>Message the bot with a link or note.</li>
+<li>Forward a message from another chat to the bot to capture its content.</li>
+<li>The bot saves the message into Second Brain.</li>
+<li>Check the app for the new captured item.</li>
+</ul>
+<h3>Desktop wrapper</h3>
+<p><strong>What it does:</strong> Provides a Windows desktop app wrapper around the web-hosted Second Brain.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Install or run the generated desktop app.</li>
+<li>Use it like the normal web app.</li>
+<li>It loads the hosted Second Brain experience inside a desktop shell.</li>
+</ul>
+<h2 id="views">Views</h2>
+<h3>Saved view chips</h3>
+<p><strong>What it does:</strong> Gives one-click access to important working views with live counts.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Click a chip near the top of the app.</li>
+<li>Built-in chips include <code>All</code>, <code>Inbox</code>, <code>Action</code>, <code>Favorites</code>, <code>Tasks</code>, <code>Reminders</code>, and <code>Cleanup</code>.</li>
+<li>The list updates immediately to match the selected view.</li>
+</ul>
+<h3>Custom saved views</h3>
+<p><strong>What it does:</strong> Lets you save your current search, filters, and sort as a reusable view.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Set up the search, category, tags, type, status, and sort you want.</li>
+<li>Click the add/save view control.</li>
+<li>Name the view.</li>
+<li>Click the saved custom view later to restore those filters.</li>
+<li>Delete custom views you no longer need from the view control.</li>
+</ul>
+<h3>Responsive compact list grid</h3>
+<p><strong>What it does:</strong> Shows list-style cards in compact responsive columns instead of stretching every card across the full screen.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Choose the list/card view.</li>
+<li>Resize the browser window.</li>
+<li>The app automatically fits more cards on wide screens and fewer cards on narrow screens.</li>
+</ul>
+<h3>Compact grid view</h3>
+<p><strong>What it does:</strong> Shows many items at once using smaller cards and thumbnails.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Use the view toggle until the compact grid view is selected.</li>
+<li>Scan thumbnails, titles, tags, categories, and badges.</li>
+<li>Open any card for full details.</li>
+</ul>
+<h3>Table view</h3>
+<p><strong>What it does:</strong> Shows items in a denser database-style table for scanning, sorting, and triage.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Use the view toggle until the table view is selected.</li>
+<li>Scan title, type, category, tags, workflow status, related-card counts, and updated time.</li>
+<li>Open an item from the table to edit it.</li>
+</ul>
+<h3>Board view</h3>
+<p><strong>What it does:</strong> Shows items grouped into columns, useful for workflow review.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Use the view toggle until the board view is selected.</li>
+<li>Review items by their current group, such as workflow status.</li>
+<li>Open cards from the board to edit or move them through the workflow.</li>
+</ul>
+<h2 id="finding-and-filtering">Finding And Filtering</h2>
+<h3>Full-text search</h3>
+<p><strong>What it does:</strong> Searches across titles, tags, categories, body text, notes, and link metadata.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Click the search box or use <code>Ctrl+K</code>.</li>
+<li>Type the keyword, URL, tag, category, or phrase you want.</li>
+<li>The results update to show matching items.</li>
+<li>If exact full-text search misses something, fuzzy matching helps find near matches.</li>
+</ul>
+<h3>Type filters</h3>
+<p><strong>What it does:</strong> Narrows the brain to specific item types.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Open the type filter.</li>
+<li>Choose <code>All</code>, <code>Note</code>, <code>Link</code>, <code>Clip</code>, <code>Thought</code>, <code>Task</code>, or <code>Memory</code>.</li>
+<li>Clear the filter to return to all types.</li>
+</ul>
+<h3>Category filters</h3>
+<p><strong>What it does:</strong> Narrows the brain to one or more categories.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Open the category filter.</li>
+<li>Pick the category you want to inspect.</li>
+<li>Combine category filters with tags, search, and saved views.</li>
+</ul>
+<h3>Tag filters</h3>
+<p><strong>What it does:</strong> Narrows the brain by tags.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Open the tag filter.</li>
+<li>Select one or more tags.</li>
+<li>Use tag filters with search or category filters for more precise results.</li>
+</ul>
+<h3>More filters</h3>
+<p><strong>What it does:</strong> Provides extra filters for review and cleanup workflows.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Open the <code>More</code> filter menu.</li>
+<li>Use <code>With notes</code> to show cards that already have note entries.</li>
+<li>Use <code>Favourites</code>, <code>Needs action</code>, <code>Reminders</code>, and <code>Inbox</code> for focused review queues.</li>
+<li>Use <code>Review</code> to find items needing attention, such as no category, no tags, short titles, or stale tasks.</li>
+<li>Use <code>Sources</code> to filter by saved source/domain, with a source search box when there are many sources.</li>
+<li>Clear filters when you want to return to the broader view.</li>
+</ul>
+<h3>Sorting</h3>
+<p><strong>What it does:</strong> Changes the order of displayed items.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Use the sort control.</li>
+<li>Pick newest, oldest, or the available sort that fits your review session.</li>
+</ul>
+<h2 id="organization">Organization</h2>
+<h3>Categories</h3>
+<p><strong>What it does:</strong> Gives each item a primary bucket, such as business, design, AI, research, personal, or project areas.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Add or change the category from the item editor.</li>
+<li>Use category filters to focus on one area of the brain.</li>
+<li>Use the category manager to edit category names, colors, hierarchy, and ordering.</li>
+</ul>
+<h3>Category hierarchy</h3>
+<p><strong>What it does:</strong> Allows categories to be organized into parent and child groups.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Open the category manager.</li>
+<li>Create or edit categories.</li>
+<li>Assign parent categories where useful.</li>
+<li>Use the hierarchy to keep large category lists easier to scan.</li>
+</ul>
+<h3>Tags</h3>
+<p><strong>What it does:</strong> Adds flexible labels to items so one card can belong to many topics.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Add tags while editing an item.</li>
+<li>Filter by tags from the tag filter.</li>
+<li>Use consistent tag names for recurring topics and projects.</li>
+</ul>
+<h3>Tag manager and merge</h3>
+<p><strong>What it does:</strong> Helps clean up duplicate or messy tags.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Open the tag manager.</li>
+<li>Review duplicate or similar tags.</li>
+<li>Merge tags when two labels should become one.</li>
+<li>Use this periodically to keep the brain tidy.</li>
+</ul>
+<h3>Workflow status</h3>
+<p><strong>What it does:</strong> Tracks where an item is in your personal knowledge workflow.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Use statuses such as <code>Inbox</code>, <code>Active</code>, <code>Waiting</code>, <code>Done</code>, and <code>Archived</code>.</li>
+<li>New captures can start in <code>Inbox</code>.</li>
+<li>Move reviewed or useful items into <code>Active</code>, <code>Waiting</code>, or <code>Done</code>.</li>
+<li>Use the board or saved views to review items by status.</li>
+</ul>
+<h3>Review state</h3>
+<p><strong>What it does:</strong> Separates newly captured items from items you have already processed.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Use the <code>Inbox</code> view to see unreviewed captures.</li>
+<li>Review each card.</li>
+<li>Mark items as reviewed when they have the right category, tags, and next action.</li>
+</ul>
+<h3>Favorites</h3>
+<p><strong>What it does:</strong> Marks high-value items you want to find quickly.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Click the favorite/star action on a card.</li>
+<li>Use the <code>Favorites</code> saved view to see starred items.</li>
+</ul>
+<h3>Action required</h3>
+<p><strong>What it does:</strong> Marks items that need a decision, reply, task, or follow-up.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Click the action-required indicator on a card.</li>
+<li>Use the <code>Action</code> saved view to review everything waiting on you.</li>
+<li>Clear the action marker when handled.</li>
+</ul>
+<h3>Pinned cards</h3>
+<p><strong>What it does:</strong> Keeps important cards visually highlighted and sorted above normal cards.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Open the card action row.</li>
+<li>Click <code>Pin</code> to pin the card, or <code>Unpin</code> to remove the pin.</li>
+<li>Look for the priority badge or icon in card, table, or board views.</li>
+</ul>
+<h3>Bulk triage</h3>
+<p><strong>What it does:</strong> Applies changes to multiple selected items at once.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Select multiple cards.</li>
+<li>Use the bulk action bar.</li>
+<li>Mark selected cards reviewed, favorite them, flag action required, set workflow status, assign category, or add tags.</li>
+<li>Use this for inbox cleanup sessions.</li>
+</ul>
+<h3>AI organization suggestions</h3>
+<p><strong>What it does:</strong> Suggests useful tags and categories for a card, but asks you to confirm before applying them.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Open a card.</li>
+<li>Click the AI suggestion action.</li>
+<li>Review the proposed tags and category.</li>
+<li>Apply the suggestions you want to keep.</li>
+</ul>
+<h3>AI auto-tagging on save</h3>
+<p><strong>What it does:</strong> Automatically suggests tags and a category when new items are saved.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Save a link or note normally.</li>
+<li>Review the generated tags and category later in the card.</li>
+<li>Adjust anything that is not quite right.</li>
+</ul>
+<h2 id="item-types">Item Types</h2>
+<h3>Link cards</h3>
+<p><strong>What it does:</strong> Stores a URL with title, description, image, source metadata, tags, and notes.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Paste a URL into quick capture, use the Chrome extension, or share a link to Second Brain.</li>
+<li>Open the card to add notes, tags, category, reminder, or relations.</li>
+</ul>
+<h3>Clip cards</h3>
+<p><strong>What it does:</strong> Stores a selected text clipping together with the source page URL.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Select text on a page, right-click, and choose <code>Save to Second Brain</code>.</li>
+<li>Use the Chrome popup and choose <code>Clip</code> when you want the current page URL plus selected or pasted notes.</li>
+<li>Review clips from search, source filters, or the <code>Clip</code> type filter.</li>
+</ul>
+<h3>Thought cards</h3>
+<p><strong>What it does:</strong> Stores quick text notes, ideas, observations, or snippets.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Type a normal sentence or paragraph into quick capture.</li>
+<li>Save it.</li>
+<li>Add tags or category later if needed.</li>
+</ul>
+<h3>Memory cards</h3>
+<p><strong>What it does:</strong> Stores durable facts, decisions, instructions, or things you want to remember.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Start quick capture with <code>/m</code>.</li>
+<li>Write the memory.</li>
+<li>Save it and tag it by project or topic.</li>
+</ul>
+<h3>Task cards</h3>
+<p><strong>What it does:</strong> Stores tasks and follow-up work inside the brain.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Start quick capture with <code>/t</code>.</li>
+<li>Save the task.</li>
+<li>Use the task saved view to review tasks.</li>
+<li>Add reminders or checklist items if the task has steps.</li>
+</ul>
+<h3>Checklist cards</h3>
+<p><strong>What it does:</strong> Tracks multi-step tasks with checkable rows.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Create or open a task/checklist item.</li>
+<li>Add checklist rows.</li>
+<li>Tick rows off as you complete them.</li>
+<li>Use the task view to find unfinished checklist work.</li>
+</ul>
+<h3>File and attachment cards</h3>
+<p><strong>What it does:</strong> Stores uploaded files and images alongside item metadata.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Upload or attach files from the item editor.</li>
+<li>Share supported files through the web share target.</li>
+<li>Drag files onto an existing card when supported.</li>
+<li>Open the card to view or manage attachments.</li>
+</ul>
+<h2 id="item-editor-settings">Item Editor Settings</h2>
+<h3>Item type picker</h3>
+<p><strong>What it does:</strong> Sets the core type of a card, which changes how the card is displayed and how it appears in filters.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Open <code>Add to Brain</code> or edit an existing card.</li>
+<li>Choose <code>Note</code>, <code>Link</code>, <code>Clip</code>, <code>Thought</code>, <code>Task</code>, or <code>Memory</code>.</li>
+<li>Use <code>Task</code> when you need checklist rows and completion tracking.</li>
+<li>Use <code>Link</code> or <code>Clip</code> when a source URL should be stored with the card.</li>
+</ul>
+<h3>Card flags</h3>
+<p><strong>What it does:</strong> Adds quick review markers to a card.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Use <code>Mark favourite</code> to add the card to the Favorites view.</li>
+<li>Use <code>Flag for action</code> when a card needs a decision, task, reply, or follow-up.</li>
+<li>Use the card action row to <code>Pin</code> important cards above normal cards.</li>
+<li>Use bulk triage when the same flag should apply to several selected cards.</li>
+</ul>
+<h3>Reminder settings</h3>
+<p><strong>What it does:</strong> Adds a Telegram reminder to an item.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Set a reminder date in the editor.</li>
+<li>Pick a time from the dropdown; available times run from <code>07:00</code> to <code>22:00</code> in 30-minute steps.</li>
+<li>Use quick presets for <code>Today</code>, <code>Tomorrow</code>, <code>Next week</code>, or <code>30 days</code>.</li>
+<li>Add an optional reminder message.</li>
+<li>Click <code>Clear</code> to remove the reminder from the card.</li>
+</ul>
+<h3>Category settings</h3>
+<p><strong>What it does:</strong> Sets or creates the card category from inside the editor.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Choose <code>Auto</code> to leave categorization to AI when available.</li>
+<li>Click an existing parent or child category to assign it.</li>
+<li>Type a new category name when the card needs a new bucket.</li>
+<li>Use category management for color, parent/child hierarchy, ordering, and cleanup.</li>
+</ul>
+<h3>Content, notes, and insert-from-card settings</h3>
+<p><strong>What it does:</strong> Controls the card body, reusable note entries, and cross-card content insertion.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Edit the main <code>Content / description</code> field for the card body.</li>
+<li>Click <code>Insert from another card</code>, search cards by title, content, or tag, then insert the selected card text into the content field.</li>
+<li>Use <code>+ Add entry</code> under Notes to create independent note entries.</li>
+<li>Each note entry keeps its own created/edited timestamp and can be edited or deleted independently.</li>
+</ul>
+<h3>Related-card settings</h3>
+<p><strong>What it does:</strong> Creates explicit two-way links between cards.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Click <code>+ Link related cards</code>.</li>
+<li>Search for cards by title, content, or tag.</li>
+<li>Click cards to mark them as linked.</li>
+<li>Remove a related card from the editor when it no longer belongs.</li>
+</ul>
+<h3>Tag settings</h3>
+<p><strong>What it does:</strong> Adds flexible topic labels to the card.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Enter tags in the <code>Tags</code> field separated by commas.</li>
+<li>Use simple, repeatable names so tag filters and saved views stay useful.</li>
+<li>Use the tag manager to merge case or punctuation variants later.</li>
+</ul>
+<h3>Attachment upload settings</h3>
+<p><strong>What it does:</strong> Attaches files to a card through Vercel Blob.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Click <code>+ Attach files</code>, drag files into the editor, or use <code>Paste</code> for an image from the clipboard.</li>
+<li>Supported upload types include PDF, Excel, Word, CSV, plain text, Markdown, and common image formats.</li>
+<li>Each file can be up to 50 MB.</li>
+<li>Rename attachments inside the editor, open them, or remove them before saving.</li>
+<li>Uploads require <code>BLOB_READ_WRITE_TOKEN</code> to be configured.</li>
+</ul>
+<h3>Draft autosave</h3>
+<p><strong>What it does:</strong> Protects unfinished add/edit work in the browser while the editor is open.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Start editing a card or creating a new one.</li>
+<li>The form autosaves locally after changes.</li>
+<li>If you close or refresh before saving, reopening the editor can restore the unsaved draft.</li>
+<li>Draft keys use <code>sb_main_form_draft:new</code> for new cards and <code>sb_main_form_draft:edit:&lt;id&gt;</code> for edited cards.</li>
+</ul>
+<h2 id="card-details">Card Details</h2>
+<h3>Notes</h3>
+<p><strong>What it does:</strong> Adds your own extra context to an item after capture.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Open a card.</li>
+<li>Add notes in the notes field.</li>
+<li>Save the card.</li>
+<li>Links inside notes can be detected and made easier to open.</li>
+</ul>
+<h3>AI summaries</h3>
+<p><strong>What it does:</strong> Generates a short summary for long pages, videos, or notes.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Open a card.</li>
+<li>Click the summarize action.</li>
+<li>Review the generated summary.</li>
+<li>Keep, edit, or use it as a quick reminder of what the item contains.</li>
+</ul>
+<h3>URL enrichment</h3>
+<p><strong>What it does:</strong> Pulls useful metadata from saved links, such as title, description, site name, image, and source domain.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Save a URL.</li>
+<li>Wait for enrichment to complete.</li>
+<li>Review the generated preview on the card.</li>
+</ul>
+<h3>YouTube enrichment</h3>
+<p><strong>What it does:</strong> Improves YouTube cards with video metadata, thumbnail, and summary-friendly content where available.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Save a YouTube URL.</li>
+<li>Open the card to review the title, channel/source, thumbnail, and extracted context.</li>
+<li>Use AI summary for longer videos when useful.</li>
+</ul>
+<h3>Related cards and backlinks</h3>
+<p><strong>What it does:</strong> Connects items that belong together so one idea can lead to another.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Open a card.</li>
+<li>Add related items from the relation controls.</li>
+<li>Use related counts in card, table, and board views to spot connected material.</li>
+<li>Open related cards when reviewing a topic.</li>
+</ul>
+<h3>Reminders</h3>
+<p><strong>What it does:</strong> Adds time-based follow-up to cards.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Open a card.</li>
+<li>Add a reminder date, time, and optional message.</li>
+<li>Use the <code>Reminders</code> saved view to see scheduled reminders.</li>
+<li>If Telegram reminders are configured, due reminders can be sent through Telegram.</li>
+</ul>
+<h3>Attachments</h3>
+<p><strong>What it does:</strong> Keeps files, images, and shared uploads attached to the relevant item.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Add attachments from the card editor.</li>
+<li>Share files to Second Brain through the web share target.</li>
+<li>Open the card to view or manage the attached files.</li>
+</ul>
+<h2 id="review-workflows">Review Workflows</h2>
+<h3>Inbox review</h3>
+<p><strong>What it does:</strong> Gives you a place to process new captures before they disappear into the wider brain.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Open the <code>Inbox</code> saved view.</li>
+<li>Review each new item.</li>
+<li>Add missing tags, category, status, reminder, or action flag.</li>
+<li>Mark reviewed or move it out of Inbox when finished.</li>
+</ul>
+<h3>Cleanup view</h3>
+<p><strong>What it does:</strong> Finds cards that probably need organization work, such as missing tags, weak metadata, or incomplete categorization.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Open the <code>Cleanup</code> saved view.</li>
+<li>Fix one card at a time or use bulk triage.</li>
+<li>Add tags, categories, summaries, or notes until the item is useful.</li>
+</ul>
+<h3>Action review</h3>
+<p><strong>What it does:</strong> Shows everything marked as needing your attention.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Open the <code>Action</code> saved view.</li>
+<li>Work through the list.</li>
+<li>Clear the action flag once the item is handled.</li>
+</ul>
+<h3>Task review</h3>
+<p><strong>What it does:</strong> Shows task and checklist items together.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Open the <code>Tasks</code> saved view.</li>
+<li>Update task status, checklist progress, reminders, or action flags.</li>
+<li>Move finished tasks to <code>Done</code> or archive them.</li>
+</ul>
+<h2 id="import-export-and-backup">Import, Export, And Backup</h2>
+<h3>JSON export</h3>
+<p><strong>What it does:</strong> Exports your brain data in a structured backup format.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Open the export controls.</li>
+<li>Choose JSON.</li>
+<li>Save the generated backup file.</li>
+</ul>
+<h3>CSV export</h3>
+<p><strong>What it does:</strong> Exports item data into a spreadsheet-friendly format.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Open <code>/api/export?format=csv</code> in the browser or call it with the API secret.</li>
+<li>Open the result in Excel, Google Sheets, or another spreadsheet tool.</li>
+</ul>
+<h3>Markdown export</h3>
+<p><strong>What it does:</strong> Exports item content into Markdown for portable reading or archiving.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Open the export controls.</li>
+<li>Choose Markdown.</li>
+<li>Use the generated Markdown files as a readable backup or external reference.</li>
+</ul>
+<h3>Import</h3>
+<p><strong>What it does:</strong> Restores or brings in data from a supported export file.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Open the import controls.</li>
+<li>Choose the supported import file.</li>
+<li>Review the imported items after the process finishes.</li>
+</ul>
+<h3>Pre-migration backups</h3>
+<p><strong>What it does:</strong> Protects your data before database schema changes.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Use the backup or export process before applying migrations.</li>
+<li>Keep the backup until the migration has been verified.</li>
+</ul>
+<h2 id="automation">Automation</h2>
+<h3>Telegram reminders</h3>
+<p><strong>What it does:</strong> Sends due reminder notifications through Telegram when configured.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Configure the Telegram token and chat settings.</li>
+<li>Add reminders to cards.</li>
+<li>Let the scheduled reminder job run.</li>
+</ul>
+<h3>Daily digest</h3>
+<p><strong>What it does:</strong> Sends a daily summary of relevant brain activity or reminders through Telegram when configured.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Configure Telegram and the digest cron.</li>
+<li>Let the scheduled job run.</li>
+<li>Review the digest message in Telegram.</li>
+</ul>
+<h3>Memory of the week</h3>
+<p><strong>What it does:</strong> Surfaces older or important memories periodically so useful knowledge does not go stale.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Configure the scheduled job.</li>
+<li>Keep memory cards tagged and categorized.</li>
+<li>Review the weekly memory when it arrives.</li>
+</ul>
+<h3>API save endpoint</h3>
+<p><strong>What it does:</strong> Allows external tools, the Chrome extension, and integrations to save items into Second Brain.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Send a request to the save API endpoint.</li>
+<li>Include the API secret in the <code>x-api-key</code> header when calling from outside the same-origin app.</li>
+<li>Send item fields such as URL, title, text, tags, category, or source.</li>
+</ul>
+<h3>Item API</h3>
+<p><strong>What it does:</strong> Provides programmatic access to create, read, update, and delete items.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Use the documented API routes from the app.</li>
+<li>Authenticate external calls with the API secret.</li>
+<li>Use same-origin browser calls from the web app.</li>
+</ul>
+<h2 id="settings-and-configuration">Settings And Configuration</h2>
+<h3>Required environment settings</h3>
+<p><strong>What it does:</strong> Provides the minimum configuration needed for Second Brain to run and for trusted clients to save data.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Set <code>DATABASE_URL</code> to the Neon Postgres connection string.</li>
+<li>Set <code>API_SECRET</code> to a private bearer token used by the Chrome extension, scripts, and external API calls.</li>
+<li>Put local values in <code>.env.local</code>; put production values in Vercel environment variables.</li>
+<li>Keep <code>API_SECRET</code> private, because there is no separate multi-user login system.</li>
+</ul>
+<h3>AI feature settings</h3>
+<p><strong>What it does:</strong> Turns AI tagging, categorization, and summaries on or off.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Set <code>ANTHROPIC_API_KEY</code> to enable Claude auto-tagging and auto-categorization on save.</li>
+<li>Set <code>OPENAI_API_KEY</code> to enable the card <code>Summarize</code> button.</li>
+<li>Set <code>OPENAI_SUMMARY_MODEL</code> to choose the summary model; the default is <code>gpt-5.4-mini</code>.</li>
+<li>If these keys are missing, normal saving still works and AI-only features degrade gracefully.</li>
+</ul>
+<h3>Attachment settings</h3>
+<p><strong>What it does:</strong> Enables file uploads through Vercel Blob.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Set <code>BLOB_READ_WRITE_TOKEN</code> from Vercel Storage Blob.</li>
+<li>Allowed upload types include PDF, Excel, Word, CSV, plain text, Markdown, PNG, JPEG, GIF, WebP, AVIF, BMP, HEIC, HEIF, and SVG.</li>
+<li>The current upload limit is 50 MB per file.</li>
+<li>If this token is missing, the app will show an upload configuration error.</li>
+</ul>
+<h3>Telegram and cron settings</h3>
+<p><strong>What it does:</strong> Enables Telegram capture, reminders, daily digest, and memory-of-week automation.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Set <code>TELEGRAM_BOT_TOKEN</code> for the bot.</li>
+<li>Set <code>TELEGRAM_ALLOWED_USER_ID</code> so only approved Telegram user IDs can talk to the bot.</li>
+<li>Set <code>TELEGRAM_WEBHOOK_SECRET</code> and include the same value when registering the webhook.</li>
+<li>Set <code>CRON_SECRET</code> so Vercel cron calls to <code>/api/cron/*</code> are authorized.</li>
+<li>Set <code>REMINDER_TIME_ZONE</code> for Telegram reminder display times; the example value is <code>Asia/Bangkok</code>.</li>
+<li>Set <code>NEXT_PUBLIC_APP_URL</code> so Telegram card links point back to the right deployment.</li>
+<li>If <code>NEXT_PUBLIC_APP_URL</code> is missing, reminder links fall back to <code>NEXTAUTH_URL</code>, then <code>VERCEL_URL</code>, then the current request origin.</li>
+</ul>
+<h3>YouTube transcript settings</h3>
+<p><strong>What it does:</strong> Allows YouTube summaries to use transcript enrichment when the configured Apify actor is available.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Set <code>APIFY_API_TOKEN</code>.</li>
+<li>Set <code>APIFY_YOUTUBE_TRANSCRIPT_ACTOR</code> to the actor used for transcript extraction.</li>
+<li>If no actor is set, the code falls back to <code>akash9078/youtube-transcript-extractor</code>.</li>
+<li>Save a YouTube URL, then use the card summary feature when transcript context is available.</li>
+</ul>
+<h3>App version setting</h3>
+<p><strong>What it does:</strong> Lets the app detect that a newer deployed version exists and reload cleanly.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>The app version API reads <code>VERCEL_GIT_COMMIT_SHA</code>, then <code>NEXT_PUBLIC_APP_VERSION</code>, then falls back to <code>dev</code>.</li>
+<li>When the running client sees a newer version, it clears app caches and reloads.</li>
+<li>This helps avoid stale browser assets after a deploy.</li>
+</ul>
+<h3>Server-stored app settings</h3>
+<p><strong>What it does:</strong> Stores user-facing app preferences in the database settings table.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li><code>memory_of_week_enabled</code> controls whether the weekly Telegram memory automation is on.</li>
+<li><code>custom_saved_views</code> stores custom saved views and their search/filter/sort definitions.</li>
+<li><code>custom_cat_colors</code> stores extra category colors picked in the category manager.</li>
+<li>The settings API supports <code>GET /api/settings</code>, <code>GET /api/settings?key=...</code>, <code>PUT /api/settings</code>, and <code>DELETE /api/settings</code>.</li>
+</ul>
+<h3>Local browser preferences</h3>
+<p><strong>What it does:</strong> Saves per-browser preferences and drafts locally for a faster interface.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li><code>sb_density</code> remembers the selected view mode: <code>list</code>, <code>compact</code>, <code>table</code>, or <code>board</code>.</li>
+<li><code>sb_collapsed_cats</code> remembers which parent categories are collapsed in category management.</li>
+<li><code>sb_custom_cat_colors</code> caches custom category colors instantly before the server settings response returns.</li>
+<li><code>sb_main_form_draft:new</code> and <code>sb_main_form_draft:edit:&lt;id&gt;</code> store unsaved editor drafts.</li>
+<li><code>second-brain-client-id</code> is a session storage value used to identify the current browser tab for cross-window sync messages.</li>
+<li><code>second-brain-desktop-launch-attempted</code> is a session storage value that prevents repeated desktop deep-link launch attempts.</li>
+</ul>
+<h3>Chrome extension settings</h3>
+<p><strong>What it does:</strong> Connects the Chrome extension to your deployed or local Second Brain app.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Set <code>Your Second Brain URL</code> to the app host, such as a Vercel URL or local dev URL.</li>
+<li>Set <code>API Key</code> to the same value as <code>API_SECRET</code>.</li>
+<li>Click <code>Connect</code>; the popup tests the connection against <code>/api/categories</code>.</li>
+<li>Use the popup type buttons for <code>Link</code>, <code>Clip</code>, <code>Note</code>, or <code>Thought</code>.</li>
+<li>Use popup fields for title, notes, tags, and category before clicking <code>Save to Brain</code>.</li>
+<li>The extension stores <code>host</code> and <code>key</code> in Chrome local extension storage.</li>
+</ul>
+<h3>Desktop launcher settings</h3>
+<p><strong>What it does:</strong> Tries to open the installed desktop app when the hosted web app is opened in a normal browser.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>The desktop deep link is <code>secondbrain://open</code>.</li>
+<li>The launcher runs on the production host <code>second-brain-bice-two.vercel.app</code> and other Vercel preview hosts.</li>
+<li>Add <code>?browser=1</code> to the URL when you intentionally want to stay in the browser.</li>
+<li>The Tauri desktop webview suppresses the launcher so it does not loop back into itself.</li>
+</ul>
+<h3>Telegram bot commands</h3>
+<p><strong>What it does:</strong> Provides quick capture shortcuts from Telegram.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Send a URL to create an auto-tagged link.</li>
+<li>Send plain text to create a thought.</li>
+<li>Send <code>/t text</code> to create a task.</li>
+<li>Send <code>/m text</code> to create a memory.</li>
+<li>Forward a message to capture its content.</li>
+<li>Send <code>/memory</code> or <code>/memories</code> to check the memory-of-week setting.</li>
+<li>Send <code>/memory_on</code>, <code>/memories_on</code>, <code>/memory_off</code>, or <code>/memories_off</code> to toggle weekly memories.</li>
+</ul>
+<h3>Cron schedules</h3>
+<p><strong>What it does:</strong> Controls when scheduled Telegram automations run in production.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li><code>/api/cron/daily-digest</code> runs at <code>00:00 UTC</code>, which is <code>07:00</code> in Thailand.</li>
+<li><code>/api/cron/reminders</code> runs at <code>00:10 UTC</code>.</li>
+<li><code>/api/cron/memory-of-week</code> runs Sundays at <code>02:00 UTC</code>, which is <code>09:00</code> in Thailand.</li>
+<li>All cron endpoints require the <code>CRON_SECRET</code> bearer token.</li>
+</ul>
+<h3>API route settings</h3>
+<p><strong>What it does:</strong> Exposes controlled integration and maintenance surfaces.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Use <code>/api/save</code> for simple external capture from the extension, Telegram, scripts, Shortcuts, or automation tools.</li>
+<li>Use <code>/api/items</code> for full item CRUD, search, filters, workflow status, favourites, pins, action flags, attachments, and optimistic conflict checks.</li>
+<li>Use <code>/api/categories</code> for category create, edit, delete, parent assignment, color, and reorder.</li>
+<li>Use <code>/api/reminders</code> for reminder CRUD and status changes.</li>
+<li>Use <code>/api/item-relations</code> for related-card links.</li>
+<li>Use <code>/api/items/suggest-organization</code> for AI tag/category suggestions before applying them.</li>
+<li>Use <code>/api/tags/merge</code> to merge duplicate tags.</li>
+<li>Use <code>/api/upload</code> for Vercel Blob upload handshakes.</li>
+<li>Use <code>/api/export?format=json|csv|markdown</code> and <code>/api/import</code> for backup and restore.</li>
+<li>Use <code>/api/telegram</code> as the Telegram bot webhook.</li>
+<li>Use <code>/api/app-version</code> to detect deployed app version changes.</li>
+<li>Use <code>/api/admin/fix-yt-thumbs</code> as a protected one-shot maintenance endpoint for legacy YouTube thumbnails.</li>
+</ul>
+<h2 id="security-and-privacy">Security And Privacy</h2>
+<h3>API secret protection</h3>
+<p><strong>What it does:</strong> Protects external API calls so random callers cannot save or change items.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Keep <code>API_SECRET</code> private.</li>
+<li>Configure it in the Chrome extension popup when saving from Chrome.</li>
+<li>Include it as <code>x-api-key</code> for external scripts or integrations.</li>
+</ul>
+<h3>Single-user app model</h3>
+<p><strong>What it does:</strong> Keeps the app simple by assuming one trusted owner instead of a multi-user login system.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Run it as your own personal Second Brain.</li>
+<li>Do not expose admin surfaces publicly without the API secret and deployment protections in place.</li>
+<li>Use the encrypted vault for sensitive secrets.</li>
+</ul>
+<h3>Encrypted vault</h3>
+<p><strong>What it does:</strong> Stores sensitive secrets separately from normal brain cards using client-side encryption.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Click the vault/lock button.</li>
+<li>Create a master password.</li>
+<li>Save the recovery key somewhere safe.</li>
+<li>Unlock the vault when needed.</li>
+<li>Add entries with title, username, password, URL, notes, and tags.</li>
+<li>Search, reveal, edit, or delete entries from the unlocked vault.</li>
+</ul>
+<h3>Vault recovery</h3>
+<p><strong>What it does:</strong> Helps regain vault access if you need to recover with the saved recovery key.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Keep the recovery key outside Second Brain.</li>
+<li>Use the vault recovery flow if you lose access.</li>
+<li>Treat the recovery key like a password.</li>
+</ul>
+<h2 id="offline-and-sync">Offline And Sync</h2>
+<h3>Offline read support</h3>
+<p><strong>What it does:</strong> Lets recently cached app content remain readable when the network is unavailable.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Open the app while online so the service worker can cache app assets.</li>
+<li>If offline, reopen the app and review available cached content.</li>
+<li>Reconnect before making important changes.</li>
+</ul>
+<h3>Cross-window sync</h3>
+<p><strong>What it does:</strong> Keeps multiple open Second Brain windows or pop-out item windows aware of changes.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Use the app in multiple windows if needed.</li>
+<li>Save changes in one window.</li>
+<li>Other windows update or detect conflicts where needed.</li>
+</ul>
+<h3>Edit conflict detection</h3>
+<p><strong>What it does:</strong> Warns when an item was changed elsewhere before your edit is saved.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>If a conflict warning appears, compare the versions.</li>
+<li>Keep the newer data or intentionally overwrite only when you are sure.</li>
+</ul>
+<h2 id="admin-and-maintenance">Admin And Maintenance</h2>
+<h3>Category manager</h3>
+<p><strong>What it does:</strong> Maintains the category system for the brain.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Open category management.</li>
+<li>Add, edit, delete, color, reorder, or nest categories.</li>
+<li>Use categories consistently so filters and saved views stay useful.</li>
+</ul>
+<h3>Tag cleanup</h3>
+<p><strong>What it does:</strong> Keeps tags from becoming fragmented over time.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Open the tag manager.</li>
+<li>Merge duplicates.</li>
+<li>Standardize spelling and naming.</li>
+<li>Review old tags during cleanup sessions.</li>
+</ul>
+<h3>Extension reload after changes</h3>
+<p><strong>What it does:</strong> Makes Chrome pick up the latest local extension files.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Go to <code>chrome://extensions</code>.</li>
+<li>Find <code>Second Brain - Save to Brain</code>.</li>
+<li>Click reload.</li>
+<li>Test by right-clicking a page, link, or selection and choosing <code>Save to Second Brain</code>.</li>
+</ul>
+<h3>App health checks</h3>
+<p><strong>What it does:</strong> Confirms the app is loading and the development server is reachable.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Start the local dev server.</li>
+<li>Open the local URL in Chrome.</li>
+<li>If the app says it cannot load the brain, check the server, environment variables, database connection, and browser console.</li>
+</ul>
+<h3>Quality checks</h3>
+<p><strong>What it does:</strong> Verifies the codebase before merging or deploying.</p>
+<p><strong>How to use it:</strong></p>
+<ul>
+<li>Run <code>npm test</code> for automated tests.</li>
+<li>Run <code>npm run build</code> to confirm production build succeeds.</li>
+<li>Run <code>npm run lint</code> to catch lint issues.</li>
+<li>Run <code>git diff --check</code> before committing to catch whitespace problems.</li>
+</ul>
+<h2 id="recommended-daily-workflow">Recommended Daily Workflow</h2>
+<ol>
+<li>Capture everything quickly through the web app, Chrome extension, Telegram, or share sheet.</li>
+<li>Open the <code>Inbox</code> view once or twice a day.</li>
+<li>Add missing tags, category, reminder, status, or action flag.</li>
+<li>Use bulk triage for groups of similar cards.</li>
+<li>Move reviewed items into the right workflow status.</li>
+<li>Use <code>Action</code>, <code>Tasks</code>, and <code>Reminders</code> for execution.</li>
+<li>Use search, saved views, table view, and board view when reviewing larger topics.</li>
+<li>Run cleanup periodically to merge tags, improve weak cards, and archive finished work.</li>
+</ol>
+  </main>
+  </div>
+</body>
+</html>

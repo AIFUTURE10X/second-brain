@@ -17,6 +17,7 @@ import { jsonError, parseBody, readJsonBody, serverError } from "@/lib/api-error
 import { itemCreateSchema, itemUpdateSchema } from "@/lib/validation";
 import { deriveTaskCompletion, normalizeChecklistItems } from "@/lib/task-checklists";
 import { appendYouTubeDescriptionLinksToNotes, fetchYouTubeDescriptionLinks, type YouTubeDescriptionLink } from "@/lib/youtube";
+import { fallbackTitleFromUrl } from "@/lib/url-title";
 
 function prepareTaskFields(
   type: unknown,
@@ -167,6 +168,7 @@ export async function POST(req: NextRequest) {
     }
     descriptionLinks = await fetchYouTubeDescriptionLinks(url);
   }
+  const fallbackTitle = fallbackTitleFromUrl(url);
 
   let itemTags: string[] = body.tags || [];
   let itemCategory: string = body.category || "";
@@ -175,7 +177,7 @@ export async function POST(req: NextRequest) {
   if (itemTags.length === 0 && !itemCategory && process.env.ANTHROPIC_API_KEY) {
     const existingCats = await db.select({ name: categories.name }).from(categories).orderBy(asc(categories.name));
     const ai = await aiTagAndCategorize({
-      title: body.title || og.ogTitle || "",
+      title: body.title || og.ogTitle || fallbackTitle || "",
       content: body.content || "",
       url,
       ogTitle: og.ogTitle,
@@ -215,7 +217,7 @@ export async function POST(req: NextRequest) {
     .insert(items)
     .values({
       type: body.type || "note",
-      title: body.title || og.ogTitle || "",
+      title: body.title || og.ogTitle || fallbackTitle || "",
       content: body.content || "",
       url,
       notes: appendYouTubeDescriptionLinksToNotes(body.notes || "", descriptionLinks),
@@ -227,6 +229,8 @@ export async function POST(req: NextRequest) {
       checklistItems: taskFields.checklistItems,
       completed: taskFields.completed,
       completedAt: taskFields.completedAt,
+      reviewedAt: body.reviewedAt ? new Date(body.reviewedAt) : null,
+      workflowStatus: body.workflowStatus || (body.reviewedAt === null ? "inbox" : "active"),
       attachments: Array.isArray(body.attachments) ? body.attachments : [],
       ogTitle: body.ogTitle || og.ogTitle || "",
       ogDescription: body.ogDescription || og.ogDescription || "",
@@ -289,6 +293,10 @@ export async function PUT(req: NextRequest) {
     }
   }
 
+  const { reviewedAt, ...updatesWithoutReviewedAt } = updates;
+  const reviewedAtForUpdate =
+    reviewedAt === undefined ? undefined : reviewedAt ? new Date(reviewedAt) : null;
+
   const taskFields = prepareTaskFields(
     nextType,
     updates.checklistItems,
@@ -299,7 +307,7 @@ export async function PUT(req: NextRequest) {
 
   // archivedAt arrives as an ISO string (or null to unarchive) but the
   // timestamp column needs a Date.
-  const { archivedAt: archivedAtRaw, ...fieldUpdates } = updates;
+  const { archivedAt: archivedAtRaw, ...fieldUpdates } = updatesWithoutReviewedAt;
   let archivedAtUpdate: { archivedAt: Date | null } | Record<string, never> = {};
   if (archivedAtRaw !== undefined) {
     if (archivedAtRaw === null) {
@@ -320,6 +328,7 @@ export async function PUT(req: NextRequest) {
     .set({
       ...fieldUpdates,
       ...archivedAtUpdate,
+      ...(reviewedAtForUpdate !== undefined ? { reviewedAt: reviewedAtForUpdate } : {}),
       checklistItems: taskFields.checklistItems,
       completed: taskFields.completed,
       completedAt: taskFields.completedAt,

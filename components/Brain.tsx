@@ -17,14 +17,30 @@ import {
   type QueuedWriteInput,
 } from "@/lib/offline-queue";
 import { isMemoryOfWeekEnabled, MEMORY_OF_WEEK_ENABLED_KEY } from "@/lib/telegram-memory-settings.mjs";
-import { nextViewMode, parseViewMode, type ViewMode } from "@/lib/view-mode";
+import { parseViewMode, type ViewMode } from "@/lib/view-mode";
 import { compressImageForUpload } from "@/lib/image-compression";
 import { draftStorageKey } from "@/lib/item-draft-autosave";
 import { normalizeChecklistItems, type ChecklistItem } from "@/lib/task-checklists";
 import {
+  CUSTOM_SAVED_VIEWS_KEY,
+  SAVED_VIEWS,
+  createCustomSavedView,
+  filtersForSavedView,
+  getSavedViewCounts,
+  inferSavedViewKey,
+  isItemUnreviewed,
+  itemNeedsCleanupReview,
+  normalizeCustomSavedViews,
+  savedViewFiltersEqual,
+  type CustomSavedViewDefinition,
+  type SavedViewFilters,
+  type SavedViewKey,
+} from "@/lib/saved-views";
+import {
   CAT_COLORS,
   TAG_COLORS,
   TYPES,
+  WORKFLOW_STATUS_META,
   newEntryId,
   type Attachment,
   type Category,
@@ -34,13 +50,12 @@ import {
   type NoteEntry,
   type RelatedItemSummary,
   type Reminder,
+  type WorkflowStatus,
 } from "@/lib/brain-model";
 import {
   resolveContentType,
   sourceFromUrl,
   toDateTimeLocal,
-  viewModeIcon,
-  viewModeLabel,
 } from "@/lib/brain-format";
 import { TelegramHelpMenu } from "./brain/TelegramHelpMenu";
 import { ItemCard } from "./brain/ItemCard";
@@ -50,6 +65,10 @@ import { EmptyState } from "./brain/EmptyState";
 import { SkeletonCard } from "./brain/SkeletonCard";
 import { ItemFormModal } from "./brain/ItemFormModal";
 import { ConflictDialog } from "./brain/ConflictDialog";
+import { BulkTriageBar } from "./brain/BulkTriageBar";
+import { TableView } from "./brain/TableView";
+import { BoardView } from "./brain/BoardView";
+import { ViewModePicker } from "./brain/ViewModePicker";
 import { withConcurrencyGuard } from "@/lib/item-updates.mjs";
 import {
   SAVED_SEARCHES_SETTINGS_KEY,
@@ -76,6 +95,7 @@ import {
   appendNotifiedIds,
   pickDueReminderNotifications,
 } from "@/lib/reminder-notifications.mjs";
+import { getRelationCountsByItemId } from "@/lib/relation-graph";
 
 const CLIENT_APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "dev";
 
@@ -110,6 +130,7 @@ export default function Brain() {
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [inboxOnly, setInboxOnly] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [quickTaskText, setQuickTaskText] = useState("");
   const [quickTaskSaving, setQuickTaskSaving] = useState(false);
@@ -161,6 +182,7 @@ export default function Brain() {
   const [sortBy, setSortBy] = useState<"newest" | "oldest">("newest");
   const [saving, setSaving] = useState(false);
   const [summarizing, setSummarizing] = useState<string | null>(null);
+  const [organizing, setOrganizing] = useState<string | null>(null);
   const [newCat, setNewCat] = useState({ name: "", color: CAT_COLORS[0], parentId: "" });
   const [editingCat, setEditingCat] = useState<Category | null>(null);
   const [catLoading, setCatLoading] = useState(false);
@@ -168,7 +190,13 @@ export default function Brain() {
   const [draggingCatId, setDraggingCatId] = useState<string | null>(null);
   const [collapsedCats, setCollapsedCats] = useState<Set<string>>(new Set());
   const [visibleCount, setVisibleCount] = useState(50);
-  const [density, setDensity] = useState<ViewMode>("comfortable");
+  const [density, setDensity] = useState<ViewMode>("list");
+  const [bulkUpdating, setBulkUpdating] = useState(false);
+  const [bulkCategory, setBulkCategory] = useState("");
+  const [bulkStatus, setBulkStatus] = useState<WorkflowStatus | "">("");
+  const [bulkTags, setBulkTags] = useState("");
+  const [customSavedViews, setCustomSavedViews] = useState<CustomSavedViewDefinition[]>([]);
+  const [customViewsSaving, setCustomViewsSaving] = useState(false);
   const [showTagManager, setShowTagManager] = useState(false);
   const [mergingTag, setMergingTag] = useState<{ from: string[]; to: string } | null>(null);
   const [tagMergeLoading, setTagMergeLoading] = useState(false);
@@ -195,6 +223,15 @@ export default function Brain() {
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         setMemoryOfWeekEnabled(isMemoryOfWeekEnabled(data?.[MEMORY_OF_WEEK_ENABLED_KEY]));
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetch(`/api/settings?key=${CUSTOM_SAVED_VIEWS_KEY}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        setCustomSavedViews(normalizeCustomSavedViews(data?.[CUSTOM_SAVED_VIEWS_KEY]));
       })
       .catch(() => {});
   }, []);
@@ -293,6 +330,7 @@ export default function Brain() {
     actionOnly,
     remindersOnly,
     readLaterOnly,
+    inboxOnly,
     reviewMode,
     archivedOnly,
     sortBy,
@@ -769,7 +807,7 @@ export default function Brain() {
   }, [fetchItems, fetchCategories, fetchRelations, fetchReminders, search]);
 
   // Reset pagination when filters change
-  useEffect(() => { setVisibleCount(50); }, [view, catFilter, search, sortBy, sourceFilter, tagFilter, withNotesOnly, favouritesOnly, actionOnly, remindersOnly, readLaterOnly, reviewMode, archivedOnly, datePreset, dateFrom, dateTo]);
+  useEffect(() => { setVisibleCount(50); }, [view, catFilter, search, sortBy, sourceFilter, tagFilter, withNotesOnly, favouritesOnly, actionOnly, remindersOnly, readLaterOnly, inboxOnly, reviewMode, archivedOnly, datePreset, dateFrom, dateTo]);
 
   // Close modals on Escape, focus search on Cmd/Ctrl+K
   useEffect(() => {
@@ -1263,12 +1301,79 @@ export default function Brain() {
     setActionOnly(false);
     setRemindersOnly(false);
     setReadLaterOnly(false);
+    setInboxOnly(false);
     setReviewMode(false);
     setArchivedOnly(false);
     setDatePreset("all");
     setDateFrom("");
     setDateTo("");
     setSearch("");
+    setSelectedIds(new Set());
+  };
+
+  const toggleSelectedId = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const clearSelection = () => {
+    setSelectedIds(new Set());
+  };
+
+  const applySavedViewFilters = (filters: SavedViewFilters) => {
+    setView(filters.view);
+    setCatFilter(filters.catFilter);
+    setSourceFilter(filters.sourceFilter);
+    setTagFilter(filters.tagFilter);
+    setWithNotesOnly(filters.withNotesOnly);
+    setFavouritesOnly(filters.favouritesOnly);
+    setActionOnly(filters.actionOnly);
+    setRemindersOnly(filters.remindersOnly);
+    setInboxOnly(filters.inboxOnly);
+    setReviewMode(filters.reviewMode);
+    setSearch(filters.search);
+    setSortBy(filters.sortBy);
+    setSelectedIds(new Set());
+  };
+
+  const applySavedView = (key: SavedViewKey) => {
+    applySavedViewFilters(filtersForSavedView(key));
+  };
+
+  const applyCustomSavedView = (savedView: CustomSavedViewDefinition) => {
+    applySavedViewFilters(savedView.filters);
+  };
+
+  const persistCustomSavedViews = async (nextViews: CustomSavedViewDefinition[], successMessage: string) => {
+    const previous = customSavedViews;
+    setCustomSavedViews(nextViews);
+    setCustomViewsSaving(true);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: CUSTOM_SAVED_VIEWS_KEY, value: nextViews }),
+      });
+      if (!res.ok) throw new Error("Failed to save custom views");
+      showToast(successMessage, "success");
+    } catch {
+      setCustomSavedViews(previous);
+      showToast("Failed to save custom views", "error");
+    } finally {
+      setCustomViewsSaving(false);
+    }
+  };
+
+  const deleteCustomSavedView = (id: string) => {
+    const savedView = customSavedViews.find(view => view.id === id);
+    if (!savedView) return;
+    persistCustomSavedViews(
+      customSavedViews.filter(view => view.id !== id),
+      `${savedView.label} view removed`,
+    );
   };
 
   // Quick capture — mirrors the Telegram bot grammar: URL → link,
@@ -1658,6 +1763,66 @@ export default function Brain() {
     }
   };
 
+  const handleMarkReviewed = async (id: string) => {
+    const reviewedAt = new Date().toISOString();
+    try {
+      const res = await fetch("/api/items", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, reviewedAt, workflowStatus: "active" }),
+      });
+      if (!res.ok) {
+        showToast("Failed to mark reviewed", "error");
+        return;
+      }
+      const saved = await res.json();
+      if (saved && saved.id) broadcastSync({ type: "item-updated", item: saved });
+      setItems(prev => prev.map(i => i.id === id ? { ...i, ...saved, reviewedAt: saved.reviewedAt ?? reviewedAt, workflowStatus: saved.workflowStatus ?? "active" } : i));
+      showToast("Marked reviewed", "success");
+    } catch {
+      showToast("Failed to mark reviewed", "error");
+    }
+  };
+
+  const updateSelectedItems = async (
+    ids: string[],
+    payloadForId: (id: string) => Partial<Item>,
+    successMessage: string,
+    failureMessage: string,
+  ) => {
+    if (ids.length === 0) return;
+    setBulkUpdating(true);
+    try {
+      const results = await Promise.allSettled(ids.map(async id => {
+        const res = await fetch("/api/items", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id, ...payloadForId(id) }),
+        });
+        if (!res.ok) throw new Error("Bulk update failed");
+        return await res.json() as Item;
+      }));
+
+      const saved = results.flatMap(result => result.status === "fulfilled" ? [result.value] : []);
+      if (saved.length > 0) {
+        setItems(prev => prev.map(item => saved.find(next => next.id === item.id) || item));
+        saved.forEach(item => broadcastSync({ type: "item-updated", item }));
+        setSelectedIds(prev => {
+          const next = new Set(prev);
+          saved.forEach(item => next.delete(item.id));
+          return next;
+        });
+      }
+
+      if (saved.length !== ids.length) showToast(failureMessage, "error");
+      else showToast(successMessage, "success");
+    } catch {
+      showToast(failureMessage, "error");
+    } finally {
+      setBulkUpdating(false);
+    }
+  };
+
   const handleSummarize = async (id: string) => {
     setSummarizing(id);
     try {
@@ -1678,6 +1843,63 @@ export default function Brain() {
       showToast("Summarization failed", "error");
     }
     setSummarizing(null);
+  };
+
+  const handleSuggestOrganization = async (item: Item) => {
+    setOrganizing(item.id);
+    try {
+      const res = await fetch("/api/items/suggest-organization", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: item.id }),
+      });
+      const data = await res.json().catch(() => ({})) as { tags?: unknown; category?: unknown; error?: string };
+      if (!res.ok) {
+        showToast(data.error || "Organization suggestions failed", "error");
+        return;
+      }
+
+      const suggestedTags = Array.isArray(data.tags)
+        ? data.tags.map(String).map(tag => tag.trim()).filter(Boolean)
+        : [];
+      const suggestedCategory = typeof data.category === "string" ? data.category.trim() : "";
+      const currentTags = item.tags || [];
+      const nextTags = Array.from(new Set([...currentTags, ...suggestedTags]));
+      const nextCategory = suggestedCategory || item.category || "";
+      const hasNewTags = nextTags.length > currentTags.length;
+      const hasNewCategory = nextCategory !== (item.category || "");
+
+      if (!hasNewTags && !hasNewCategory) {
+        showToast("No organization suggestions found", "error");
+        return;
+      }
+
+      const details = [
+        hasNewCategory && `Category: ${item.category || "None"} -> ${nextCategory}`,
+        hasNewTags && `Tags: ${suggestedTags.join(", ")}`,
+      ].filter(Boolean).join("\n");
+      if (!window.confirm(`Apply AI suggestions?\n\n${details}`)) return;
+
+      const updateRes = await fetch("/api/items", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: item.id, tags: nextTags, category: nextCategory }),
+      });
+      const updated = await updateRes.json().catch(() => null);
+      if (!updateRes.ok) {
+        showToast(updated?.error || "Failed to apply suggestions", "error");
+        return;
+      }
+
+      setItems(prev => prev.map(existing => existing.id === item.id ? { ...existing, ...updated } : existing));
+      await fetchCategories();
+      if (updated && updated.id) broadcastSync({ type: "item-updated", item: updated });
+      showToast("Organization updated", "success");
+    } catch {
+      showToast("Organization suggestions failed", "error");
+    } finally {
+      setOrganizing(null);
+    }
   };
 
   const handleEdit = (item: Item) => {
@@ -1863,13 +2085,10 @@ export default function Brain() {
     .filter(i => !actionOnly || !!i.actionRequired)
     .filter(i => !remindersOnly || reminders.some(r => r.itemId === i.id && r.status === "pending"))
     .filter(i => !readLaterOnly || isToRead(i))
+    .filter(i => !inboxOnly || isItemUnreviewed(i))
     .filter(i => {
       if (!reviewMode) return true;
-      const noCategory = !i.category?.trim();
-      const noTags = (i.tags?.length ?? 0) === 0;
-      const shortTitle = (i.title?.trim().length ?? 0) < 10;
-      const staleTask = i.type === "task" && Date.now() - new Date(i.createdAt).getTime() > 30 * 86400000;
-      return noCategory || noTags || shortTitle || staleTask;
+      return itemNeedsCleanupReview(i);
     })
     .sort((a, b) => {
       if (a.pinned !== b.pinned) return b.pinned ? 1 : -1;
@@ -1884,6 +2103,7 @@ export default function Brain() {
   // Reset pagination when filters change
   const visibleItems = filtered.slice(0, visibleCount);
   const hasMore = filtered.length > visibleCount;
+  const relationCountsByItemId = getRelationCountsByItemId(relations);
 
   const activeFilterCount = [
     view !== "all",
@@ -1920,13 +2140,100 @@ export default function Brain() {
   const actionCount = items.filter(i => i.actionRequired).length;
   const reminderCount = reminders.filter(r => r.status === "pending").length;
   const readLaterCount = items.filter(i => isToRead(i)).length;
-  const reviewCount = items.filter(i => {
-    const noCategory = !i.category?.trim();
-    const noTags = (i.tags?.length ?? 0) === 0;
-    const shortTitle = (i.title?.trim().length ?? 0) < 10;
-    const staleTask = i.type === "task" && Date.now() - new Date(i.createdAt).getTime() > 30 * 86400000;
-    return noCategory || noTags || shortTitle || staleTask;
-  }).length;
+  const savedViewCounts = getSavedViewCounts(items, reminders);
+  const reviewCount = savedViewCounts.cleanup;
+  const currentSavedViewFilters: SavedViewFilters = {
+    view,
+    catFilter,
+    sourceFilter,
+    tagFilter,
+    withNotesOnly,
+    favouritesOnly,
+    actionOnly,
+    remindersOnly,
+    inboxOnly,
+    reviewMode,
+    search,
+    sortBy,
+  };
+  const activeSavedViewKey = inferSavedViewKey(currentSavedViewFilters);
+  const activeCustomSavedViewId = customSavedViews.find(savedView =>
+    savedViewFiltersEqual(savedView.filters, currentSavedViewFilters)
+  )?.id ?? null;
+
+  const handleSaveCustomView = () => {
+    const label = window.prompt("Name this view");
+    if (!label?.trim()) return;
+    const savedView = createCustomSavedView(label, currentSavedViewFilters, customSavedViews);
+    const nextViews = [...customSavedViews, savedView];
+    persistCustomSavedViews(nextViews, `${savedView.label} view saved`);
+  };
+  const selectedItems = items.filter(item => selectedIds.has(item.id));
+  const selectedUnreviewedItems = selectedItems.filter(isItemUnreviewed);
+  const selectedAllFavourite = selectedItems.length > 0 && selectedItems.every(item => item.favourite);
+  const selectedAllActionRequired = selectedItems.length > 0 && selectedItems.every(item => item.actionRequired);
+  const parseBulkTags = (value: string) => value.split(",").map(tag => tag.trim()).filter(Boolean);
+
+  const handleBulkMarkReviewed = () => {
+    const ids = selectedUnreviewedItems.map(item => item.id);
+    const reviewedAt = new Date().toISOString();
+    updateSelectedItems(
+      ids,
+      () => ({ reviewedAt, workflowStatus: "active" }),
+      `${ids.length} card${ids.length === 1 ? "" : "s"} marked reviewed`,
+      "Some selected cards could not be marked reviewed",
+    );
+  };
+
+  const handleBulkToggleFlag = (flag: "favourite" | "actionRequired", next: boolean) => {
+    const ids = selectedItems.map(item => item.id);
+    updateSelectedItems(
+      ids,
+      () => ({ [flag]: next } as Partial<Item>),
+      `${ids.length} card${ids.length === 1 ? "" : "s"} updated`,
+      "Some selected cards could not be updated",
+    );
+  };
+
+  const handleBulkApplyCategory = async (categoryOverride?: string) => {
+    const category = categoryOverride ?? bulkCategory;
+    if (!category) return;
+    const ids = selectedItems.map(item => item.id);
+    await updateSelectedItems(
+      ids,
+      () => ({ category }),
+      `${ids.length} card${ids.length === 1 ? "" : "s"} categorized`,
+      "Some selected cards could not be categorized",
+    );
+  };
+
+  const handleBulkApplyStatus = async (statusOverride?: WorkflowStatus) => {
+    const status = statusOverride ?? bulkStatus;
+    if (!status) return;
+    const ids = selectedItems.map(item => item.id);
+    await updateSelectedItems(
+      ids,
+      () => ({ workflowStatus: status }),
+      `${ids.length} card${ids.length === 1 ? "" : "s"} moved to ${WORKFLOW_STATUS_META[status].label}`,
+      "Some selected cards could not be moved",
+    );
+  };
+
+  const handleBulkApplyTags = async () => {
+    const tags = parseBulkTags(bulkTags);
+    if (tags.length === 0) return;
+    const ids = selectedItems.map(item => item.id);
+    await updateSelectedItems(
+      ids,
+      id => {
+        const current = selectedItems.find(item => item.id === id);
+        return { tags: Array.from(new Set([...(current?.tags || []), ...tags])) };
+      },
+      `${ids.length} card${ids.length === 1 ? "" : "s"} tagged`,
+      "Some selected cards could not be tagged",
+    );
+    setBulkTags("");
+  };
 
   const tagCounts = (() => {
     const counts = new Map<string, number>();
@@ -1999,24 +2306,31 @@ export default function Brain() {
     );
   }
 
+  const gridFullSpanClass = density === "list" || density === "compact" ? "col-span-full" : "";
+  const headerIconButtonClass = "w-11 h-11 sm:w-10 sm:h-10 min-[1800px]:h-9 min-[1800px]:w-9 rounded-xl min-[1800px]:rounded-lg flex items-center justify-center active:scale-95 transition";
+
   return (
     <div className="min-h-screen relative pb-8">
       {/* Header */}
-      <div className="sticky top-0 z-50 px-3 sm:px-5 pt-4 sm:pt-5 pb-0 border-b border-brand-border" style={{ background: "linear-gradient(180deg, #13161B 0%, #0D0F12 100%)" }}>
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+      <div className="sticky top-0 z-50 px-3 sm:px-5 min-[1800px]:px-3 pt-4 sm:pt-5 min-[1800px]:pt-2 pb-0 border-b border-brand-border" style={{ background: "linear-gradient(180deg, #13161B 0%, #0D0F12 100%)" }}>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 min-[1800px]:gap-2 mb-4 min-[1800px]:mb-2">
           <div className="min-w-0">
-            <h1 className="text-lg sm:text-xl font-bold whitespace-nowrap" style={{ fontFamily: "'Space Grotesk', sans-serif", color: "#E8A838" }}>
+            <h1 className="text-lg sm:text-xl min-[1800px]:text-lg font-bold whitespace-nowrap" style={{ fontFamily: "'Space Grotesk', sans-serif", color: "#E8A838" }}>
               ◆ Second Brain
             </h1>
-            <p className="text-[11px] text-gray-600 font-mono mt-0.5">
+            <p className="text-[11px] min-[1800px]:text-[10px] text-gray-600 font-mono mt-0.5">
               {items.length} items · synced
             </p>
           </div>
-          <div className="flex items-center gap-1.5 sm:gap-2 justify-start sm:justify-end flex-wrap">
+          <div className="flex items-center gap-1.5 min-[1800px]:gap-1 justify-start sm:justify-end flex-wrap">
             <TelegramHelpMenu
               memoryOfWeekEnabled={memoryOfWeekEnabled}
               memoryOfWeekSaving={memoryOfWeekSaving}
               onToggleMemoryOfWeek={updateMemoryOfWeekEnabled}
+            />
+            <ViewModePicker
+              density={density}
+              onDensityChange={setDensity}
             />
             <button
               onClick={() => setAskOpen(true)}
@@ -2036,16 +2350,10 @@ export default function Brain() {
             >{desktopNotify ? "◉" : "◌"}</button>
             <button
               onClick={() => setVaultOpen(true)}
-              className="w-11 h-11 sm:w-10 sm:h-10 rounded-xl text-gray-500 text-sm flex items-center justify-center border border-brand-border hover:text-[#E8A838] hover:border-[#E8A83860] active:scale-95 transition"
+              className={`${headerIconButtonClass} border border-brand-border text-sm text-gray-500 hover:text-[#E8A838] hover:border-[#E8A83860]`}
               aria-label="Open encrypted vault"
               title="Encrypted vault"
             >▣</button>
-            <button
-              onClick={() => setDensity(nextViewMode)}
-              className="w-11 h-11 sm:w-10 sm:h-10 rounded-xl text-gray-500 text-sm flex items-center justify-center border border-brand-border hover:text-gray-300 hover:border-gray-600 active:scale-95 transition"
-              aria-label={`Switch to ${viewModeLabel(nextViewMode(density))} view`}
-              title={`${viewModeLabel(density)} view`}
-            >{viewModeIcon(density)}</button>
             <button
               onClick={async () => {
                 if (isRefreshing) return;
@@ -2060,7 +2368,7 @@ export default function Brain() {
                 }
               }}
               disabled={isRefreshing}
-              className="w-11 h-11 sm:w-10 sm:h-10 rounded-xl text-gray-500 text-sm flex items-center justify-center border border-brand-border hover:text-gray-300 hover:border-gray-600 active:scale-95 transition disabled:opacity-60"
+              className={`${headerIconButtonClass} border border-brand-border text-sm text-gray-500 hover:text-gray-300 hover:border-gray-600 disabled:opacity-60`}
               aria-label="Refresh app and items"
               title="Refresh app and items"
             >
@@ -2068,18 +2376,18 @@ export default function Brain() {
             </button>
             <button
               onClick={() => setShowCatManager(true)}
-              className="w-11 h-11 sm:w-10 sm:h-10 rounded-xl text-gray-500 text-sm flex items-center justify-center border border-brand-border hover:text-gray-300 hover:border-gray-600 active:scale-95 transition"
+              className={`${headerIconButtonClass} border border-brand-border text-sm text-gray-500 hover:text-gray-300 hover:border-gray-600`}
               aria-label="Manage categories"
             >⊞</button>
             <button
               onClick={handleExport}
-              className="w-11 h-11 sm:w-10 sm:h-10 rounded-xl text-gray-500 text-sm flex items-center justify-center border border-brand-border hover:text-gray-300 hover:border-gray-600 active:scale-95 transition"
+              className={`${headerIconButtonClass} border border-brand-border text-sm text-gray-500 hover:text-gray-300 hover:border-gray-600`}
               aria-label="Download JSON backup"
               title="Download backup (JSON)"
             >↓</button>
             <button
               onClick={() => { closeForm(); setShowAdd(true); }}
-              className="w-11 h-11 sm:w-10 sm:h-10 rounded-xl text-white text-xl flex items-center justify-center font-light transition-transform hover:scale-105 active:scale-95"
+              className={`${headerIconButtonClass} text-white text-xl min-[1800px]:text-lg font-light transition-transform hover:scale-105`}
               style={{ background: "linear-gradient(135deg, #F2C94C, #E8A838)", boxShadow: "0 4px 16px rgba(232,168,56,0.35)" }}
               aria-label="Add new item"
             >+</button>
@@ -2088,6 +2396,77 @@ export default function Brain() {
 
         {/* Quick capture */}
         <QuickCaptureBar saving={quickCapturing} onCapture={captureQuick} />
+
+        <div data-saved-view-tabs className="mb-2 min-[1800px]:mb-1.5 flex items-center gap-1.5 min-[1800px]:gap-1 overflow-x-auto no-scrollbar pb-0.5 sm:flex-wrap sm:overflow-visible sm:pb-0">
+          {SAVED_VIEWS.map(savedView => {
+            const active = activeSavedViewKey === savedView.key;
+            const count = savedViewCounts[savedView.key];
+            return (
+              <button
+                key={savedView.key}
+                type="button"
+                onClick={() => applySavedView(savedView.key)}
+                className="inline-flex min-h-[44px] min-[1800px]:min-h-[30px] shrink-0 items-center gap-1.5 min-[1800px]:gap-1 rounded-lg px-3 min-[1800px]:px-2 py-1.5 min-[1800px]:py-1 font-mono text-xs min-[1800px]:text-[11px] font-medium transition-all sm:min-h-0"
+                style={{
+                  border: `1px solid ${savedView.color}${active ? "80" : "30"}`,
+                  background: active ? `${savedView.color}22` : "transparent",
+                  color: active ? savedView.color : `${savedView.color}A8`,
+                }}
+                title={savedView.title}
+                aria-pressed={active}
+              >
+                <span>{savedView.label}</span>
+                <span className="text-[10px] opacity-60">{count}</span>
+              </button>
+            );
+          })}
+          {customSavedViews.map(savedView => {
+            const active = activeCustomSavedViewId === savedView.id;
+            return (
+              <div
+                key={savedView.id}
+                className="inline-flex min-h-[44px] min-[1800px]:min-h-[30px] shrink-0 items-center overflow-hidden rounded-lg border font-mono text-xs min-[1800px]:text-[11px] font-medium transition-all sm:min-h-0"
+                style={{
+                  borderColor: `${savedView.color}${active ? "80" : "30"}`,
+                  background: active ? `${savedView.color}22` : "transparent",
+                  color: active ? savedView.color : `${savedView.color}A8`,
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => applyCustomSavedView(savedView)}
+                  className="px-3 min-[1800px]:px-2 py-1.5 min-[1800px]:py-1 transition hover:bg-white/5"
+                  title={savedView.title}
+                  aria-pressed={active}
+                >
+                  {savedView.label}
+                </button>
+                <button
+                  type="button"
+                  onClick={event => {
+                    event.stopPropagation();
+                    deleteCustomSavedView(savedView.id);
+                  }}
+                  disabled={customViewsSaving}
+                  className="border-l border-current/20 px-2 min-[1800px]:px-1.5 py-1.5 min-[1800px]:py-1 text-[11px] min-[1800px]:text-[10px] opacity-60 transition hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-30"
+                  aria-label={`Delete custom view ${savedView.label}`}
+                  title="Delete view"
+                >
+                  ×
+                </button>
+              </div>
+            );
+          })}
+          <button
+            type="button"
+            onClick={handleSaveCustomView}
+            disabled={customViewsSaving}
+            className="inline-flex min-h-[44px] min-[1800px]:min-h-[30px] shrink-0 items-center gap-1.5 min-[1800px]:gap-1 rounded-lg border border-[#6FCF9740] px-3 min-[1800px]:px-2 py-1.5 min-[1800px]:py-1 font-mono text-xs min-[1800px]:text-[11px] font-medium text-[#6FCF97] transition-all hover:bg-[#6FCF9715] disabled:cursor-not-allowed disabled:opacity-45 sm:min-h-0"
+            title="Save current filters as a custom view"
+          >
+            + View
+          </button>
+        </div>
 
         {/* Filter bar: search / type / category / tags / more / sort */}
         <FilterBar
@@ -2132,6 +2511,9 @@ export default function Brain() {
           readLaterOnly={readLaterOnly}
           onReadLaterOnly={setReadLaterOnly}
           readLaterCount={readLaterCount}
+          inboxOnly={inboxOnly}
+          onInboxOnly={setInboxOnly}
+          inboxCount={savedViewCounts.inbox}
           reviewMode={reviewMode}
           onReviewMode={setReviewMode}
           reviewCount={reviewCount}
@@ -2186,6 +2568,28 @@ export default function Brain() {
         </div>
       )}
 
+      <BulkTriageBar
+        selectedCount={selectedItems.length}
+        unreviewedCount={selectedUnreviewedItems.length}
+        allFavourite={selectedAllFavourite}
+        allActionRequired={selectedAllActionRequired}
+        categoryOptions={categories.map(cat => cat.name)}
+        selectedCategory={bulkCategory}
+        selectedStatus={bulkStatus}
+        tagDraft={bulkTags}
+        busy={bulkUpdating}
+        onMarkReviewed={handleBulkMarkReviewed}
+        onToggleFavourite={() => handleBulkToggleFlag("favourite", !selectedAllFavourite)}
+        onToggleActionRequired={() => handleBulkToggleFlag("actionRequired", !selectedAllActionRequired)}
+        onCategoryChange={setBulkCategory}
+        onApplyCategory={handleBulkApplyCategory}
+        onStatusChange={setBulkStatus}
+        onApplyStatus={handleBulkApplyStatus}
+        onTagDraftChange={setBulkTags}
+        onApplyTags={handleBulkApplyTags}
+        onClear={clearSelection}
+      />
+
       {/* Active structured-filter chips */}
       {(view !== "all" || catFilter !== "all" || sourceFilter || tagFilter) && (
         <div className="px-5 pt-2 pb-1 flex gap-1.5 items-center flex-wrap">
@@ -2193,7 +2597,7 @@ export default function Brain() {
           {view !== "all" && (
             <button
               onClick={() => setView("all")}
-              className="px-2.5 py-0.5 rounded-full text-[11px] font-mono transition whitespace-nowrap"
+              className="inline-flex max-w-[11rem] items-center truncate px-2.5 py-1 rounded-lg text-[11px] font-mono transition"
               style={{ border: `1px solid ${TYPES[view].color}50`, background: `${TYPES[view].color}15`, color: TYPES[view].color }}
               title="Clear type filter"
             >{TYPES[view].icon} {TYPES[view].label} ×</button>
@@ -2201,7 +2605,7 @@ export default function Brain() {
           {catFilter !== "all" && (
             <button
               onClick={() => setCatFilter("all")}
-              className="px-2.5 py-0.5 rounded-full text-[11px] font-mono transition whitespace-nowrap"
+              className="inline-flex max-w-[11rem] items-center truncate px-2.5 py-1 rounded-lg text-[11px] font-mono transition"
               style={{ border: `1px solid ${getCatColor(catFilter)}50`, background: `${getCatColor(catFilter)}15`, color: getCatColor(catFilter) }}
               title="Clear category filter"
             >⊞ {catFilter} ×</button>
@@ -2209,14 +2613,14 @@ export default function Brain() {
           {sourceFilter && (
             <button
               onClick={() => setSourceFilter(null)}
-              className="px-2.5 py-0.5 rounded-full text-[11px] font-mono transition whitespace-nowrap border border-gray-600 text-gray-300 hover:border-gray-400"
+              className="inline-flex max-w-[11rem] items-center truncate border border-gray-600 px-2.5 py-1 rounded-lg text-[11px] font-mono transition text-gray-300 hover:border-gray-400"
               title="Clear source filter"
             >◈ {sourceCounts.find(src => src.key === sourceFilter)?.label || sourceFilter} ×</button>
           )}
           {tagFilter && (
             <button
               onClick={() => setTagFilter(null)}
-              className="px-2.5 py-0.5 rounded-full text-[11px] font-mono transition whitespace-nowrap"
+              className="inline-flex max-w-[11rem] items-center truncate px-2.5 py-1 rounded-lg text-[11px] font-mono transition"
               style={{ border: `1px solid ${tagColor(tagFilter)}50`, background: `${tagColor(tagFilter)}15`, color: tagColor(tagFilter) }}
               title="Clear tag filter"
             >#{tagFilter} ×</button>
@@ -2286,20 +2690,20 @@ export default function Brain() {
 
       {/* Items */}
       <div
-        className={`px-4 ${density === "compact" ? "grid grid-cols-1 gap-2 sm:[grid-template-columns:repeat(auto-fit,minmax(min(100%,17rem),17rem))]" : density === "list" ? "flex flex-col gap-1.5" : ""}`}
+        className={density === "table" || density === "board" ? "px-4 min-[1800px]:px-3" : density === "list" ? "grid items-start grid-cols-[repeat(auto-fill,minmax(min(100%,12rem),1fr))] min-[1500px]:grid-cols-[repeat(auto-fill,minmax(min(100%,9rem),1fr))] min-[1800px]:grid-cols-[repeat(auto-fill,minmax(min(100%,8.5rem),1fr))] gap-2 min-[1800px]:gap-1.5 px-4 min-[1800px]:px-3" : "grid grid-cols-[repeat(auto-fill,minmax(min(100%,13rem),1fr))] min-[1800px]:grid-cols-[repeat(auto-fill,minmax(min(100%,11rem),1fr))] gap-2 min-[1800px]:gap-1.5 px-4 min-[1800px]:px-3"}
       >
         {searchFuzzy && search.trim() && filtered.length > 0 && (
-          <div className={`mb-2 rounded-lg border border-[#E8A83840] bg-[#E8A83810] px-3 py-2 text-[11px] font-mono text-[#E8A838] ${density === "compact" ? "col-span-full" : ""}`}>
+          <div className={`mb-2 rounded-lg border border-[#E8A83840] bg-[#E8A83810] px-3 py-2 text-[11px] font-mono text-[#E8A838] ${gridFullSpanClass}`}>
             No exact matches for &ldquo;{search.trim()}&rdquo; — showing close matches
           </div>
         )}
         {archivedOnly && (
-          <div className={`mb-2 rounded-lg border border-[#9aa1ad40] bg-[#9aa1ad10] px-3 py-2 text-[11px] font-mono text-gray-300 ${density === "compact" ? "col-span-full" : ""}`}>
+          <div className={`mb-2 rounded-lg border border-[#9aa1ad40] bg-[#9aa1ad10] px-3 py-2 text-[11px] font-mono text-gray-300 ${gridFullSpanClass}`}>
             Viewing archived cards — restore with ↩ on a card, or toggle Archived off under More
           </div>
         )}
         {selectMode && selectedIds.size === 0 && (
-          <div className={`mb-2 flex items-center justify-between gap-3 rounded-lg border border-[#E8A83840] bg-[#E8A83810] px-3 py-2 text-[11px] font-mono text-[#E8A838] ${density === "compact" ? "col-span-full" : ""}`}>
+          <div className={`mb-2 flex items-center justify-between gap-3 rounded-lg border border-[#E8A83840] bg-[#E8A83810] px-3 py-2 text-[11px] font-mono text-[#E8A838] ${gridFullSpanClass}`}>
             <span>Select mode — tap cards to select them for bulk actions</span>
             <button onClick={exitSelectMode} className="shrink-0 underline underline-offset-2 hover:opacity-80">
               Exit
@@ -2307,7 +2711,7 @@ export default function Brain() {
           </div>
         )}
         {pendingOffline > 0 && (
-          <div className={`mb-2 flex items-center justify-between gap-3 rounded-lg border border-[#E8A83840] bg-[#E8A83810] px-3 py-2 text-[11px] font-mono text-[#E8A838] ${density === "compact" ? "col-span-full" : ""}`}>
+          <div className={`mb-2 flex items-center justify-between gap-3 rounded-lg border border-[#E8A83840] bg-[#E8A83810] px-3 py-2 text-[11px] font-mono text-[#E8A838] ${gridFullSpanClass}`}>
             <span>{pendingOffline} change{pendingOffline === 1 ? "" : "s"} waiting to sync — will retry when back online</span>
             <button onClick={() => replayOfflineQueue()} className="shrink-0 underline underline-offset-2 hover:opacity-80">
               Sync now
@@ -2317,93 +2721,86 @@ export default function Brain() {
         {filtered.length === 0 && (
           <EmptyState
             variant={items.length === 0 ? (itemsError ? "error" : "new") : "no-matches"}
-            className={density === "compact" ? "col-span-full" : ""}
+            className={gridFullSpanClass}
             onAddFirst={() => { closeForm(); setShowAdd(true); }}
             onClearFilters={clearAllFilters}
             onRetry={() => fetchItems(search.trim() || undefined)}
           />
         )}
 
-        {(timelineGroups ?? [{ key: "", items: visibleItems }]).map(group => {
-          let runningIdx = 0;
-          return (
-            <div key={group.key || "all"} className="contents">
-              {group.key && (
-                <div className={`mb-1 mt-2 first:mt-0 text-[11px] font-mono uppercase tracking-[0.15em] text-gray-500 ${density === "compact" ? "col-span-full" : ""}`}>
-                  {timelineHeaderLabel(group.key)} <span className="opacity-50">· {group.items.length}</span>
-                </div>
-              )}
-              {group.items.map(item => {
-                const idx = runningIdx++;
-                const card = (
-                  <ItemCard
-                    key={item.id}
-                    item={item}
-                    idx={idx}
-                    expanded={expandedId === item.id}
-                    density={density}
-                    isSummarizing={summarizing === item.id}
-                    isDragTarget={dragOverCardId === item.id}
-                    relatedItems={relatedItemsForId(item.id)}
-                    reminder={activeReminderForId(item.id)}
-                    failedPreviewUrls={failedPreviewUrls}
-                    getCatColor={getCatColor}
-                    onToggleExpanded={() => setExpandedId(expandedId === item.id ? null : item.id)}
-                    setDragTargetId={setDragOverCardId}
-                    onAttachFiles={files => attachFilesToItem(item.id, files)}
-                    onEdit={() => handleEdit(item)}
-                    onPopOut={() => popOutCard(item.id)}
-                    onDelete={() => handleDelete(item.id)}
-                    onArchive={() => handleArchive(item.id)}
-                    onCycleReadingStatus={() => handleCycleReadingStatus(item.id)}
-                    onShare={() => handleShare(item.id)}
-                    onPreviewImageFailed={markPreviewImageFailed}
-                    onToggleChecklistRow={rowId => toggleChecklistItemOnCard(item, rowId)}
-                    onOpenCard={openCardInCurrentTab}
-                    onToggleFlag={flag => handleToggleFlag(item.id, flag)}
-                    onPin={() => handlePin(item.id)}
-                    onSummarize={() => handleSummarize(item.id)}
-                  />
-                );
-                if (!selectMode) return card;
-                const selected = selectedIds.has(item.id);
-                // Selection overlay: captures the click so the card below
-                // never expands; visual ring marks selected cards.
-                return (
-                  <div key={item.id} className="relative">
-                    {card}
-                    <button
-                      onClick={() => toggleSelected(item.id)}
-                      className="absolute inset-0 z-20 rounded-xl transition"
-                      style={{
-                        border: selected ? "2px solid #E8A838" : "2px solid transparent",
-                        background: selected ? "#E8A83812" : "transparent",
-                      }}
-                      aria-label={selected ? "Deselect card" : "Select card"}
-                      aria-pressed={selected}
-                    >
-                      <span
-                        className="absolute left-2 top-2 flex h-5 w-5 items-center justify-center rounded-full border text-[11px] font-bold"
-                        style={{
-                          borderColor: selected ? "#E8A838" : "#9aa1ad80",
-                          background: selected ? "#E8A838" : "#0D0F12C0",
-                          color: selected ? "#13161B" : "#9aa1ad",
-                        }}
-                      >
-                        {selected ? "✓" : ""}
-                      </span>
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          );
-        })}
+        {density === "table" && visibleItems.length > 0 ? (
+          <TableView
+            items={visibleItems}
+            selectedIds={selectedIds}
+            relationCounts={relationCountsByItemId}
+            getCatColor={getCatColor}
+            onToggleSelected={toggleSelectedId}
+            onOpenCard={openCardInCurrentTab}
+            onToggleFlag={handleToggleFlag}
+            onMarkReviewed={handleMarkReviewed}
+          />
+        ) : density === "board" && visibleItems.length > 0 ? (
+          <BoardView
+            items={visibleItems}
+            categoryNames={categories.map(cat => cat.name)}
+            selectedIds={selectedIds}
+            relationCounts={relationCountsByItemId}
+            getCatColor={getCatColor}
+            onToggleSelected={toggleSelectedId}
+            onOpenCard={openCardInCurrentTab}
+            onToggleFlag={handleToggleFlag}
+            onMarkReviewed={handleMarkReviewed}
+          />
+        ) : (timelineGroups ?? [{ key: "", items: visibleItems }]).map(group => (
+          <div key={group.key || "all"} className="contents">
+            {group.key && (
+              <div className={`mb-1 mt-2 first:mt-0 text-[11px] font-mono uppercase tracking-[0.15em] text-gray-500 ${gridFullSpanClass}`}>
+                {timelineHeaderLabel(group.key)} <span className="opacity-50">· {group.items.length}</span>
+              </div>
+            )}
+            {group.items.map((item, idx) => (
+              <ItemCard
+                key={item.id}
+                item={item}
+                idx={idx}
+                expanded={expandedId === item.id}
+                density={density}
+                isSummarizing={summarizing === item.id}
+                isOrganizing={organizing === item.id}
+                isDragTarget={dragOverCardId === item.id}
+                selected={selectedIds.has(item.id)}
+                relationCount={relationCountsByItemId.get(item.id) || 0}
+                relatedItems={relatedItemsForId(item.id)}
+                reminder={activeReminderForId(item.id)}
+                failedPreviewUrls={failedPreviewUrls}
+                getCatColor={getCatColor}
+                onToggleExpanded={() => setExpandedId(expandedId === item.id ? null : item.id)}
+                setDragTargetId={setDragOverCardId}
+                onAttachFiles={files => attachFilesToItem(item.id, files)}
+                onEdit={() => handleEdit(item)}
+                onArchive={() => handleArchive(item.id)}
+                onCycleReadingStatus={() => handleCycleReadingStatus(item.id)}
+                onShare={() => handleShare(item.id)}
+                onPopOut={() => popOutCard(item.id)}
+                onDelete={() => handleDelete(item.id)}
+                onPreviewImageFailed={markPreviewImageFailed}
+                onToggleSelected={() => toggleSelectedId(item.id)}
+                onToggleChecklistRow={rowId => toggleChecklistItemOnCard(item, rowId)}
+                onOpenCard={openCardInCurrentTab}
+                onToggleFlag={flag => handleToggleFlag(item.id, flag)}
+                onMarkReviewed={() => handleMarkReviewed(item.id)}
+                onPin={() => handlePin(item.id)}
+                onSummarize={() => handleSummarize(item.id)}
+                onSuggestOrganization={() => handleSuggestOrganization(item)}
+              />
+            ))}
+          </div>
+        ))}
 
         {hasMore && (
           <button
             onClick={() => setVisibleCount(c => c + 50)}
-            className={`w-full py-3 mb-4 rounded-xl text-xs font-mono border border-brand-border text-gray-500 hover:text-gray-300 transition ${density === "compact" ? "col-span-full" : ""}`}
+            className={`w-full py-3 mb-4 rounded-xl text-xs font-mono border border-brand-border text-gray-500 hover:text-gray-300 transition ${gridFullSpanClass}`}
           >
             Load more ({filtered.length - visibleCount} remaining)
           </button>

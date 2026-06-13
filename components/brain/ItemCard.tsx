@@ -3,10 +3,12 @@
 import type { Dispatch, SetStateAction } from "react";
 import { LinkifiedText } from "../LinkifiedText";
 import { extractCardLinks, formatCardLinkLabel } from "@/lib/card-links";
-import { TAG_COLORS, TYPES, type Item, type RelatedItemSummary, type Reminder } from "@/lib/brain-model";
+import { TAG_COLORS, TYPES, WORKFLOW_STATUS_META, type Item, type RelatedItemSummary, type Reminder } from "@/lib/brain-model";
 import { checklistProgress, fileIcon, formatReminderDue, formatSize, timeAgo } from "@/lib/brain-format";
 import { readingStatusColor, readingStatusLabel } from "@/lib/reading-status.mjs";
 import type { ViewMode } from "@/lib/view-mode";
+import { ShareMenu } from "./ShareMenu";
+import { localFileViewerHref } from "@/lib/local-file-links";
 
 interface ItemCardProps {
   item: Item;
@@ -14,7 +16,10 @@ interface ItemCardProps {
   expanded: boolean;
   density: ViewMode;
   isSummarizing: boolean;
+  isOrganizing: boolean;
   isDragTarget: boolean;
+  selected: boolean;
+  relationCount: number;
   relatedItems: RelatedItemSummary[];
   reminder: Reminder | null;
   failedPreviewUrls: Set<string>;
@@ -29,11 +34,14 @@ interface ItemCardProps {
   onPopOut: () => void;
   onDelete: () => void;
   onPreviewImageFailed: (src?: string) => void;
+  onToggleSelected: () => void;
   onToggleChecklistRow: (rowId: string) => void;
   onOpenCard: (id: string) => void;
   onToggleFlag: (flag: "favourite" | "actionRequired") => void;
+  onMarkReviewed: () => void;
   onPin: () => void;
   onSummarize: () => void;
+  onSuggestOrganization: () => void;
 }
 
 export function ItemCard({
@@ -42,7 +50,10 @@ export function ItemCard({
   expanded,
   density,
   isSummarizing,
+  isOrganizing,
   isDragTarget,
+  selected,
+  relationCount,
   relatedItems,
   reminder,
   failedPreviewUrls,
@@ -57,13 +68,18 @@ export function ItemCard({
   onPopOut,
   onDelete,
   onPreviewImageFailed,
+  onToggleSelected,
   onToggleChecklistRow,
   onOpenCard,
   onToggleFlag,
+  onMarkReviewed,
   onPin,
   onSummarize,
+  onSuggestOrganization,
 }: ItemCardProps) {
   const t = TYPES[item.type] || TYPES.note;
+  const isUnreviewed = item.reviewedAt === null;
+  const workflowStatus = WORKFLOW_STATUS_META[item.workflowStatus || "active"];
   const itemIcon = item.type === "task" && item.completed ? "☑" : t.icon;
   const checklistItems = item.checklistItems || [];
   const checklist = expanded ? checklistItems : checklistItems.slice(0, 3);
@@ -81,11 +97,20 @@ export function ItemCard({
   const isYouTube = item.siteName === "YouTube";
   const isCompact = density === "compact" && !expanded;
   const isList = density === "list" && !expanded;
-  const compactCardClass = isCompact ? "aspect-square flex flex-col" : "";
-  const compactPreviewClass = "relative block w-full aspect-[5/4] bg-brand-muted overflow-hidden group shrink-0";
-  const compactBodyClass = isCompact ? "flex flex-1 flex-col justify-between min-h-0 px-3 py-2.5" : isList ? "px-3 py-2.5" : "p-4";
-  const compactTitleClass = isCompact ? "text-[13px] line-clamp-2" : isList ? "text-[13px]" : "text-sm";
+  const compactCardClass = isCompact ? "min-h-[13rem] flex flex-col" : "";
+  const listCardClass = isList ? "h-[8rem] min-[1500px]:h-[7.5rem] flex flex-col" : "";
+  const compactPreviewClass = "relative block w-full aspect-video bg-brand-muted overflow-hidden group shrink-0";
+  const listPreviewStripClass = "relative block h-9 w-full shrink-0 overflow-hidden bg-brand-muted";
+  const listBodyClass = "flex min-h-0 flex-1 flex-col justify-between px-2 py-1.5";
+  const compactBodyClass = isCompact ? "flex min-h-[7rem] flex-1 flex-col justify-between px-2.5 py-2" : "p-4";
+  const compactTitleClass = isCompact ? "text-[12px] line-clamp-2" : "text-sm";
   const cardLinks = extractCardLinks(item);
+  const listTitle = item.title || item.ogTitle || "Untitled";
+  const listSourceLabel = item.url
+    ? item.url.startsWith("file:")
+      ? formatCardLinkLabel(item.url)
+      : item.url.replace(/^https?:\/\/(www\.)?/, "").slice(0, 42)
+    : (item.ogDescription || item.content || "").slice(0, 42);
 
   return (
     <div
@@ -117,15 +142,27 @@ export function ItemCard({
         setDragTargetId(null);
         onAttachFiles(e.dataTransfer.files);
       }}
-      className={`bg-brand-card ${isList ? "rounded-lg" : "rounded-xl"} ${compactCardClass} ${density === "compact" ? "" : density === "list" ? "" : "mb-2.5"} cursor-pointer transition-all overflow-hidden relative group`}
+      className={`bg-brand-card ${isList ? "rounded-lg" : "rounded-xl"} ${compactCardClass} ${listCardClass} ${density === "compact" ? "" : density === "list" ? "" : "mb-2.5"} cursor-pointer transition-all ${isCompact ? "overflow-visible" : "overflow-hidden"} relative group`}
+      data-list-card={isList ? "true" : undefined}
       style={{
-        border: `1px solid ${isDragTarget ? "#E8A838" : item.pinned ? "#E8A83850" : item.type === "task" && item.completed ? "#56CCF240" : "#1E2128"}`,
-        background: isDragTarget ? "#E8A83820" : item.pinned ? "#E8A83808" : item.type === "task" && item.completed ? "#56CCF208" : undefined,
+        border: `1px solid ${isDragTarget ? "#E8A838" : selected ? "#5B8DEF80" : item.pinned ? "#E8A83850" : item.type === "task" && item.completed ? "#56CCF240" : "#1E2128"}`,
+        background: isDragTarget ? "#E8A83820" : selected ? "#5B8DEF10" : item.pinned ? "#E8A83808" : item.type === "task" && item.completed ? "#56CCF208" : undefined,
         animation: `fadeSlide 0.3s ease ${idx * 0.03}s both`,
-        boxShadow: isDragTarget ? "0 0 0 2px #E8A83840" : undefined,
+        boxShadow: isDragTarget ? "0 0 0 2px #E8A83840" : selected ? "0 0 0 2px #5B8DEF30" : undefined,
         opacity: item.type === "task" && item.completed ? 0.88 : 1,
       }}
     >
+      <button
+        type="button"
+        onClick={e => { e.stopPropagation(); onToggleSelected(); }}
+        className={`absolute left-1.5 top-1.5 z-10 flex h-7 w-7 items-center justify-center rounded-full border border-[#5B8DEF60] bg-black/70 text-[11px] text-[#5B8DEF] backdrop-blur-sm transition ${selected ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"}`}
+        aria-pressed={selected}
+        aria-label={selected ? "Deselect card" : "Select card"}
+        title={selected ? "Deselect" : "Select"}
+      >
+        {selected ? "✓" : ""}
+      </button>
+
       {/* Quick action overlay (edit + delete) — both density modes */}
       <div className="absolute top-1.5 right-1.5 z-10 flex gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition">
         <button
@@ -140,6 +177,7 @@ export function ItemCard({
           aria-label="Pop out in new window"
           title="Pop out"
         >⇱</button>
+        <ShareMenu item={item} variant="icon" />
         <button
           onClick={e => { e.stopPropagation(); onArchive(); }}
           className="w-8 h-8 sm:w-6 sm:h-6 rounded-full bg-black/70 backdrop-blur-sm text-gray-400 hover:text-[#E8A838] hover:bg-[#E8A83820] active:scale-90 transition flex items-center justify-center text-[11px]"
@@ -154,7 +192,128 @@ export function ItemCard({
         >×</button>
       </div>
 
-      {/* Compact-mode top thumbnail (shorter than comfortable banner) */}
+      {isList && (
+        <>
+          {hasPreview ? (
+            <a
+              href={previewLinkUrl}
+              target="_blank"
+              rel="noreferrer"
+              onClick={e => e.stopPropagation()}
+              className={listPreviewStripClass}
+              title={isYouTube ? "Open on YouTube" : hasOgPreview ? "Open link" : "Open image"}
+            >
+              <img
+                src={previewImageSrc}
+                alt=""
+                loading="lazy"
+                onError={() => onPreviewImageFailed(previewImageSrc)}
+                className="h-full w-full object-cover object-center"
+              />
+              {isYouTube && (
+                <span className="absolute inset-0 flex items-center justify-center bg-black/15 text-[11px] text-white">▶</span>
+              )}
+            </a>
+          ) : (
+            <div className={listPreviewStripClass}>
+              <div className="flex h-full items-center gap-2 px-2">
+                <span
+                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-xs"
+                  style={{ background: `${t.color}15`, border: `1px solid ${t.color}30` }}
+                >
+                  {itemIcon}
+                </span>
+                <span className="truncate text-[10px] font-mono text-gray-500">
+                  {item.siteName || t.label}
+                </span>
+              </div>
+            </div>
+          )}
+
+          <div className={listBodyClass}>
+            <div className="min-w-0">
+              <div className="flex min-w-0 items-center gap-1.5">
+                <span
+                  className="shrink-0 rounded border px-1 py-0.5 text-[8px] font-mono uppercase leading-none"
+                  style={{ borderColor: `${workflowStatus.color}50`, color: workflowStatus.color, background: `${workflowStatus.color}14` }}
+                  title={`Workflow status: ${workflowStatus.label}`}
+                >
+                  {workflowStatus.label}
+                </span>
+                {relationCount > 0 && (
+                  <span
+                    className="shrink-0 rounded border px-1 py-0.5 text-[8px] font-mono uppercase leading-none"
+                    style={{ borderColor: "#6FCF9750", color: "#6FCF97", background: "#6FCF9714" }}
+                    title={`${relationCount} related card${relationCount === 1 ? "" : "s"}`}
+                  >
+                    R{relationCount}
+                  </span>
+                )}
+                {item.favourite && <span className="shrink-0 text-[9px]" style={{ color: "#F2C94C" }} title="Favourite">★</span>}
+                {item.actionRequired && <span className="shrink-0 text-[9px]" style={{ color: "#EB5757" }} title="Needs action">⚡</span>}
+                <p className="min-w-0 flex-1 truncate text-[11px] font-semibold leading-tight text-gray-100" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                  {listTitle}
+                </p>
+              </div>
+              {listSourceLabel && (
+                <a
+                  href={item.url ? localFileViewerHref(item.url) : undefined}
+                  target={item.url ? "_blank" : undefined}
+                  rel={item.url ? "noreferrer" : undefined}
+                  onClick={e => e.stopPropagation()}
+                  className="mt-0.5 block truncate text-[10px] font-mono leading-tight text-type-link hover:underline"
+                  title={item.url || listSourceLabel}
+                >
+                  ↗ {listSourceLabel}
+                </a>
+              )}
+            </div>
+
+            <div className="flex min-w-0 items-center gap-1 overflow-hidden">
+              {item.category && (
+                <span
+                  className="truncate rounded px-1 py-0.5 text-[9px] font-mono leading-none"
+                  style={{ background: getCatColor(item.category) + "15", color: getCatColor(item.category), border: `1px solid ${getCatColor(item.category)}30` }}
+                >
+                  {item.category}
+                </span>
+              )}
+              {(item.tags || []).slice(0, 1).map((tag, ti) => (
+                <span
+                  key={ti}
+                  className="truncate rounded px-1 py-0.5 text-[9px] font-mono leading-none"
+                  style={{ color: TAG_COLORS[ti % TAG_COLORS.length], background: TAG_COLORS[ti % TAG_COLORS.length] + "10" }}
+                >
+                  #{tag}
+                </span>
+              ))}
+              <div className="ml-auto flex shrink-0 items-center gap-0.5">
+                <button
+                  onClick={e => { e.stopPropagation(); onToggleFlag("favourite"); }}
+                  className="rounded px-0.5 text-[10px] leading-none hover:bg-white/5"
+                  style={{ color: item.favourite ? "#F2C94C" : "#3a3d44", opacity: item.favourite ? 1 : 0.7 }}
+                  title={item.favourite ? "Unfavourite" : "Mark as favourite"}
+                  aria-label={item.favourite ? "Unfavourite" : "Mark as favourite"}
+                >
+                  {item.favourite ? "★" : "☆"}
+                </button>
+                <button
+                  onClick={e => { e.stopPropagation(); onToggleFlag("actionRequired"); }}
+                  className="rounded px-0.5 text-[10px] leading-none hover:bg-white/5"
+                  style={{ color: item.actionRequired ? "#EB5757" : "#3a3d44", opacity: item.actionRequired ? 1 : 0.7 }}
+                  title={item.actionRequired ? "Clear action flag" : "Mark as needing action"}
+                  aria-label={item.actionRequired ? "Clear action flag" : "Mark as needing action"}
+                >
+                  ⚡
+                </button>
+                <span className="text-[9px] font-mono text-gray-700">{timeAgo(item.createdAt)}</span>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Compact-mode top thumbnail */}
       {hasPreview && isCompact && (
         <a
           href={previewLinkUrl}
@@ -219,32 +378,12 @@ export function ItemCard({
         </a>
       )}
 
+      {!isList && (
       <div className={compactBodyClass}>
-        <div className={`flex ${isCompact ? "gap-2" : isList ? "gap-2.5 items-center" : "gap-3"}`}>
-          {hasPreview && isList && (
-            <a
-              href={previewLinkUrl}
-              target="_blank"
-              rel="noreferrer"
-              onClick={e => e.stopPropagation()}
-              className="relative w-12 h-12 rounded-md bg-brand-muted overflow-hidden shrink-0 border border-brand-border"
-              title={isYouTube ? "Open on YouTube" : hasOgPreview ? "Open link" : "Open image"}
-            >
-              <img
-                src={previewImageSrc}
-                alt=""
-                loading="lazy"
-                onError={() => onPreviewImageFailed(previewImageSrc)}
-                className="w-full h-full object-cover"
-              />
-              {isYouTube && (
-                <span className="absolute inset-0 flex items-center justify-center text-white text-[10px] bg-black/20">▶</span>
-              )}
-            </a>
-          )}
+        <div className={`flex ${isCompact ? "gap-2" : isList ? "gap-1.5 items-start" : "gap-3"}`}>
           {!hasPreview && (
             <div
-              className={`${isCompact ? "w-6 h-6 text-xs" : isList ? "w-8 h-8 text-sm" : "w-8 h-8 text-base"} rounded-lg flex items-center justify-center shrink-0`}
+              className={`${isCompact ? "w-6 h-6 text-xs" : isList ? "w-6 h-6 text-xs" : "w-8 h-8 text-base"} rounded-lg flex items-center justify-center shrink-0`}
               style={{ background: `${t.color}15`, border: `1px solid ${t.color}30` }}
             >{itemIcon}</div>
           )}
@@ -252,6 +391,31 @@ export function ItemCard({
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5">
               {item.pinned && <span className="text-[10px]" title="Pinned">📌</span>}
+              <span
+                className="rounded border px-1.5 py-0.5 text-[9px] font-mono uppercase"
+                style={{ borderColor: `${workflowStatus.color}50`, color: workflowStatus.color, background: `${workflowStatus.color}14` }}
+                title={`Workflow status: ${workflowStatus.label}`}
+              >
+                {workflowStatus.label}
+              </span>
+              {isUnreviewed && (
+                <span
+                  className="rounded border px-1.5 py-0.5 text-[9px] font-mono uppercase"
+                  style={{ borderColor: "#5B8DEF50", color: "#5B8DEF", background: "#5B8DEF14" }}
+                  title="Waiting for review"
+                >
+                  Inbox
+                </span>
+              )}
+              {relationCount > 0 && (
+                <span
+                  className="rounded border px-1.5 py-0.5 text-[9px] font-mono uppercase"
+                  style={{ borderColor: "#6FCF9750", color: "#6FCF97", background: "#6FCF9714" }}
+                  title={`${relationCount} related card${relationCount === 1 ? "" : "s"}`}
+                >
+                  Related {relationCount}
+                </span>
+              )}
               {item.favourite && <span className="text-[10px]" style={{ color: "#F2C94C" }} title="Favourite">★</span>}
               {item.actionRequired && <span className="text-[10px]" style={{ color: "#EB5757" }} title="Needs action">⚡</span>}
               {reminder && <span className="text-[10px]" style={{ color: "#56CCF2" }} title={`Reminder: ${formatReminderDue(reminder.dueAt)}`}>⏰</span>}
@@ -292,12 +456,23 @@ export function ItemCard({
 
             {item.url && !isCompact && !expanded && (
               <a
-                href={item.url}
+                href={localFileViewerHref(item.url)}
                 target="_blank"
                 rel="noreferrer"
                 onClick={e => e.stopPropagation()}
                 className={`${isList ? "text-[10px] mt-0.5" : "text-[11px] mt-1"} text-type-link font-mono block truncate hover:underline`}
-              >↗ {item.url.replace(/^https?:\/\/(www\.)?/, "").slice(0, 50)}</a>
+              >↗ {item.url.startsWith("file:") ? formatCardLinkLabel(item.url) : item.url.replace(/^https?:\/\/(www\.)?/, "").slice(0, 50)}</a>
+            )}
+
+            {item.url?.startsWith("file:") && isCompact && (
+              <a
+                href={localFileViewerHref(item.url)}
+                target="_blank"
+                rel="noreferrer"
+                onClick={e => e.stopPropagation()}
+                className="mt-1 block truncate text-[10px] font-mono text-type-link hover:underline"
+                title={item.url}
+              >↗ {formatCardLinkLabel(item.url)}</a>
             )}
 
             {item.content && !isCompact && (
@@ -314,7 +489,7 @@ export function ItemCard({
                   {cardLinks.map((link) => (
                     <a
                       key={link}
-                      href={link}
+                      href={localFileViewerHref(link)}
                       target="_blank"
                       rel="noreferrer"
                       onClick={e => e.stopPropagation()}
@@ -442,7 +617,13 @@ export function ItemCard({
               </div>
             )}
 
-            <div className={`flex items-center gap-2 ${isCompact ? "mt-1" : "mt-2"} flex-wrap`}>
+            <div className={`flex items-center ${isList ? "gap-1 mt-1 max-h-9 overflow-hidden" : `gap-2 ${isCompact ? "mt-1" : "mt-2"}`} flex-wrap`}>
+              <span
+                className="text-[10px] font-mono px-1.5 py-0.5 rounded"
+                style={{ background: `${workflowStatus.color}15`, color: workflowStatus.color, border: `1px solid ${workflowStatus.color}30` }}
+              >
+                {workflowStatus.label}
+              </span>
               {item.category && (
                 <span
                   className="text-[10px] font-mono px-1.5 py-0.5 rounded"
@@ -456,7 +637,16 @@ export function ItemCard({
                   title={reminder.message || "Reminder"}
                 >⏰ {formatReminderDue(reminder.dueAt)}</span>
               )}
-              {(item.tags || []).slice(0, isCompact ? 3 : undefined).map((tag, ti) => (
+              {relationCount > 0 && (
+                <span
+                  className="text-[10px] font-mono px-1.5 py-0.5 rounded"
+                  style={{ background: "#6FCF9715", color: "#6FCF97", border: "1px solid #6FCF9730" }}
+                  title={`${relationCount} related card${relationCount === 1 ? "" : "s"}`}
+                >
+                  Related {relationCount}
+                </span>
+              )}
+              {(item.tags || []).slice(0, isCompact ? 3 : isList ? 1 : undefined).map((tag, ti) => (
                 <span key={ti} className="text-[10px] font-mono px-1 py-0.5 rounded" style={{ color: TAG_COLORS[ti % TAG_COLORS.length], background: TAG_COLORS[ti % TAG_COLORS.length] + "10" }}>#{tag}</span>
               ))}
               {isCompact && (item.tags || []).length > 3 && (
@@ -545,11 +735,20 @@ export function ItemCard({
                   title="Read-later status — click to cycle unread → reading → read"
                 >{readingStatusLabel(item.readingStatus) || "◌ track reading"}</button>
               )}
+              {isUnreviewed && (
+                <button
+                  onClick={e => { e.stopPropagation(); onMarkReviewed(); }}
+                  className="px-3 py-1.5 min-h-[44px] sm:min-h-0 rounded-md text-[11px] font-mono transition hover:brightness-125 active:scale-95"
+                  style={{ border: "1px solid #5B8DEF30", background: "#5B8DEF10", color: "#5B8DEF" }}
+                  title="Remove from Inbox"
+                >Reviewed</button>
+              )}
               <button
                 onClick={e => { e.stopPropagation(); onEdit(); }}
                 className="px-3 py-1.5 min-h-[44px] sm:min-h-0 rounded-md text-[11px] font-mono transition hover:brightness-125 active:scale-95"
                 style={{ border: "1px solid #5B8DEF30", background: "#5B8DEF10", color: "#5B8DEF" }}
               >Edit</button>
+              <ShareMenu item={item} variant="button" />
               <button
                 disabled={isSummarizing}
                 onClick={e => { e.stopPropagation(); onSummarize(); }}
@@ -565,11 +764,21 @@ export function ItemCard({
                 style={{ border: "1px solid #9B51E030", background: "#9B51E010", color: "#C39BE8" }}
                 title="Copy a read-only share link for this card"
               >⤴ Share</button>
+              <button
+                disabled={isOrganizing}
+                onClick={e => { e.stopPropagation(); onSuggestOrganization(); }}
+                className="px-3 py-1.5 min-h-[44px] sm:min-h-0 rounded-md text-[11px] font-mono transition hover:brightness-125 active:scale-95 disabled:opacity-50 flex items-center gap-1"
+                style={{ border: "1px solid #BB6BD930", background: "#BB6BD910", color: "#BB6BD9" }}
+              >
+                {isOrganizing && <span className="inline-block w-3 h-3 border border-current border-t-transparent rounded-full" style={{ animation: "spin 0.6s linear infinite" }} />}
+                {isOrganizing ? "Suggesting" : "Suggest tags"}
+              </button>
             </div>
             )}
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }

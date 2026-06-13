@@ -7,6 +7,7 @@ import { SYNC_CHANNEL, getSyncClientId, type SyncMessage, type SyncPayload } fro
 import { mergeReminderDateTimeParts, splitReminderDateTime } from "@/lib/reminders.mjs";
 import { newChecklistItem, normalizeChecklistItems, type ChecklistItem } from "@/lib/task-checklists";
 import { extractCardLinks, formatCardLinkLabel } from "@/lib/card-links";
+import { localFileViewerHref } from "@/lib/local-file-links";
 
 type ItemType = "note" | "link" | "clip" | "thought" | "task" | "memory";
 
@@ -736,7 +737,7 @@ export default function CardPopoutPage() {
             {cardLinks.map((link) => (
               <a
                 key={link}
-                href={link}
+                href={localFileViewerHref(link)}
                 target="_blank"
                 rel="noreferrer"
                 className="flex items-center gap-2 rounded-lg border border-brand-border bg-brand-muted px-3 py-2 text-left hover:text-white hover:border-[#5B8DEF60] transition"

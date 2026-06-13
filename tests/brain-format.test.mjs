@@ -85,13 +85,15 @@ test("formatSize renders B, KB, and MB", () => {
   assert.equal(fmt.formatSize(5 * 1024 * 1024), "5.0 MB");
 });
 
-test("viewModeIcon and viewModeLabel cover all modes", () => {
-  assert.equal(fmt.viewModeIcon("comfortable"), "▦");
+test("viewModeIcon and viewModeLabel cover active modes", () => {
   assert.equal(fmt.viewModeIcon("list"), "☰");
   assert.equal(fmt.viewModeIcon("compact"), "≡");
-  assert.equal(fmt.viewModeLabel("comfortable"), "Comfortable");
+  assert.equal(fmt.viewModeIcon("table"), "▦");
+  assert.equal(fmt.viewModeIcon("board"), "▥");
   assert.equal(fmt.viewModeLabel("list"), "List");
   assert.equal(fmt.viewModeLabel("compact"), "Compact");
+  assert.equal(fmt.viewModeLabel("table"), "Table");
+  assert.equal(fmt.viewModeLabel("board"), "Board");
 });
 
 test("checklistProgress counts completed over total", () => {

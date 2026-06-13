@@ -45,6 +45,8 @@ const ITEM_COLUMNS_SQL = `
   archived_at AS "archivedAt",
   reading_status AS "readingStatus",
   completed_at AS "completedAt",
+  reviewed_at AS "reviewedAt",
+  workflow_status AS "workflowStatus",
   created_at AS "createdAt",
   updated_at AS "updatedAt"
 `;

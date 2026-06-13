@@ -5,6 +5,7 @@ import { z } from "zod";
 // lib/api-errors.ts.
 
 export const itemTypeSchema = z.enum(["note", "link", "clip", "thought", "task", "memory"]);
+export const workflowStatusSchema = z.enum(["inbox", "active", "waiting", "done", "archived"]);
 
 const noteEntrySchema = z.object({
   id: z.string(),
@@ -40,6 +41,8 @@ const itemFields = {
   pinned: z.boolean().optional(),
   completed: z.boolean().optional(),
   completedAt: z.string().nullable().optional(),
+  reviewedAt: z.string().nullable().optional(),
+  workflowStatus: workflowStatusSchema.optional(),
   favourite: z.boolean().optional(),
   actionRequired: z.boolean().optional(),
   // ISO timestamp to archive, null to unarchive (roadmap 2.4).

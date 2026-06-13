@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
   const history = trimAskHistory(body?.history);
 
   try {
-    const result = await hybridSearchItems(question);
+    const result = await hybridSearchItems(question, { semanticMode: "auto" });
     const { contextText, sources } = buildAskContext(result.rows);
 
     if (sources.length === 0) {

@@ -1,6 +1,6 @@
-// Server-side hybrid item search shared by GET /api/items?q= and the
-// Telegram /find command. Combines weighted FTS, pgvector semantic ranking
-// (when OPENAI_API_KEY is set), and a trigram fuzzy fallback for typos.
+// Server-side item search shared by GET /api/items?q= and the Telegram /find
+// command. Defaults to exact lexical search + trigram typo fallback; callers
+// can opt into pgvector semantic ranking when that broader behavior is useful.
 import { sql } from "@/db";
 import { buildItemSearchTsQuery } from "@/lib/item-search";
 import {
@@ -69,8 +69,9 @@ async function semanticSearchRows(queryVector: number[], archivedFilterSql: stri
 /**
  * Hybrid search: weighted FTS over search_tsv merged with pgvector semantic
  * ranking via reciprocal rank fusion (lib/hybrid-search.mjs).
- * semanticMode "off" forces FTS-only, "only" returns pure semantic ranking;
- * "auto" merges whenever OPENAI_API_KEY is configured. Every semantic
+ * semanticMode defaults to "off" for precise keyword search. "only" returns
+ * pure semantic ranking; "auto" merges whenever OPENAI_API_KEY is configured.
+ * Every semantic
  * failure mode (no key, column/extension not migrated yet, OpenAI error)
  * degrades silently to the FTS-only behaviour. Zero hits fall back to a
  * trigram scan over titles so typos still surface cards.
@@ -87,7 +88,7 @@ export async function hybridSearchItems(
     filter?: (row: SearchRow) => boolean;
   } = {},
 ): Promise<HybridSearchResult> {
-  const semanticMode = opts.semanticMode ?? "auto";
+  const semanticMode = opts.semanticMode ?? "off";
   const archivedFilterSql = opts.archivedOnly ? "AND archived_at IS NOT NULL" : "AND archived_at IS NULL";
 
   const tsquery = buildItemSearchTsQuery(q);

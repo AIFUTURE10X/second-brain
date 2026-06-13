@@ -110,16 +110,14 @@ export async function GET(req: NextRequest) {
     (!type || row.type === type);
 
   if (q) {
-    // Hybrid search shared with Telegram /find (lib/search-items.ts):
-    // weighted FTS + pgvector semantic ranking merged via reciprocal rank
-    // fusion, trigram fuzzy fallback on zero hits. ?semantic=0 forces
-    // FTS-only, ?semantic=1 returns pure semantic ranking. Result flags map
-    // to headers rather than a body shape change so existing clients that
-    // expect a bare array keep working.
+    // Precise keyword search by default: weighted FTS + trigram fuzzy fallback
+    // on zero hits. Semantic expansion is opt-in (?semantic=auto or
+    // ?semantic=1 for pure semantic) so a search for "guide" only returns
+    // cards that actually match "guide" unless explicitly broadened.
     const semanticParam = url.searchParams.get("semantic");
     const result = await hybridSearchItems(q, {
       archivedOnly,
-      semanticMode: semanticParam === "0" ? "off" : semanticParam === "1" ? "only" : "auto",
+      semanticMode: semanticParam === "1" ? "only" : semanticParam === "auto" ? "auto" : "off",
       filter: matchesStructuredFilters,
     });
     const headers: Record<string, string> = {};

@@ -97,7 +97,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
-  // /find <query> — same hybrid search (FTS + semantic + fuzzy) as the app.
+  // /find <query> — same precise keyword search + typo fallback as the app.
   const findQuery = parseFindCommand(rawText);
   if (findQuery) {
     try {

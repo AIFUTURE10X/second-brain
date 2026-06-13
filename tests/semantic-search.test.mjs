@@ -13,6 +13,7 @@ import {
 import { mergeHybridResults } from "../lib/hybrid-search.mjs";
 
 const routeSource = await readFile(new URL("../app/api/items/route.ts", import.meta.url), "utf8");
+const askRouteSource = await readFile(new URL("../app/api/ask/route.ts", import.meta.url), "utf8");
 // The hybrid search implementation lives in lib/search-items.ts (shared with
 // Telegram /find); the route delegates to it.
 const searchLibSource = await readFile(new URL("../lib/search-items.ts", import.meta.url), "utf8");
@@ -176,6 +177,12 @@ test("items search merges semantic ranking and flags it via header", () => {
   assert.match(searchLibSource, /search_tsv @@ query/);
   assert.match(searchLibSource, /ts_rank_cd\(search_tsv, query\)/);
   assert.match(searchLibSource, /word_similarity/);
+});
+
+test("normal item search stays lexical unless semantic search is explicit", () => {
+  assert.match(searchLibSource, /const semanticMode = opts\.semanticMode \?\? "off"/);
+  assert.match(routeSource, /semanticParam === "1" \? "only" : semanticParam === "auto" \? "auto" : "off"/);
+  assert.match(askRouteSource, /semanticMode: "auto"/);
 });
 
 test("item writes schedule a post-response embedding update", () => {

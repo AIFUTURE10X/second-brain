@@ -99,9 +99,14 @@ export function ItemCard({
   const isList = density === "list" && !expanded;
   const compactCardClass = isCompact ? "min-h-[13rem] flex flex-col" : "";
   const listCardClass = isList ? "h-[8rem] min-[1500px]:h-[7.5rem] flex flex-col" : "";
+  const expandedCardClass = expanded ? (hasPreview ? "col-span-full lg:grid lg:grid-cols-[minmax(17rem,24rem)_minmax(0,1fr)] min-[1500px]:grid-cols-[minmax(18rem,28rem)_minmax(0,1fr)] max-h-[calc(100vh-12rem)]" : "col-span-full max-h-[calc(100vh-12rem)]") : "";
   const compactPreviewClass = "relative block w-full aspect-video bg-brand-muted overflow-hidden group shrink-0";
   const listPreviewStripClass = "relative block h-9 w-full shrink-0 overflow-hidden bg-brand-muted";
+  const previewClass = expanded
+    ? "relative block w-full h-56 lg:h-full lg:min-h-[18rem] lg:max-h-[calc(100vh-12rem)] bg-brand-muted overflow-hidden group"
+    : "relative block w-full h-32 sm:h-40 bg-brand-muted overflow-hidden group";
   const listBodyClass = "flex min-h-0 flex-1 flex-col justify-between px-2 py-1.5";
+  const expandedBodyClass = "min-h-0 max-h-[calc(100vh-12rem)] overflow-y-auto p-4 lg:p-5";
   const compactBodyClass = isCompact ? "flex min-h-[7rem] flex-1 flex-col justify-between px-2.5 py-2" : "p-4";
   const compactTitleClass = isCompact ? "text-[12px] line-clamp-2" : "text-sm";
   const cardLinks = extractCardLinks(item);
@@ -142,8 +147,9 @@ export function ItemCard({
         setDragTargetId(null);
         onAttachFiles(e.dataTransfer.files);
       }}
-      className={`bg-brand-card ${isList ? "rounded-lg" : "rounded-xl"} ${compactCardClass} ${listCardClass} ${density === "compact" ? "" : density === "list" ? "" : "mb-2.5"} cursor-pointer transition-all ${isCompact ? "overflow-visible" : "overflow-hidden"} relative group`}
+      className={`bg-brand-card ${isList ? "rounded-lg" : "rounded-xl"} ${compactCardClass} ${listCardClass} ${expandedCardClass} ${density === "compact" ? "" : density === "list" ? "" : "mb-2.5"} cursor-pointer transition-all ${isCompact ? "overflow-visible" : "overflow-hidden"} relative group`}
       data-list-card={isList ? "true" : undefined}
+      data-expanded-card={expanded ? "true" : undefined}
       style={{
         border: `1px solid ${isDragTarget ? "#E8A838" : selected ? "#5B8DEF80" : item.pinned ? "#E8A83850" : item.type === "task" && item.completed ? "#56CCF240" : "#1E2128"}`,
         background: isDragTarget ? "#E8A83820" : selected ? "#5B8DEF10" : item.pinned ? "#E8A83808" : item.type === "task" && item.completed ? "#56CCF208" : undefined,
@@ -347,7 +353,7 @@ export function ItemCard({
           target="_blank"
           rel="noreferrer"
           onClick={e => e.stopPropagation()}
-          className="relative block w-full h-32 sm:h-40 bg-brand-muted overflow-hidden group"
+          className={previewClass}
           title={isYouTube ? "Open on YouTube" : hasOgPreview ? "Open link" : "Open image"}
         >
           <img
@@ -379,7 +385,7 @@ export function ItemCard({
       )}
 
       {!isList && (
-      <div className={compactBodyClass}>
+      <div className={expanded ? expandedBodyClass : compactBodyClass}>
         <div className={`flex ${isCompact ? "gap-2" : isList ? "gap-1.5 items-start" : "gap-3"}`}>
           {!hasPreview && (
             <div

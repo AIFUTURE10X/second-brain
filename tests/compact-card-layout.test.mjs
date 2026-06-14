@@ -47,6 +47,13 @@ test("list cards render as short scan tiles instead of tall mini cards", () => {
   assert.doesNotMatch(cardSource, /hasPreview && isList && \(/);
 });
 
+test("expanded cards widen across the grid instead of growing as skinny columns", () => {
+  assert.match(cardSource, /const expandedCardClass = expanded \? \(hasPreview \?/);
+  assert.match(cardSource, /col-span-full lg:grid lg:grid-cols-\[minmax\(17rem,24rem\)_minmax\(0,1fr\)\]/);
+  assert.match(cardSource, /const expandedBodyClass = "min-h-0 max-h-\[calc\(100vh-12rem\)\] overflow-y-auto p-4 lg:p-5"/);
+  assert.match(cardSource, /const previewClass = expanded/);
+});
+
 test("wide desktop density tightens the header, capture bar, and filter controls", () => {
   assert.match(brainSource, /min-\[1800px\]:px-3/);
   assert.match(brainSource, /min-\[1800px\]:pt-2/);

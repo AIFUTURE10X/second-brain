@@ -820,6 +820,7 @@ export default function Brain() {
         else if (showAdd) closeForm();
         else if (showCatManager) setShowCatManager(false);
         else if (showTagManager) { setShowTagManager(false); setMergingTag(null); }
+        else if (expandedId) setExpandedId(null);
       }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
@@ -829,7 +830,7 @@ export default function Brain() {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [askOpen, pickerOpen, relatedPickerOpen, showAdd, showCatManager, showTagManager, vaultOpen]);
+  }, [askOpen, pickerOpen, relatedPickerOpen, showAdd, showCatManager, showTagManager, vaultOpen, expandedId]);
 
   // Paste image from clipboard while the add/edit modal is open
   useEffect(() => {

@@ -1,6 +1,6 @@
 import type { ChecklistItem } from "./task-checklists";
 
-export type ItemType = "note" | "link" | "clip" | "thought" | "task" | "memory";
+export type ItemType = "note" | "link" | "clip" | "thought" | "task" | "memory" | "folder";
 export type WorkflowStatus = "inbox" | "active" | "waiting" | "done" | "archived";
 
 export interface Attachment {
@@ -97,6 +97,9 @@ export const TYPES: Record<ItemType, { icon: string; label: string; color: strin
   thought: { icon: "◉", label: "Thought", color: "#BB6BD9" },
   task: { icon: "☐", label: "Task", color: "#56CCF2" },
   memory: { icon: "💡", label: "Memory", color: "#F2C94C" },
+  // Local folder/file path. Stored in `url`; browsers can't open file:// from a
+  // hosted page, so the card offers copy-to-clipboard rather than a link.
+  folder: { icon: "📁", label: "Folder", color: "#F2994A" },
 };
 
 export const WORKFLOW_STATUS_META: Record<WorkflowStatus, { label: string; color: string }> = {

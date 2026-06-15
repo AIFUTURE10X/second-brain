@@ -44,7 +44,7 @@ export const categories = pgTable("categories", {
 
 export const items = pgTable("items", {
   id: uuid("id").primaryKey().defaultRandom(),
-  type: text("type").notNull().default("note"), // note | link | clip | thought
+  type: text("type").notNull().default("note"), // note | link | clip | thought | task | memory | folder
   title: text("title").notNull().default(""),
   content: text("content").default(""),
   url: text("url").default(""),

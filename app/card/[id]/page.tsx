@@ -8,8 +8,10 @@ import { mergeReminderDateTimeParts, splitReminderDateTime } from "@/lib/reminde
 import { newChecklistItem, normalizeChecklistItems, type ChecklistItem } from "@/lib/task-checklists";
 import { extractCardLinks, formatCardLinkLabel } from "@/lib/card-links";
 import { localFileViewerHref } from "@/lib/local-file-links";
+import { showToast } from "@/components/Toast";
+import { copyToClipboard } from "@/lib/clipboard";
 
-type ItemType = "note" | "link" | "clip" | "thought" | "task" | "memory";
+type ItemType = "note" | "link" | "clip" | "thought" | "task" | "memory" | "folder";
 
 interface Attachment {
   url: string;
@@ -107,6 +109,7 @@ const TYPES: Record<ItemType, { icon: string; label: string; color: string }> = 
   thought: { icon: "◉", label: "Thought", color: "#BB6BD9" },
   task: { icon: "☐", label: "Task", color: "#56CCF2" },
   memory: { icon: "💡", label: "Memory", color: "#F2C94C" },
+  folder: { icon: "📁", label: "Folder", color: "#F2994A" },
 };
 
 const REMINDER_TIME_OPTIONS = Array.from({ length: 31 }, (_, i) => {
@@ -661,6 +664,33 @@ export default function CardPopoutPage() {
           aria-label="URL"
           className="w-full px-3 py-2.5 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none mb-2.5 placeholder:text-gray-500"
         />
+      )}
+
+      {form.type === "folder" && (
+        <div className="mb-2.5">
+          <div className="flex gap-1.5">
+            <input
+              value={form.url}
+              onChange={e => onField("url", e.target.value)}
+              placeholder="C:\Users\you\Documents  (or \\server\share, /Users/you/…)"
+              aria-label="Folder or file path"
+              className="flex-1 min-w-0 px-3 py-2.5 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none font-mono placeholder:text-gray-500"
+            />
+            <button
+              type="button"
+              onClick={async () => {
+                const ok = await copyToClipboard(form.url.trim());
+                showToast(ok ? "Path copied — paste into File Explorer" : "Couldn't copy path", ok ? "success" : "error");
+              }}
+              disabled={!form.url.trim()}
+              className="shrink-0 px-3 rounded-lg text-[11px] font-mono border border-[#F2994A40] bg-[#F2994A10] text-[#F2994A] transition hover:brightness-125 active:scale-95 disabled:opacity-40"
+              title="Copy path to clipboard"
+            >⧉ Copy</button>
+          </div>
+          <p className="text-[10px] text-gray-500 mt-1.5 leading-relaxed">
+            Browsers can&apos;t open local folders directly — copy the path, then paste it into File Explorer / Finder.
+          </p>
+        </div>
       )}
 
       <input

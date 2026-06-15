@@ -2,7 +2,9 @@
 
 import type { Dispatch, SetStateAction } from "react";
 import { LinkifiedText } from "../LinkifiedText";
+import { showToast } from "../Toast";
 import { extractCardLinks, formatCardLinkLabel } from "@/lib/card-links";
+import { copyToClipboard } from "@/lib/clipboard";
 import { TAG_COLORS, TYPES, WORKFLOW_STATUS_META, type Item, type RelatedItemSummary, type Reminder } from "@/lib/brain-model";
 import { checklistProgress, fileIcon, formatReminderDue, formatSize, timeAgo } from "@/lib/brain-format";
 import { readingStatusColor, readingStatusLabel } from "@/lib/reading-status.mjs";
@@ -116,6 +118,14 @@ export function ItemCard({
       ? formatCardLinkLabel(item.url)
       : item.url.replace(/^https?:\/\/(www\.)?/, "").slice(0, 42)
     : (item.ogDescription || item.content || "").slice(0, 42);
+  const isFolder = item.type === "folder";
+
+  // Browsers can't open a local folder from a hosted page, so folder cards copy
+  // the path to the clipboard instead of linking to it.
+  const copyFolderPath = async () => {
+    const ok = await copyToClipboard((item.url || "").trim());
+    showToast(ok ? "Path copied — paste into File Explorer" : "Couldn't copy path", ok ? "success" : "error");
+  };
 
   return (
     <div
@@ -262,16 +272,27 @@ export function ItemCard({
                 </p>
               </div>
               {listSourceLabel && (
-                <a
-                  href={item.url ? localFileViewerHref(item.url) : undefined}
-                  target={item.url ? "_blank" : undefined}
-                  rel={item.url ? "noreferrer" : undefined}
-                  onClick={e => e.stopPropagation()}
-                  className="mt-0.5 block truncate text-[10px] font-mono leading-tight text-type-link hover:underline"
-                  title={item.url || listSourceLabel}
-                >
-                  ↗ {listSourceLabel}
-                </a>
+                isFolder && item.url ? (
+                  <button
+                    type="button"
+                    onClick={e => { e.stopPropagation(); copyFolderPath(); }}
+                    className="mt-0.5 block max-w-full truncate text-left text-[10px] font-mono leading-tight text-[#F2994A] hover:underline"
+                    title={`Copy path: ${item.url}`}
+                  >
+                    📁 {listSourceLabel} ⧉
+                  </button>
+                ) : (
+                  <a
+                    href={item.url ? localFileViewerHref(item.url) : undefined}
+                    target={item.url ? "_blank" : undefined}
+                    rel={item.url ? "noreferrer" : undefined}
+                    onClick={e => e.stopPropagation()}
+                    className="mt-0.5 block truncate text-[10px] font-mono leading-tight text-type-link hover:underline"
+                    title={item.url || listSourceLabel}
+                  >
+                    ↗ {listSourceLabel}
+                  </a>
+                )
               )}
             </div>
 
@@ -460,7 +481,19 @@ export function ItemCard({
               <p className={`text-xs text-gray-500 mt-1 ${isList ? "line-clamp-1" : "line-clamp-2"}`}>{item.ogDescription}</p>
             )}
 
-            {item.url && !isCompact && !expanded && (
+            {isFolder && item.url && !isCompact && (
+              <button
+                type="button"
+                onClick={e => { e.stopPropagation(); copyFolderPath(); }}
+                className={`${isList ? "text-[10px] mt-0.5" : "text-[11px] mt-1"} font-mono flex items-center gap-1.5 max-w-full text-left text-[#F2994A] hover:brightness-125 transition group/path`}
+                title={`Copy path: ${item.url}`}
+              >
+                <span className="shrink-0" aria-hidden>📁</span>
+                <span className={expanded ? "break-all" : "truncate"}>{item.url}</span>
+                <span className="shrink-0 text-gray-500 group-hover/path:text-[#F2994A]" aria-hidden>⧉</span>
+              </button>
+            )}
+            {!isFolder && item.url && !isCompact && !expanded && (
               <a
                 href={localFileViewerHref(item.url)}
                 target="_blank"

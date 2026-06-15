@@ -369,12 +369,12 @@ export function ItemFormModal({
             </div>
 
             {/* Type picker */}
-            <div className="flex gap-1.5 mb-3">
+            <div className="grid grid-cols-4 gap-1.5 mb-3">
               {(Object.entries(TYPES) as [ItemType, typeof TYPES.note][]).map(([k, v]) => (
                 <button
                   key={k}
                   onClick={() => setForm(f => ({ ...f, type: k }))}
-                  className="flex-1 py-2 rounded-lg text-xs font-mono font-medium transition"
+                  className="py-2 rounded-lg text-xs font-mono font-medium transition"
                   style={{
                     border: form.type === k ? `1px solid ${v.color}60` : "1px solid #252830",
                     background: form.type === k ? `${v.color}15` : "#181B21",
@@ -577,6 +577,20 @@ export function ItemFormModal({
                 aria-label="URL"
                 className="w-full px-3 py-2.5 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none mb-2.5 placeholder:text-gray-500"
               />
+            )}
+            {form.type === "folder" && (
+              <>
+                <input
+                  value={form.url}
+                  onChange={e => setForm(f => ({ ...f, url: e.target.value }))}
+                  placeholder="C:\Users\you\Documents  (or \\server\share, /Users/you/…)"
+                  aria-label="Folder or file path"
+                  className="w-full px-3 py-2.5 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none mb-1.5 placeholder:text-gray-500 font-mono"
+                />
+                <p className="text-[10px] text-gray-500 mb-2.5 leading-relaxed">
+                  Paste a local folder/file path. Browsers can&apos;t open it directly, so the card gives you a one-click <span className="text-gray-400">copy</span> — then paste into File Explorer.
+                </p>
+              </>
             )}
             <input
               value={form.title}

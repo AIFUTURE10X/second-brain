@@ -4,7 +4,7 @@ import { z } from "zod";
 // directly. Request-level helpers (jsonError, parseBody) live in
 // lib/api-errors.ts.
 
-export const itemTypeSchema = z.enum(["note", "link", "clip", "thought", "task", "memory"]);
+export const itemTypeSchema = z.enum(["note", "link", "clip", "thought", "task", "memory", "folder"]);
 export const workflowStatusSchema = z.enum(["inbox", "active", "waiting", "done", "archived"]);
 
 const noteEntrySchema = z.object({

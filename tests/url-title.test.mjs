@@ -29,7 +29,8 @@ test("fallbackTitleFromUrl ignores invalid or unsupported URLs", () => {
 
 test("item and automation save endpoints use URL fallback titles", () => {
   assert.match(itemsRouteSource, /import \{ fallbackTitleFromUrl \} from "@\/lib\/url-title"/);
-  assert.match(itemsRouteSource, /const fallbackTitle = fallbackTitleFromUrl\(url\);/);
+  // Folder items derive the title from the path; everything else uses the URL heuristic.
+  assert.match(itemsRouteSource, /const fallbackTitle = .*fallbackTitleFromUrl\(url\);/);
   assert.match(itemsRouteSource, /body\.title \|\| og\.ogTitle \|\| fallbackTitle \|\| ""/);
   assert.match(saveRouteSource, /import \{ fallbackTitleFromUrl \} from "@\/lib\/url-title"/);
   assert.match(saveRouteSource, /const fallbackTitle = fallbackTitleFromUrl\(url\);/);

@@ -10,7 +10,7 @@ export interface SavedViewDefinition {
 }
 
 export interface SavedViewFilters {
-  view: "all" | "note" | "link" | "clip" | "thought" | "task" | "memory";
+  view: "all" | "note" | "link" | "clip" | "thought" | "task" | "memory" | "folder";
   catFilter: string;
   sourceFilter: string | null;
   tagFilter: string | null;
@@ -43,7 +43,7 @@ export interface CustomSavedViewDefinition {
 }
 
 const CUSTOM_VIEW_COLORS = ["#5B8DEF", "#6FCF97", "#F2C94C", "#BB6BD9", "#EB5757", "#56CCF2", "#E8A838"];
-const VALID_ITEM_FILTERS = new Set(["all", "note", "link", "clip", "thought", "task", "memory"]);
+const VALID_ITEM_FILTERS = new Set(["all", "note", "link", "clip", "thought", "task", "memory", "folder"]);
 
 export const SAVED_VIEWS: SavedViewDefinition[] = [
   { key: "all", label: "All", title: "Show every card", color: "#E8A838" },

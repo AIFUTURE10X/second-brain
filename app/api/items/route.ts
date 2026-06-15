@@ -18,6 +18,7 @@ import { itemCreateSchema, itemUpdateSchema } from "@/lib/validation";
 import { deriveTaskCompletion, normalizeChecklistItems } from "@/lib/task-checklists";
 import { appendYouTubeDescriptionLinksToNotes, fetchYouTubeDescriptionLinks, type YouTubeDescriptionLink } from "@/lib/youtube";
 import { fallbackTitleFromUrl } from "@/lib/url-title";
+import { formatLocalPathLabel } from "@/lib/local-path";
 
 function prepareTaskFields(
   type: unknown,
@@ -157,16 +158,19 @@ export async function POST(req: NextRequest) {
   try {
   const url = body.url?.trim() || "";
 
-  // Auto-enrich if URL is provided and no og data was passed
+  // Auto-enrich if URL is provided and no og data was passed. Folder items hold
+  // a local path in `url`, not a web URL — never try to fetch it.
   let og = { ogTitle: "", ogDescription: "", ogImage: "", siteName: "", favicon: "" };
   let descriptionLinks: YouTubeDescriptionLink[] = [];
-  if (url) {
+  if (url && body.type !== "folder") {
     if (!body.ogTitle) {
       og = await enrichUrl(url);
     }
     descriptionLinks = await fetchYouTubeDescriptionLinks(url);
   }
-  const fallbackTitle = fallbackTitleFromUrl(url);
+  // For folders, derive a readable title from the last path segment; otherwise
+  // fall back to the web-URL heuristic.
+  const fallbackTitle = body.type === "folder" ? formatLocalPathLabel(url) : fallbackTitleFromUrl(url);
 
   let itemTags: string[] = body.tags || [];
   let itemCategory: string = body.category || "";
@@ -267,7 +271,7 @@ export async function PUT(req: NextRequest) {
   if (!current) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const nextType = updates.type || current.type;
 
-  if (updates.url && shouldEnrichUrlOnUpdate({ currentUrl: current.url, nextUrl: updates.url, nextOgTitle: updates.ogTitle })) {
+  if (updates.url && nextType !== "folder" && shouldEnrichUrlOnUpdate({ currentUrl: current.url, nextUrl: updates.url, nextOgTitle: updates.ogTitle })) {
     const og = await enrichUrl(updates.url);
     updates.ogTitle = og.ogTitle;
     updates.ogDescription = og.ogDescription;

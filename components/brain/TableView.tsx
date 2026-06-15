@@ -1,6 +1,8 @@
 import { TAG_COLORS, TYPES, WORKFLOW_STATUS_META, type Item } from "@/lib/brain-model";
 import { sourceFromUrl, timeAgo } from "@/lib/brain-format";
 import { localFileViewerHref } from "@/lib/local-file-links";
+import { showToast } from "../Toast";
+import { copyToClipboard } from "@/lib/clipboard";
 
 interface TableViewProps {
   items: Item[];
@@ -48,7 +50,8 @@ export function TableView({
             const type = TYPES[item.type] || TYPES.note;
             const selected = selectedIds.has(item.id);
             const source = sourceFromUrl(item.url);
-            const sourceLabel = item.url.startsWith("file:") ? "Local file" : source?.label || "Manual";
+            const isFolder = item.type === "folder";
+            const sourceLabel = isFolder ? "Local folder" : item.url.startsWith("file:") ? "Local file" : source?.label || "Manual";
             const visibleTags = (item.tags || []).slice(0, 3);
             const hiddenTagCount = Math.max(0, (item.tags || []).length - 3);
             const isUnreviewed = item.reviewedAt === null;
@@ -176,17 +179,33 @@ export function TableView({
                 </td>
                 <td className={cellClass}>
                   {item.url ? (
-                    <a
-                      href={localFileViewerHref(item.url)}
-                      target="_blank"
-                      rel="noreferrer"
-                      onClick={event => { event.stopPropagation(); }}
-                      className="inline-flex max-w-full items-center gap-1 rounded-md px-1.5 py-0.5 font-mono text-[10px] leading-none text-[#8FB3FF] transition hover:bg-[#5B8DEF12] hover:text-[#B8CCFF]"
-                      title={item.url}
-                    >
-                      <span className="truncate">{sourceLabel}</span>
-                      <span className="text-gray-600">↗</span>
-                    </a>
+                    isFolder ? (
+                      <button
+                        type="button"
+                        onClick={async event => {
+                          event.stopPropagation();
+                          const ok = await copyToClipboard(item.url.trim());
+                          showToast(ok ? "Path copied — paste into File Explorer" : "Couldn't copy path", ok ? "success" : "error");
+                        }}
+                        className="inline-flex max-w-full items-center gap-1 rounded-md px-1.5 py-0.5 font-mono text-[10px] leading-none text-[#F2994A] transition hover:bg-[#F2994A12]"
+                        title={`Copy path: ${item.url}`}
+                      >
+                        <span className="truncate">{sourceLabel}</span>
+                        <span className="text-gray-600">⧉</span>
+                      </button>
+                    ) : (
+                      <a
+                        href={localFileViewerHref(item.url)}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={event => { event.stopPropagation(); }}
+                        className="inline-flex max-w-full items-center gap-1 rounded-md px-1.5 py-0.5 font-mono text-[10px] leading-none text-[#8FB3FF] transition hover:bg-[#5B8DEF12] hover:text-[#B8CCFF]"
+                        title={item.url}
+                      >
+                        <span className="truncate">{sourceLabel}</span>
+                        <span className="text-gray-600">↗</span>
+                      </a>
+                    )
                   ) : (
                     <span className="font-mono text-[10px] text-gray-700">Manual</span>
                   )}

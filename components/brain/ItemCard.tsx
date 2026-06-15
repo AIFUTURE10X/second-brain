@@ -5,6 +5,7 @@ import { LinkifiedText } from "../LinkifiedText";
 import { showToast } from "../Toast";
 import { extractCardLinks, formatCardLinkLabel } from "@/lib/card-links";
 import { copyToClipboard } from "@/lib/clipboard";
+import { openLocalPathInDesktop } from "@/lib/desktop";
 import { TAG_COLORS, TYPES, WORKFLOW_STATUS_META, type Item, type RelatedItemSummary, type Reminder } from "@/lib/brain-model";
 import { checklistProgress, fileIcon, formatReminderDue, formatSize, timeAgo } from "@/lib/brain-format";
 import { readingStatusColor, readingStatusLabel } from "@/lib/reading-status.mjs";
@@ -120,10 +121,16 @@ export function ItemCard({
     : (item.ogDescription || item.content || "").slice(0, 42);
   const isFolder = item.type === "folder";
 
-  // Browsers can't open a local folder from a hosted page, so folder cards copy
-  // the path to the clipboard instead of linking to it.
-  const copyFolderPath = async () => {
-    const ok = await copyToClipboard((item.url || "").trim());
+  // In the desktop app, clicking a folder opens it in the OS file manager.
+  // Browsers can't open local folders from a hosted page, so there we copy the
+  // path to the clipboard instead.
+  const activateFolderPath = async () => {
+    const path = (item.url || "").trim();
+    if (await openLocalPathInDesktop(path)) {
+      showToast("Opening folder…", "success");
+      return;
+    }
+    const ok = await copyToClipboard(path);
     showToast(ok ? "Path copied — paste into File Explorer" : "Couldn't copy path", ok ? "success" : "error");
   };
 
@@ -275,9 +282,9 @@ export function ItemCard({
                 isFolder && item.url ? (
                   <button
                     type="button"
-                    onClick={e => { e.stopPropagation(); copyFolderPath(); }}
+                    onClick={e => { e.stopPropagation(); activateFolderPath(); }}
                     className="mt-0.5 block max-w-full truncate text-left text-[10px] font-mono leading-tight text-[#F2994A] hover:underline"
-                    title={`Copy path: ${item.url}`}
+                    title={`Open folder (or copy path): ${item.url}`}
                   >
                     📁 {listSourceLabel} ⧉
                   </button>
@@ -484,9 +491,9 @@ export function ItemCard({
             {isFolder && item.url && !isCompact && (
               <button
                 type="button"
-                onClick={e => { e.stopPropagation(); copyFolderPath(); }}
+                onClick={e => { e.stopPropagation(); activateFolderPath(); }}
                 className={`${isList ? "text-[10px] mt-0.5" : "text-[11px] mt-1"} font-mono flex items-center gap-1.5 max-w-full text-left text-[#F2994A] hover:brightness-125 transition group/path`}
-                title={`Copy path: ${item.url}`}
+                title={`Open folder (or copy path): ${item.url}`}
               >
                 <span className="shrink-0" aria-hidden>📁</span>
                 <span className={expanded ? "break-all" : "truncate"}>{item.url}</span>

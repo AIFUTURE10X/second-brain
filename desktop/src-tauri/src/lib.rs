@@ -1,5 +1,6 @@
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_deep_link::DeepLinkExt;
+use tauri_plugin_opener::OpenerExt;
 
 // Injected into every page load. Intercepts clicks on anchors with
 // target="_blank" (and any cross-origin link) and reroutes them through
@@ -95,6 +96,20 @@ fn pop_out_card(app: tauri::AppHandle, url: String, label: String) -> Result<(),
     Ok(())
 }
 
+// Custom command: open a local folder/file path in the OS file manager (or its
+// default app). Called from folder cards via
+// window.__TAURI_INTERNALS__.invoke("open_path", { path }). Browsers block
+// opening file:// paths from a hosted page, so this desktop bridge is the only
+// way to make folder cards actually open the folder. Calls the opener plugin
+// directly from trusted Rust, so the plugin's path scope doesn't apply — the
+// user is free to open any folder they saved.
+#[tauri::command]
+fn open_path(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    app.opener()
+        .open_path(path, None::<&str>)
+        .map_err(|e| e.to_string())
+}
+
 // Close a card pop-out window by label. Used by the Close button in the card
 // page because window.close() does not work for Tauri-created windows.
 #[tauri::command]
@@ -121,7 +136,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_notification::init())
-        .invoke_handler(tauri::generate_handler![pop_out_card, close_card_window])
+        .invoke_handler(tauri::generate_handler![pop_out_card, close_card_window, open_path])
         .setup(|app| {
             #[cfg(any(windows, target_os = "linux"))]
             app.deep_link().register_all()?;

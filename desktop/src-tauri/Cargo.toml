@@ -1,6 +1,6 @@
 [package]
 name = "second-brain-desktop"
-version = "0.1.0"
+version = "0.2.0"
 description = "Second Brain desktop app"
 authors = ["AIFUTURE10X"]
 edition = "2021"

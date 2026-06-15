@@ -588,7 +588,7 @@ export function ItemFormModal({
                   className="w-full px-3 py-2.5 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none mb-1.5 placeholder:text-gray-500 font-mono"
                 />
                 <p className="text-[10px] text-gray-500 mb-2.5 leading-relaxed">
-                  Paste a local folder/file path. Browsers can&apos;t open it directly, so the card gives you a one-click <span className="text-gray-400">copy</span> — then paste into File Explorer.
+                  Paste a local folder/file path. In the <span className="text-gray-400">desktop app</span> the card opens it in File Explorer; in a browser it copies the path to paste yourself.
                 </p>
               </>
             )}

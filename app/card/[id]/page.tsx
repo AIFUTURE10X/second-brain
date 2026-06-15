@@ -10,6 +10,7 @@ import { extractCardLinks, formatCardLinkLabel } from "@/lib/card-links";
 import { localFileViewerHref } from "@/lib/local-file-links";
 import { showToast } from "@/components/Toast";
 import { copyToClipboard } from "@/lib/clipboard";
+import { openLocalPathInDesktop } from "@/lib/desktop";
 
 type ItemType = "note" | "link" | "clip" | "thought" | "task" | "memory" | "folder";
 
@@ -679,16 +680,21 @@ export default function CardPopoutPage() {
             <button
               type="button"
               onClick={async () => {
-                const ok = await copyToClipboard(form.url.trim());
+                const path = form.url.trim();
+                if (await openLocalPathInDesktop(path)) {
+                  showToast("Opening folder…", "success");
+                  return;
+                }
+                const ok = await copyToClipboard(path);
                 showToast(ok ? "Path copied — paste into File Explorer" : "Couldn't copy path", ok ? "success" : "error");
               }}
               disabled={!form.url.trim()}
               className="shrink-0 px-3 rounded-lg text-[11px] font-mono border border-[#F2994A40] bg-[#F2994A10] text-[#F2994A] transition hover:brightness-125 active:scale-95 disabled:opacity-40"
-              title="Copy path to clipboard"
-            >⧉ Copy</button>
+              title="Open folder (desktop app) or copy path"
+            >📁 Open / Copy</button>
           </div>
           <p className="text-[10px] text-gray-500 mt-1.5 leading-relaxed">
-            Browsers can&apos;t open local folders directly — copy the path, then paste it into File Explorer / Finder.
+            In the desktop app this opens the folder in File Explorer. In a browser it copies the path (browsers can&apos;t open local folders directly).
           </p>
         </div>
       )}

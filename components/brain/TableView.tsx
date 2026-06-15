@@ -3,6 +3,7 @@ import { sourceFromUrl, timeAgo } from "@/lib/brain-format";
 import { localFileViewerHref } from "@/lib/local-file-links";
 import { showToast } from "../Toast";
 import { copyToClipboard } from "@/lib/clipboard";
+import { openLocalPathInDesktop } from "@/lib/desktop";
 
 interface TableViewProps {
   items: Item[];
@@ -184,11 +185,16 @@ export function TableView({
                         type="button"
                         onClick={async event => {
                           event.stopPropagation();
-                          const ok = await copyToClipboard(item.url.trim());
+                          const path = item.url.trim();
+                          if (await openLocalPathInDesktop(path)) {
+                            showToast("Opening folder…", "success");
+                            return;
+                          }
+                          const ok = await copyToClipboard(path);
                           showToast(ok ? "Path copied — paste into File Explorer" : "Couldn't copy path", ok ? "success" : "error");
                         }}
                         className="inline-flex max-w-full items-center gap-1 rounded-md px-1.5 py-0.5 font-mono text-[10px] leading-none text-[#F2994A] transition hover:bg-[#F2994A12]"
-                        title={`Copy path: ${item.url}`}
+                        title={`Open folder (or copy path): ${item.url}`}
                       >
                         <span className="truncate">{sourceLabel}</span>
                         <span className="text-gray-600">⧉</span>

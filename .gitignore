@@ -15,3 +15,7 @@ desktop/src-tauri/target/
 # Tooling artifacts
 .playwright-mcp/
 tests/.tmp/
+
+# Local git worktrees and Claude Code session settings
+.worktrees/
+.claude/

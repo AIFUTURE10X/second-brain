@@ -17,6 +17,7 @@ import {
   type Item,
   type ItemType,
   type NoteEntry,
+  type WebsiteLink,
 } from "@/lib/brain-model";
 import { fileIcon, formatSize, formatStamp } from "@/lib/brain-format";
 
@@ -27,6 +28,7 @@ export interface ItemFormState {
   url: string;
   noteEntries: NoteEntry[];
   checklistItems: ChecklistItem[];
+  websiteLinks: WebsiteLink[];
   tags: string;
   category: string;
   attachments: Attachment[];
@@ -152,6 +154,7 @@ export function ItemFormModal({
       ...draft.form,
       noteEntries: Array.isArray(draft.form.noteEntries) ? draft.form.noteEntries : current.noteEntries,
       checklistItems: Array.isArray(draft.form.checklistItems) ? normalizeChecklistItems(draft.form.checklistItems) : current.checklistItems,
+      websiteLinks: Array.isArray(draft.form.websiteLinks) ? draft.form.websiteLinks : current.websiteLinks,
       attachments: Array.isArray(draft.form.attachments) ? draft.form.attachments : current.attachments,
       relatedItemIds: Array.isArray(draft.form.relatedItemIds) ? draft.form.relatedItemIds : current.relatedItemIds,
     }));
@@ -202,6 +205,21 @@ export function ItemFormModal({
 
   const deleteNoteEntry = (id: string) => {
     setForm(f => ({ ...f, noteEntries: f.noteEntries.filter(e => e.id !== id) }));
+  };
+
+  const addWebsiteLink = () => {
+    setForm(f => ({ ...f, websiteLinks: [...f.websiteLinks, { url: "", label: "" }] }));
+  };
+
+  const updateWebsiteLink = (index: number, field: "url" | "label", value: string) => {
+    setForm(f => ({
+      ...f,
+      websiteLinks: f.websiteLinks.map((link, i) => i === index ? { ...link, [field]: value } : link),
+    }));
+  };
+
+  const removeWebsiteLink = (index: number) => {
+    setForm(f => ({ ...f, websiteLinks: f.websiteLinks.filter((_, i) => i !== index) }));
   };
 
   const addChecklistRow = () => {
@@ -703,6 +721,48 @@ export function ItemFormModal({
               className="mb-2.5 text-[11px] font-mono text-gray-500 hover:text-gray-300 transition"
             >
               + Add entry
+            </button>
+            <label className="block text-[11px] font-mono text-gray-400 mb-1.5 tracking-wide">
+              Website links <span className="text-gray-600 font-normal">(quick links shown on the card)</span>
+            </label>
+            <div className="flex flex-col gap-1.5 mb-2">
+              {form.websiteLinks.length === 0 ? (
+                <span className="text-[11px] text-gray-600 font-mono">No website links yet</span>
+              ) : (
+                form.websiteLinks.map((link, index) => (
+                  <div key={index} className="flex items-center gap-1.5">
+                    <span className="text-type-link shrink-0 text-sm" aria-hidden>↗</span>
+                    <input
+                      value={link.url}
+                      onChange={e => updateWebsiteLink(index, "url", e.target.value)}
+                      placeholder="https://example.com"
+                      aria-label="Website link URL"
+                      className="flex-1 min-w-0 px-3 py-2 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none placeholder:text-gray-500 font-mono"
+                    />
+                    <input
+                      value={link.label}
+                      onChange={e => updateWebsiteLink(index, "label", e.target.value)}
+                      placeholder="Label"
+                      aria-label="Website link label"
+                      className="w-24 sm:w-36 shrink-0 px-3 py-2 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none placeholder:text-gray-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeWebsiteLink(index)}
+                      className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition"
+                      aria-label="Remove website link"
+                      title="Remove link"
+                    >×</button>
+                  </div>
+                ))
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={addWebsiteLink}
+              className="mb-2.5 text-[11px] font-mono text-gray-500 hover:text-gray-300 transition"
+            >
+              + Add website link
             </button>
             <label className="block text-[11px] font-mono text-gray-400 mb-1.5 tracking-wide">
               Related cards

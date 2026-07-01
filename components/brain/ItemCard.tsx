@@ -113,6 +113,7 @@ export function ItemCard({
   const compactBodyClass = isCompact ? "flex min-h-[7rem] flex-1 flex-col justify-between px-2.5 py-2" : "p-4";
   const compactTitleClass = isCompact ? "text-[12px] line-clamp-2" : "text-sm";
   const cardLinks = extractCardLinks(item);
+  const websiteLinks = (item.websiteLinks || []).filter(link => link.url);
   const listTitle = item.title || item.ogTitle || "Untitled";
   const listSourceLabel = item.url
     ? item.url.startsWith("file:")
@@ -528,6 +529,31 @@ export function ItemCard({
               />
             )}
 
+            {websiteLinks.length > 0 && !isCompact && !isList && (
+              <div className="mt-2.5 pt-2.5 border-t border-brand-border">
+                <p className="text-[10px] text-gray-600 font-mono mb-1.5">🔗 Website links</p>
+                <div className="flex flex-col gap-1.5">
+                  {(expanded ? websiteLinks : websiteLinks.slice(0, 3)).map((link, li) => (
+                    <a
+                      key={`${link.url}-${li}`}
+                      href={link.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={e => e.stopPropagation()}
+                      className="flex items-center gap-2 rounded-lg border border-brand-border bg-brand-muted/50 px-2.5 py-2 text-left hover:border-[#5B8DEF60] hover:text-white transition"
+                      title={link.url}
+                    >
+                      <span className="text-type-link shrink-0">↗</span>
+                      <span className="text-[11px] text-gray-300 truncate">{link.label || formatCardLinkLabel(link.url)}</span>
+                    </a>
+                  ))}
+                  {!expanded && websiteLinks.length > 3 && (
+                    <span className="text-[10px] font-mono text-gray-600">+{websiteLinks.length - 3} more links</span>
+                  )}
+                </div>
+              </div>
+            )}
+
             {expanded && cardLinks.length > 0 && !isCompact && !isList && (
               <div className="mt-2.5 pt-2.5 border-t border-brand-border">
                 <p className="text-[10px] text-gray-600 font-mono mb-1.5">Links</p>
@@ -700,6 +726,9 @@ export function ItemCard({
               )}
               {isCompact && displayedAttachments.length > 0 && (
                 <span className="text-[10px] text-gray-500 font-mono" title={`${displayedAttachments.length} attachment${displayedAttachments.length > 1 ? "s" : ""}`}>📎 {displayedAttachments.length}</span>
+              )}
+              {isCompact && websiteLinks.length > 0 && (
+                <span className="text-[10px] text-gray-500 font-mono" title={`${websiteLinks.length} website link${websiteLinks.length > 1 ? "s" : ""}`}>🔗 {websiteLinks.length}</span>
               )}
               <div className="ml-auto flex items-center gap-0.5">
                 <button

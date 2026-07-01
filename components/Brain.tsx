@@ -50,6 +50,7 @@ import {
   type NoteEntry,
   type RelatedItemSummary,
   type Reminder,
+  type WebsiteLink,
   type WorkflowStatus,
 } from "@/lib/brain-model";
 import {
@@ -70,6 +71,7 @@ import { TableView } from "./brain/TableView";
 import { BoardView } from "./brain/BoardView";
 import { ViewModePicker } from "./brain/ViewModePicker";
 import { withConcurrencyGuard } from "@/lib/item-updates.mjs";
+import { ensureWebsiteLinkUrl } from "@/lib/card-links";
 import {
   SAVED_SEARCHES_SETTINGS_KEY,
   addSavedSearch,
@@ -156,6 +158,7 @@ export default function Brain() {
     url: "",
     noteEntries: [] as NoteEntry[],
     checklistItems: [] as ChecklistItem[],
+    websiteLinks: [] as WebsiteLink[],
     tags: "",
     category: "",
     attachments: [] as Attachment[],
@@ -971,7 +974,7 @@ export default function Brain() {
       window.localStorage.removeItem(draftStorageKey(editingId));
     }
     restoredDraftKeyRef.current = null;
-    setForm({ type: lastType, title: "", content: "", url: "", noteEntries: [], checklistItems: [], tags: "", category: lastCategory, attachments: [], favourite: false, actionRequired: false, recurrence: "", reminderId: "", reminderDueAt: "", reminderMessage: "", reminderRecurrence: "", relatedItemIds: [] });
+    setForm({ type: lastType, title: "", content: "", url: "", noteEntries: [], checklistItems: [], websiteLinks: [], tags: "", category: lastCategory, attachments: [], favourite: false, actionRequired: false, recurrence: "", reminderId: "", reminderDueAt: "", reminderMessage: "", reminderRecurrence: "", relatedItemIds: [] });
     if (!keepOpen) {
       setShowAdd(false);
     }
@@ -984,7 +987,7 @@ export default function Brain() {
       window.localStorage.removeItem(draftStorageKey(editingId));
     }
     restoredDraftKeyRef.current = null;
-    setForm({ type: "note", title: "", content: "", url: "", noteEntries: [], checklistItems: [], tags: "", category: "", attachments: [], favourite: false, actionRequired: false, recurrence: "", reminderId: "", reminderDueAt: "", reminderMessage: "", reminderRecurrence: "", relatedItemIds: [] });
+    setForm({ type: "note", title: "", content: "", url: "", noteEntries: [], checklistItems: [], websiteLinks: [], tags: "", category: "", attachments: [], favourite: false, actionRequired: false, recurrence: "", reminderId: "", reminderDueAt: "", reminderMessage: "", reminderRecurrence: "", relatedItemIds: [] });
     setShowAdd(false);
     setEditingId(null);
     setEditBaseUpdatedAt(null);
@@ -1158,7 +1161,11 @@ export default function Brain() {
     const tags = form.tags.split(",").map(t => t.trim()).filter(Boolean);
     const noteEntries = form.noteEntries.filter(e => e.body.trim().length > 0);
     const checklistItems = normalizeChecklistItems(form.checklistItems);
-    const { relatedItemIds, reminderId, reminderDueAt, reminderMessage, reminderRecurrence, recurrence, ...itemForm } = form;
+    const { relatedItemIds, reminderId, reminderDueAt, reminderMessage, reminderRecurrence, recurrence, websiteLinks: rawWebsiteLinks, ...itemForm } = form;
+    // Drop blank rows and normalize bare hosts to https:// before saving.
+    const websiteLinks = rawWebsiteLinks
+      .map(link => ({ url: ensureWebsiteLinkUrl(link.url), label: link.label.trim() }))
+      .filter(link => link.url);
     // "" (no recurrence) → null; only tasks carry recurrence.
     const recurrenceValue = form.type === "task" && recurrence ? recurrence : null;
     const previousRelatedIds = editingId ? relatedItemsForId(editingId).map(item => item.id) : [];
@@ -1166,8 +1173,8 @@ export default function Brain() {
     // we don't double-render after the migration on next load.
     const legacyClear = noteEntries.length > 0 && editingId ? { notes: "" } : {};
     const payload = editingId
-      ? withConcurrencyGuard({ id: editingId, ...itemForm, tags, noteEntries, checklistItems, recurrence: recurrenceValue, ...legacyClear }, editBaseUpdatedAt, force)
-      : { ...itemForm, tags, noteEntries, checklistItems, recurrence: recurrenceValue };
+      ? withConcurrencyGuard({ id: editingId, ...itemForm, tags, noteEntries, checklistItems, websiteLinks, recurrence: recurrenceValue, ...legacyClear }, editBaseUpdatedAt, force)
+      : { ...itemForm, tags, noteEntries, checklistItems, websiteLinks, recurrence: recurrenceValue };
     try {
       const res = await fetch(editingId ? "/api/items" : "/api/items", {
         method: editingId ? "PUT" : "POST",
@@ -1921,6 +1928,7 @@ export default function Brain() {
       url: item.url || "",
       noteEntries: entries,
       checklistItems: item.checklistItems || [],
+      websiteLinks: item.websiteLinks || [],
       tags: (item.tags || []).join(", "),
       category: item.category || "",
       attachments: item.attachments || [],

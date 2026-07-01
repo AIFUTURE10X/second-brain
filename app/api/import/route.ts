@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { items, categories } from "@/db/schema";
+import { items, categories, type WebsiteLink } from "@/db/schema";
 import { checkApiKey } from "@/lib/api-key";
 import { parseBody, readJsonBody, serverError } from "@/lib/api-errors";
 import { importSchema } from "@/lib/validation";
@@ -59,6 +59,11 @@ export async function POST(req: NextRequest) {
       content: String(item.content || ""),
       url: String(item.url || ""),
       notes: String(item.notes || ""),
+      websiteLinks: (Array.isArray(item.websiteLinks)
+        ? item.websiteLinks
+        : Array.isArray(item.website_links)
+          ? item.website_links
+          : []) as WebsiteLink[],
       tags: (Array.isArray(item.tags) ? item.tags : []) as string[],
       category: String(item.category || ""),
       pinned: Boolean(item.pinned),

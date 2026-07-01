@@ -28,6 +28,11 @@ const attachmentSchema = z.object({
   size: z.number(),
 });
 
+const websiteLinkSchema = z.object({
+  url: z.string(),
+  label: z.string(),
+});
+
 const itemFields = {
   type: itemTypeSchema.optional(),
   title: z.string().optional(),
@@ -36,6 +41,7 @@ const itemFields = {
   notes: z.string().optional(),
   noteEntries: z.array(noteEntrySchema).optional(),
   checklistItems: z.array(checklistItemSchema).optional(),
+  websiteLinks: z.array(websiteLinkSchema).optional(),
   tags: z.array(z.string()).optional(),
   category: z.string().optional(),
   pinned: z.boolean().optional(),

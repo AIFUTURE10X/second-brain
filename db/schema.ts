@@ -23,6 +23,14 @@ export type NoteEntry = {
   updatedAt: string; // ISO
 };
 
+// Curated website links attached to a card — a hand-maintained list, distinct
+// from the URLs auto-detected in body text (lib/card-links.ts). Each has a
+// target URL and an optional display label.
+export type WebsiteLink = {
+  url: string;
+  label: string;
+};
+
 // Synced user preferences keyed by string. Single-user app so no user_id.
 // value is a JSON blob — keep it small. Examples: "custom_cat_colors": ["#ff0", "#0ff"]
 export const settings = pgTable("settings", {
@@ -51,6 +59,8 @@ export const items = pgTable("items", {
   notes: text("notes").default(""), // legacy single-blob annotations — kept for back-compat; new edits use noteEntries
   noteEntries: jsonb("note_entries").$type<NoteEntry[]>().default([]),
   checklistItems: jsonb("checklist_items").$type<ChecklistItem[]>().default([]),
+  // Curated "Website links" section on a card (see WebsiteLink above).
+  websiteLinks: jsonb("website_links").$type<WebsiteLink[]>().default([]),
   tags: jsonb("tags").$type<string[]>().default([]),
   category: text("category").default(""),
   pinned: boolean("pinned").default(false),

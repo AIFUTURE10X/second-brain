@@ -3,6 +3,9 @@
 // window.__TAURI_INTERNALS__.invoke. These helpers are no-ops in a normal
 // browser, where the desktop bridge is absent.
 
+import { copyToClipboard } from "./clipboard";
+import { localFilePathFromUrl } from "./local-file-links";
+
 type TauriInternals = {
   invoke?: (cmd: string, args?: unknown) => Promise<unknown>;
 };
@@ -37,4 +40,16 @@ export async function openLocalPathInDesktop(path: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * Activate a `file://` website link. In the desktop app it opens the file
+ * directly; in a normal browser — which can't open a local file from a hosted
+ * page — it copies the link so the user can paste it into the address bar.
+ * Returns the outcome so the caller can show the right toast.
+ */
+export async function openLocalFileLink(fileUrl: string): Promise<"opened" | "copied" | "failed"> {
+  const localPath = localFilePathFromUrl(fileUrl) || fileUrl;
+  if (await openLocalPathInDesktop(localPath)) return "opened";
+  return (await copyToClipboard(fileUrl)) ? "copied" : "failed";
 }

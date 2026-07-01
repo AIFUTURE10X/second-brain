@@ -5,13 +5,13 @@ import { LinkifiedText } from "../LinkifiedText";
 import { showToast } from "../Toast";
 import { extractCardLinks, formatCardLinkLabel } from "@/lib/card-links";
 import { copyToClipboard } from "@/lib/clipboard";
-import { openLocalPathInDesktop } from "@/lib/desktop";
+import { openLocalPathInDesktop, openLocalFileLink } from "@/lib/desktop";
 import { TAG_COLORS, TYPES, WORKFLOW_STATUS_META, type Item, type RelatedItemSummary, type Reminder } from "@/lib/brain-model";
 import { checklistProgress, fileIcon, formatReminderDue, formatSize, timeAgo } from "@/lib/brain-format";
 import { readingStatusColor, readingStatusLabel } from "@/lib/reading-status.mjs";
 import type { ViewMode } from "@/lib/view-mode";
 import { ShareMenu } from "./ShareMenu";
-import { localFileViewerHref } from "@/lib/local-file-links";
+import { localFileViewerHref, isLocalFileUrl } from "@/lib/local-file-links";
 
 interface ItemCardProps {
   item: Item;
@@ -133,6 +133,16 @@ export function ItemCard({
     }
     const ok = await copyToClipboard(path);
     showToast(ok ? "Path copied — paste into File Explorer" : "Couldn't copy path", ok ? "success" : "error");
+  };
+
+  // Browsers can't open a local file:// link from a hosted page. In the desktop
+  // app we open it directly; in a browser we copy it so the user can paste it
+  // into the address bar (which does work).
+  const activateWebsiteFileLink = async (fileUrl: string) => {
+    const outcome = await openLocalFileLink(fileUrl);
+    if (outcome === "opened") showToast("Opening file…", "success");
+    else if (outcome === "copied") showToast("File link copied — paste it into your browser's address bar", "success");
+    else showToast("Couldn't open or copy the link", "error");
   };
 
   return (
@@ -533,25 +543,44 @@ export function ItemCard({
               <div className="mt-2.5 pt-2.5 border-t border-brand-border">
                 <p className="text-[10px] text-gray-600 font-mono mb-1.5">Website links</p>
                 <div className="flex flex-wrap gap-1.5">
-                  {(expanded ? websiteLinks : websiteLinks.slice(0, 3)).map((link, li) => (
-                    <div
-                      key={`${link.url}-${li}`}
-                      className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-brand-muted border border-brand-border max-w-full"
-                    >
-                      <a
-                        href={localFileViewerHref(link.url)}
-                        target="_blank"
-                        rel="noreferrer"
-                        onClick={e => e.stopPropagation()}
-                        className="flex items-center gap-1.5 min-w-0 text-left hover:text-white transition"
-                        title={link.url}
-                      >
+                  {(expanded ? websiteLinks : websiteLinks.slice(0, 3)).map((link, li) => {
+                    const chipLabel = link.label?.trim() || formatCardLinkLabel(link.url);
+                    const chipInner = (
+                      <>
                         <span className="text-[10px] shrink-0 text-type-link">◈</span>
-                        <span className="text-[11px] text-gray-300 truncate max-w-[180px]">{link.label?.trim() || formatCardLinkLabel(link.url)}</span>
+                        <span className="text-[11px] text-gray-300 truncate max-w-[180px]">{chipLabel}</span>
                         <span className="text-[10px] text-type-link shrink-0">↗</span>
-                      </a>
-                    </div>
-                  ))}
+                      </>
+                    );
+                    return (
+                      <div
+                        key={`${link.url}-${li}`}
+                        className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-brand-muted border border-brand-border max-w-full"
+                      >
+                        {isLocalFileUrl(link.url) ? (
+                          <button
+                            type="button"
+                            onClick={e => { e.stopPropagation(); activateWebsiteFileLink(link.url); }}
+                            className="flex items-center gap-1.5 min-w-0 text-left hover:text-white transition"
+                            title={`Open local file (or copy link): ${link.url}`}
+                          >
+                            {chipInner}
+                          </button>
+                        ) : (
+                          <a
+                            href={link.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            onClick={e => e.stopPropagation()}
+                            className="flex items-center gap-1.5 min-w-0 text-left hover:text-white transition"
+                            title={link.url}
+                          >
+                            {chipInner}
+                          </a>
+                        )}
+                      </div>
+                    );
+                  })}
                   {!expanded && websiteLinks.length > 3 && (
                     <span className="text-[10px] font-mono text-gray-600 self-center">+{websiteLinks.length - 3} more</span>
                   )}

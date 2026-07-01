@@ -5,7 +5,8 @@ import TaskChecklistEditor from "../TaskChecklistEditor";
 import { showToast } from "../Toast";
 import { itemMatchesCardSearch } from "@/lib/card-search";
 import { ensureWebsiteLinkUrl, formatCardLinkLabel } from "@/lib/card-links";
-import { localFileViewerHref } from "@/lib/local-file-links";
+import { isLocalFileUrl } from "@/lib/local-file-links";
+import { openLocalFileLink } from "@/lib/desktop";
 import { draftStorageKey, parseDraftPayload, serializeDraftPayload } from "@/lib/item-draft-autosave";
 import { mergeReminderDateTimeParts, splitReminderDateTime } from "@/lib/reminders.mjs";
 import { newChecklistItem, normalizeChecklistItems, type ChecklistItem } from "@/lib/task-checklists";
@@ -223,6 +224,15 @@ export function ItemFormModal({
 
   const removeWebsiteLink = (index: number) => {
     setForm(f => ({ ...f, websiteLinks: f.websiteLinks.filter((_, i) => i !== index) }));
+  };
+
+  // file:// links can't be opened by a browser from a hosted page; open in the
+  // desktop app or copy for pasting into the address bar.
+  const activateWebsiteFileLink = async (fileUrl: string) => {
+    const outcome = await openLocalFileLink(fileUrl);
+    if (outcome === "opened") showToast("Opening file…", "success");
+    else if (outcome === "copied") showToast("File link copied — paste it into your browser's address bar", "success");
+    else showToast("Couldn't open or copy the link", "error");
   };
 
   const addChecklistRow = () => {
@@ -740,17 +750,30 @@ export function ItemFormModal({
                       key={index}
                       className="flex items-center gap-1.5 rounded-md bg-brand-muted border border-brand-border text-[11px] text-gray-300 transition max-w-full overflow-hidden"
                     >
-                      <a
-                        href={localFileViewerHref(normalized)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex items-center gap-1.5 min-w-0 pl-2 py-1 hover:text-white transition"
-                        title={`Open ${normalized} in a new tab`}
-                      >
-                        <span className="shrink-0 text-type-link">◈</span>
-                        <span className="truncate max-w-[180px]">{label}</span>
-                        <span className="text-type-link shrink-0">↗</span>
-                      </a>
+                      {isLocalFileUrl(normalized) ? (
+                        <button
+                          type="button"
+                          onClick={() => activateWebsiteFileLink(normalized)}
+                          className="flex items-center gap-1.5 min-w-0 pl-2 py-1 hover:text-white transition text-left"
+                          title={`Open local file (or copy link): ${normalized}`}
+                        >
+                          <span className="shrink-0 text-type-link">◈</span>
+                          <span className="truncate max-w-[180px]">{label}</span>
+                          <span className="text-type-link shrink-0">↗</span>
+                        </button>
+                      ) : (
+                        <a
+                          href={normalized}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex items-center gap-1.5 min-w-0 pl-2 py-1 hover:text-white transition"
+                          title={`Open ${normalized} in a new tab`}
+                        >
+                          <span className="shrink-0 text-type-link">◈</span>
+                          <span className="truncate max-w-[180px]">{label}</span>
+                          <span className="text-type-link shrink-0">↗</span>
+                        </a>
+                      )}
                       <button
                         type="button"
                         onClick={() => removeWebsiteLink(index)}

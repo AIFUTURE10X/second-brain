@@ -7,13 +7,13 @@ const cardPageSource = await readFile(new URL("../app/card/[id]/page.tsx", impor
 const routeSource = await readFile(new URL("../app/api/local-file/route.ts", import.meta.url), "utf8");
 
 test("ItemCard opens local file links through the app viewer route", () => {
-  assert.match(itemCardSource, /import \{ localFileViewerHref \} from "@\/lib\/local-file-links"/);
+  assert.match(itemCardSource, /import \{[^}]*\blocalFileViewerHref\b[^}]*\} from "@\/lib\/local-file-links"/);
   assert.match(itemCardSource, /href=\{localFileViewerHref\(link\)\}/);
   assert.match(itemCardSource, /href=\{localFileViewerHref\(item\.url\)\}/);
 });
 
 test("card detail page opens local file links through the app viewer route", () => {
-  assert.match(cardPageSource, /import \{ localFileViewerHref \} from "@\/lib\/local-file-links"/);
+  assert.match(cardPageSource, /import \{[^}]*\blocalFileViewerHref\b[^}]*\} from "@\/lib\/local-file-links"/);
   assert.match(cardPageSource, /href=\{localFileViewerHref\(link\)\}/);
 });
 

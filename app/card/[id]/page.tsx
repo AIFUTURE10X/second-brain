@@ -6,7 +6,7 @@ import TaskChecklistEditor from "@/components/TaskChecklistEditor";
 import { SYNC_CHANNEL, getSyncClientId, type SyncMessage, type SyncPayload } from "@/lib/sync";
 import { mergeReminderDateTimeParts, splitReminderDateTime } from "@/lib/reminders.mjs";
 import { newChecklistItem, normalizeChecklistItems, type ChecklistItem } from "@/lib/task-checklists";
-import { extractCardLinks, formatCardLinkLabel } from "@/lib/card-links";
+import { ensureWebsiteLinkUrl, extractCardLinks, formatCardLinkLabel } from "@/lib/card-links";
 import { localFileViewerHref } from "@/lib/local-file-links";
 import { showToast } from "@/components/Toast";
 import { copyToClipboard } from "@/lib/clipboard";
@@ -28,6 +28,11 @@ interface NoteEntry {
   updatedAt: string;
 }
 
+interface WebsiteLink {
+  url: string;
+  label: string;
+}
+
 interface Item {
   id: string;
   type: ItemType;
@@ -37,6 +42,7 @@ interface Item {
   notes: string;
   noteEntries?: NoteEntry[];
   checklistItems?: ChecklistItem[];
+  websiteLinks?: WebsiteLink[];
   tags: string[];
   category: string;
   pinned: boolean;
@@ -142,6 +148,7 @@ export default function CardPopoutPage() {
     url: "",
     noteEntries: [] as NoteEntry[],
     checklistItems: [] as ChecklistItem[],
+    websiteLinks: [] as WebsiteLink[],
     tags: "",
     category: "",
     favourite: false,
@@ -177,6 +184,24 @@ export default function CardPopoutPage() {
 
   const deleteNoteEntry = (id: string) => {
     setForm(f => ({ ...f, noteEntries: f.noteEntries.filter(e => e.id !== id) }));
+    setDirty(true);
+  };
+
+  const addWebsiteLink = () => {
+    setForm(f => ({ ...f, websiteLinks: [...f.websiteLinks, { url: "", label: "" }] }));
+    setDirty(true);
+  };
+
+  const updateWebsiteLink = (index: number, field: "url" | "label", value: string) => {
+    setForm(f => ({
+      ...f,
+      websiteLinks: f.websiteLinks.map((link, i) => i === index ? { ...link, [field]: value } : link),
+    }));
+    setDirty(true);
+  };
+
+  const removeWebsiteLink = (index: number) => {
+    setForm(f => ({ ...f, websiteLinks: f.websiteLinks.filter((_, i) => i !== index) }));
     setDirty(true);
   };
 
@@ -239,6 +264,7 @@ export default function CardPopoutPage() {
       url: next.url || "",
       noteEntries: entries,
       checklistItems: next.checklistItems || [],
+      websiteLinks: next.websiteLinks || [],
       tags: (next.tags || []).join(", "),
       category: next.category || "",
       favourite: !!next.favourite,
@@ -416,10 +442,14 @@ export default function CardPopoutPage() {
     if (!id || saving) return;
     setSaving(true);
     const tags = form.tags.split(",").map(t => t.trim()).filter(Boolean);
-    const { reminderId, reminderDueAt, reminderMessage, ...itemForm } = form;
+    const { reminderId, reminderDueAt, reminderMessage, websiteLinks: rawWebsiteLinks, ...itemForm } = form;
     // Drop entries whose body is entirely empty so we don't persist accidental blanks.
     const entries = form.noteEntries.filter(e => e.body.trim().length > 0);
     const checklistItems = normalizeChecklistItems(form.checklistItems);
+    // Drop blank rows and normalize bare hosts to https:// before saving.
+    const websiteLinks = rawWebsiteLinks
+      .map(link => ({ url: ensureWebsiteLinkUrl(link.url), label: link.label.trim() }))
+      .filter(link => link.url);
     // Once entries exist, retire the legacy single-blob `notes` field so it
     // doesn't reappear next load alongside the migrated entry.
     const legacyClear = entries.length > 0 ? { notes: "" } : {};
@@ -427,7 +457,7 @@ export default function CardPopoutPage() {
       const res = await fetch("/api/items", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, ...itemForm, tags, noteEntries: entries, checklistItems, ...legacyClear }),
+        body: JSON.stringify({ id, ...itemForm, tags, noteEntries: entries, checklistItems, websiteLinks, ...legacyClear }),
       });
       if (!res.ok) { setSaving(false); return; }
       const saved: Item = await res.json();
@@ -764,6 +794,49 @@ export default function CardPopoutPage() {
         className="mb-2.5 text-[11px] font-mono text-gray-500 hover:text-gray-300 transition"
       >
         + Add entry
+      </button>
+
+      <label className="block text-[11px] font-mono text-gray-400 mb-1.5 tracking-wide">
+        Website links <span className="text-gray-600 font-normal">(quick links shown on the card)</span>
+      </label>
+      <div className="flex flex-col gap-1.5 mb-2">
+        {form.websiteLinks.length === 0 ? (
+          <span className="text-[11px] text-gray-600 font-mono">No website links yet</span>
+        ) : (
+          form.websiteLinks.map((link, index) => (
+            <div key={index} className="flex items-center gap-1.5">
+              <span className="text-type-link shrink-0 text-sm" aria-hidden>↗</span>
+              <input
+                value={link.url}
+                onChange={e => updateWebsiteLink(index, "url", e.target.value)}
+                placeholder="https://example.com"
+                aria-label="Website link URL"
+                className="flex-1 min-w-0 px-3 py-2 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none placeholder:text-gray-500 font-mono"
+              />
+              <input
+                value={link.label}
+                onChange={e => updateWebsiteLink(index, "label", e.target.value)}
+                placeholder="Label"
+                aria-label="Website link label"
+                className="w-24 sm:w-36 shrink-0 px-3 py-2 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none placeholder:text-gray-500"
+              />
+              <button
+                type="button"
+                onClick={() => removeWebsiteLink(index)}
+                className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition"
+                aria-label="Remove website link"
+                title="Remove link"
+              >×</button>
+            </div>
+          ))
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={addWebsiteLink}
+        className="mb-4 text-[11px] font-mono text-gray-500 hover:text-gray-300 transition"
+      >
+        + Add website link
       </button>
 
       {cardLinks.length > 0 && (

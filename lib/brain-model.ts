@@ -17,6 +17,11 @@ export interface NoteEntry {
   updatedAt: string;
 }
 
+export interface WebsiteLink {
+  url: string;
+  label: string;
+}
+
 export interface Item {
   id: string;
   type: ItemType;
@@ -26,6 +31,7 @@ export interface Item {
   notes: string;
   noteEntries?: NoteEntry[];
   checklistItems?: ChecklistItem[];
+  websiteLinks?: WebsiteLink[];
   tags: string[];
   category: string;
   pinned: boolean;
@@ -131,6 +137,7 @@ export function hasMeaningfulFormContent(form: {
   url: string;
   noteEntries: NoteEntry[];
   checklistItems: ChecklistItem[];
+  websiteLinks: WebsiteLink[];
   tags: string;
   category: string;
   attachments: Attachment[];
@@ -148,6 +155,7 @@ export function hasMeaningfulFormContent(form: {
     form.reminderMessage.trim() ||
     form.noteEntries.some(entry => entry.body.trim()) ||
     form.checklistItems.some(item => item.text.trim()) ||
+    form.websiteLinks.some(link => link.url.trim()) ||
     form.attachments.length > 0 ||
     form.relatedItemIds.length > 0
   );

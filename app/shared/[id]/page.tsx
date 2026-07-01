@@ -34,6 +34,7 @@ export default async function SharedCardPage({
   if (!row) notFound();
 
   const noteEntries = (row.noteEntries || []).filter(entry => entry.body?.trim());
+  const websiteLinks = (row.websiteLinks || []).filter(link => link.url);
   const checklist = row.checklistItems || [];
   const created = new Date(row.createdAt).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 
@@ -67,6 +68,27 @@ export default async function SharedCardPage({
           {row.content && (
             <div className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-gray-300">
               <LinkifiedText text={row.content} />
+            </div>
+          )}
+
+          {websiteLinks.length > 0 && (
+            <div className="mt-5 border-t border-brand-border pt-4">
+              <p className="mb-2 text-[10px] font-mono uppercase tracking-[0.2em] text-gray-500">Website links</p>
+              <div className="flex flex-col gap-1.5">
+                {websiteLinks.map((link, i) => (
+                  <a
+                    key={`${link.url}-${i}`}
+                    href={link.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 rounded-lg border border-brand-border bg-brand-muted px-3 py-2 text-sm text-gray-300 hover:text-white hover:border-[#5B8DEF60] transition"
+                    title={link.url}
+                  >
+                    <span className="shrink-0 text-[#56CCF2]">↗</span>
+                    <span className="truncate">{link.label || link.url}</span>
+                  </a>
+                ))}
+              </div>
             </div>
           )}
 

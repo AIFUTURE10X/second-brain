@@ -114,6 +114,7 @@ const emptyForm = () => ({
   url: "",
   noteEntries: [],
   checklistItems: [],
+  websiteLinks: [],
   tags: "",
   category: "",
   attachments: [],
@@ -138,6 +139,7 @@ test("hasMeaningfulFormContent detects each meaningful field", () => {
     true
   );
   assert.equal(model.hasMeaningfulFormContent({ ...emptyForm(), relatedItemIds: ["a"] }), true);
+  assert.equal(model.hasMeaningfulFormContent({ ...emptyForm(), websiteLinks: [{ url: "https://example.com", label: "" }] }), true);
 });
 
 test("newEntryId returns unique non-empty ids", () => {

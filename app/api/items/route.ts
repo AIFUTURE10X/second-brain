@@ -226,6 +226,7 @@ export async function POST(req: NextRequest) {
       tags: itemTags,
       category: itemCategory,
       pinned: body.pinned || false,
+      websiteLinks: Array.isArray(body.websiteLinks) ? body.websiteLinks : [],
       readingStatus: body.readingStatus ?? initialReadingStatus(body.type || "note"),
       recurrence: (body.type || "note") === "task" ? body.recurrence ?? null : null,
       checklistItems: taskFields.checklistItems,

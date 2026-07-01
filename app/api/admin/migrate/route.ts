@@ -20,6 +20,8 @@ const MIGRATION_STATEMENTS: [name: string, statement: string][] = [
   ["pgvector extension", `CREATE EXTENSION IF NOT EXISTS vector`],
   // Semantic search (roadmap 1.1)
   ["items.embedding", `ALTER TABLE items ADD COLUMN IF NOT EXISTS embedding vector(1536)`],
+  // Curated per-card website links section
+  ["items.website_links", `ALTER TABLE items ADD COLUMN IF NOT EXISTS website_links jsonb DEFAULT '[]'::jsonb`],
   // Archive (2.4), read-later (2.9), recurring tasks (2.11)
   ["items.archived_at", `ALTER TABLE items ADD COLUMN IF NOT EXISTS archived_at timestamp`],
   ["items.reading_status", `ALTER TABLE items ADD COLUMN IF NOT EXISTS reading_status text`],

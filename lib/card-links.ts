@@ -80,6 +80,19 @@ export function extractCardLinks(source: CardLinkSource): string[] {
   return links;
 }
 
+// Website-link URLs are typed by hand in the card form, so accept a bare host
+// (example.com) by defaulting to https://. URLs that already carry a scheme
+// (http://, https://, file://, mailto:, …) are left untouched.
+export function ensureWebsiteLinkUrl(url: string): string {
+  const trimmed = url.trim();
+  if (!trimmed) return "";
+  // Already scheme-qualified (http://, https://, file://, …) or a mailto/tel
+  // link — leave it alone. Everything else (bare host, host:port) gets https://.
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)) return trimmed;
+  if (/^(mailto|tel):/i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+}
+
 export function formatCardLinkLabel(url: string): string {
   try {
     const parsed = new URL(normalizeCardLinkUrl(url));

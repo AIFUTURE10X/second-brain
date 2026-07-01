@@ -157,6 +157,8 @@ export default function CardPopoutPage() {
     reminderDueAt: "",
     reminderMessage: "",
   });
+  const [newLinkUrl, setNewLinkUrl] = useState("");
+  const [newLinkLabel, setNewLinkLabel] = useState("");
   const cardLinks = extractCardLinks(form);
 
   const channelRef = useRef<BroadcastChannel | null>(null);
@@ -187,16 +189,12 @@ export default function CardPopoutPage() {
     setDirty(true);
   };
 
-  const addWebsiteLink = () => {
-    setForm(f => ({ ...f, websiteLinks: [...f.websiteLinks, { url: "", label: "" }] }));
-    setDirty(true);
-  };
-
-  const updateWebsiteLink = (index: number, field: "url" | "label", value: string) => {
-    setForm(f => ({
-      ...f,
-      websiteLinks: f.websiteLinks.map((link, i) => i === index ? { ...link, [field]: value } : link),
-    }));
+  const commitNewLink = () => {
+    const url = newLinkUrl.trim();
+    if (!url) return;
+    setForm(f => ({ ...f, websiteLinks: [...f.websiteLinks, { url, label: newLinkLabel.trim() }] }));
+    setNewLinkUrl("");
+    setNewLinkLabel("");
     setDirty(true);
   };
 
@@ -799,45 +797,67 @@ export default function CardPopoutPage() {
       <label className="block text-[11px] font-mono text-gray-400 mb-1.5 tracking-wide">
         Website links <span className="text-gray-600 font-normal">(quick links shown on the card)</span>
       </label>
-      <div className="flex flex-col gap-1.5 mb-2">
+      <div className="mb-2 flex flex-wrap gap-1.5">
         {form.websiteLinks.length === 0 ? (
           <span className="text-[11px] text-gray-600 font-mono">No website links yet</span>
         ) : (
-          form.websiteLinks.map((link, index) => (
-            <div key={index} className="flex items-center gap-1.5">
-              <span className="text-type-link shrink-0 text-sm" aria-hidden>↗</span>
-              <input
-                value={link.url}
-                onChange={e => updateWebsiteLink(index, "url", e.target.value)}
-                placeholder="https://example.com"
-                aria-label="Website link URL"
-                className="flex-1 min-w-0 px-3 py-2 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none placeholder:text-gray-500 font-mono"
-              />
-              <input
-                value={link.label}
-                onChange={e => updateWebsiteLink(index, "label", e.target.value)}
-                placeholder="Label"
-                aria-label="Website link label"
-                className="w-24 sm:w-36 shrink-0 px-3 py-2 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none placeholder:text-gray-500"
-              />
-              <button
-                type="button"
-                onClick={() => removeWebsiteLink(index)}
-                className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition"
-                aria-label="Remove website link"
-                title="Remove link"
-              >×</button>
-            </div>
-          ))
+          form.websiteLinks.map((link, index) => {
+            const normalized = ensureWebsiteLinkUrl(link.url);
+            const label = link.label.trim() || formatCardLinkLabel(normalized);
+            return (
+              <div
+                key={index}
+                className="flex items-center gap-1.5 rounded-md bg-brand-muted border border-brand-border text-[11px] text-gray-300 transition max-w-full overflow-hidden"
+              >
+                <a
+                  href={localFileViewerHref(normalized)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-1.5 min-w-0 pl-2 py-1 hover:text-white transition"
+                  title={`Open ${normalized} in a new tab`}
+                >
+                  <span className="shrink-0 text-type-link">◈</span>
+                  <span className="truncate max-w-[220px]">{label}</span>
+                  <span className="text-type-link shrink-0">↗</span>
+                </a>
+                <button
+                  type="button"
+                  onClick={() => removeWebsiteLink(index)}
+                  className="px-2 py-1 text-gray-600 hover:text-red-300 hover:bg-red-500/10 transition shrink-0"
+                  aria-label={`Remove ${label}`}
+                  title="Remove link"
+                >×</button>
+              </div>
+            );
+          })
         )}
       </div>
-      <button
-        type="button"
-        onClick={addWebsiteLink}
-        className="mb-4 text-[11px] font-mono text-gray-500 hover:text-gray-300 transition"
-      >
-        + Add website link
-      </button>
+      <div className="mb-4 flex items-center gap-1.5">
+        <input
+          value={newLinkUrl}
+          onChange={e => setNewLinkUrl(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); commitNewLink(); } }}
+          placeholder="https://example.com"
+          aria-label="New website link URL"
+          className="flex-1 min-w-0 px-3 py-2 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none placeholder:text-gray-500 font-mono"
+        />
+        <input
+          value={newLinkLabel}
+          onChange={e => setNewLinkLabel(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); commitNewLink(); } }}
+          placeholder="Label"
+          aria-label="New website link label"
+          className="w-20 sm:w-32 shrink-0 px-3 py-2 bg-brand-muted border border-brand-border rounded-lg text-sm text-gray-300 outline-none placeholder:text-gray-500"
+        />
+        <button
+          type="button"
+          onClick={commitNewLink}
+          disabled={!newLinkUrl.trim()}
+          className="shrink-0 px-3 py-2 rounded-lg text-[11px] font-mono border border-brand-border text-gray-400 hover:text-white hover:border-gray-600 transition disabled:opacity-40"
+        >
+          + Add
+        </button>
+      </div>
 
       {cardLinks.length > 0 && (
         <div className="mb-4">

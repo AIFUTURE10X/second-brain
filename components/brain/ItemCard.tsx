@@ -531,24 +531,29 @@ export function ItemCard({
 
             {websiteLinks.length > 0 && !isCompact && !isList && (
               <div className="mt-2.5 pt-2.5 border-t border-brand-border">
-                <p className="text-[10px] text-gray-600 font-mono mb-1.5">🔗 Website links</p>
-                <div className="flex flex-col gap-1.5">
+                <p className="text-[10px] text-gray-600 font-mono mb-1.5">Website links</p>
+                <div className="flex flex-wrap gap-1.5">
                   {(expanded ? websiteLinks : websiteLinks.slice(0, 3)).map((link, li) => (
-                    <a
+                    <div
                       key={`${link.url}-${li}`}
-                      href={link.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      onClick={e => e.stopPropagation()}
-                      className="flex items-center gap-2 rounded-lg border border-brand-border bg-brand-muted/50 px-2.5 py-2 text-left hover:border-[#5B8DEF60] hover:text-white transition"
-                      title={link.url}
+                      className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-brand-muted border border-brand-border max-w-full"
                     >
-                      <span className="text-type-link shrink-0">↗</span>
-                      <span className="text-[11px] text-gray-300 truncate">{link.label || formatCardLinkLabel(link.url)}</span>
-                    </a>
+                      <a
+                        href={localFileViewerHref(link.url)}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={e => e.stopPropagation()}
+                        className="flex items-center gap-1.5 min-w-0 text-left hover:text-white transition"
+                        title={link.url}
+                      >
+                        <span className="text-[10px] shrink-0 text-type-link">◈</span>
+                        <span className="text-[11px] text-gray-300 truncate max-w-[180px]">{link.label?.trim() || formatCardLinkLabel(link.url)}</span>
+                        <span className="text-[10px] text-type-link shrink-0">↗</span>
+                      </a>
+                    </div>
                   ))}
                   {!expanded && websiteLinks.length > 3 && (
-                    <span className="text-[10px] font-mono text-gray-600">+{websiteLinks.length - 3} more links</span>
+                    <span className="text-[10px] font-mono text-gray-600 self-center">+{websiteLinks.length - 3} more</span>
                   )}
                 </div>
               </div>

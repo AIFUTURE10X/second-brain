@@ -94,12 +94,13 @@ export const items = pgTable("items", {
   // OPENAI_API_KEY. Requires the pgvector extension (scripts/db-setup.sql).
   embedding: vector("embedding", { dimensions: 1536 }),
   // Weighted search document, maintained by Postgres itself. Weights:
-  // A=title, B=tags+category ('simple' config so tags aren't stemmed),
+  // A=title, B=tags+category+attachment filenames ('simple' config so tags
+  // and filenames aren't stemmed),
   // C=body text incl. note entries + checklist rows, D=link/OG metadata.
   // jsonb columns are cast to text — set-returning extractors aren't allowed
   // in generated columns, and the extra JSON-key tokens are harmless noise.
   searchTsv: tsvector("search_tsv").generatedAlwaysAs(
-    sql`setweight(to_tsvector('english', coalesce(title, '')), 'A') || setweight(to_tsvector('simple', coalesce(tags::text, '') || ' ' || coalesce(category, '')), 'B') || setweight(to_tsvector('english', coalesce(content, '') || ' ' || coalesce(notes, '') || ' ' || coalesce(note_entries::text, '') || ' ' || coalesce(checklist_items::text, '')), 'C') || setweight(to_tsvector('english', coalesce(og_title, '') || ' ' || coalesce(og_description, '') || ' ' || coalesce(site_name, '') || ' ' || coalesce(url, '')), 'D')`
+    sql`setweight(to_tsvector('english', coalesce(title, '')), 'A') || setweight(to_tsvector('simple', coalesce(tags::text, '') || ' ' || coalesce(category, '') || ' ' || coalesce(attachments::text, '')), 'B') || setweight(to_tsvector('english', coalesce(content, '') || ' ' || coalesce(notes, '') || ' ' || coalesce(note_entries::text, '') || ' ' || coalesce(checklist_items::text, '')), 'C') || setweight(to_tsvector('english', coalesce(og_title, '') || ' ' || coalesce(og_description, '') || ' ' || coalesce(site_name, '') || ' ' || coalesce(url, '')), 'D')`
   ),
 }, (table) => [
   index("items_category_idx").on(table.category),

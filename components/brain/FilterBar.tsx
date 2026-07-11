@@ -30,8 +30,8 @@ interface FilterBarProps {
   tagColor: (tag: string) => string;
   duplicateGroupCount: number;
   onOpenTagManager: () => void;
-  sortBy: "newest" | "oldest";
-  onSortByChange: (sort: "newest" | "oldest") => void;
+  sortBy: "newest" | "oldest" | "updated";
+  onSortByChange: (sort: "newest" | "oldest" | "updated") => void;
   withNotesOnly: boolean;
   onWithNotesOnly: (v: boolean) => void;
   withNotesCount: number;
@@ -305,13 +305,13 @@ export function FilterBar(props: FilterBarProps) {
           <span className="text-[10px]">{openMenu === "more" ? "▴" : "▾"}</span>
         </button>
 
-        {/* Sort */}
+        {/* Sort — cycles newest created → oldest created → recently updated */}
         <button
-          onClick={() => onSortByChange(sortBy === "newest" ? "oldest" : "newest")}
+          onClick={() => onSortByChange(sortBy === "newest" ? "oldest" : sortBy === "oldest" ? "updated" : "newest")}
           className={`${triggerClass} border border-brand-border text-gray-500 hover:text-gray-300`}
-          title="Toggle sort order"
+          title="Toggle sort order (newest / oldest / recently updated)"
         >
-          ↕ {sortBy === "newest" ? "Newest" : "Oldest"}
+          ↕ {sortBy === "newest" ? "Newest" : sortBy === "oldest" ? "Oldest" : "Updated"}
         </button>
 
         {/* Clear all */}

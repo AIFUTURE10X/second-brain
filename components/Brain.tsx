@@ -182,7 +182,7 @@ export default function Brain() {
   const syncCursorRef = useRef<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [failedPreviewUrls, setFailedPreviewUrls] = useState<Set<string>>(new Set());
-  const [sortBy, setSortBy] = useState<"newest" | "oldest">("newest");
+  const [sortBy, setSortBy] = useState<"newest" | "oldest" | "updated">("newest");
   const [saving, setSaving] = useState(false);
   const [summarizing, setSummarizing] = useState<string | null>(null);
   const [organizing, setOrganizing] = useState<string | null>(null);
@@ -370,7 +370,7 @@ export default function Brain() {
     setReadLaterOnly(Boolean(state.readLaterOnly));
     setReviewMode(Boolean(state.reviewMode));
     setArchivedOnly(Boolean(state.archivedOnly));
-    setSortBy(state.sortBy as "newest" | "oldest");
+    setSortBy(state.sortBy as "newest" | "oldest" | "updated");
     setDatePreset(state.datePreset as "all" | "today" | "week" | "month" | "custom");
     setDateFrom(state.dateFrom as string);
     setDateTo(state.dateTo as string);
@@ -2103,6 +2103,13 @@ export default function Brain() {
       if (a.pinned !== b.pinned) return b.pinned ? 1 : -1;
       if (a.type === "task" && b.type === "task" && !!a.completed !== !!b.completed) {
         return a.completed ? 1 : -1;
+      }
+      // "updated" surfaces recently edited cards (e.g. a PDF attached to an
+      // old card) that creation-date sorting would leave buried.
+      if (sortBy === "updated") {
+        const ua = new Date(a.updatedAt || a.createdAt).getTime();
+        const ub = new Date(b.updatedAt || b.createdAt).getTime();
+        return ub - ua;
       }
       const da = new Date(a.createdAt).getTime();
       const db2 = new Date(b.createdAt).getTime();

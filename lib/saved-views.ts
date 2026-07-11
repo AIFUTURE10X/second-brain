@@ -21,7 +21,7 @@ export interface SavedViewFilters {
   inboxOnly: boolean;
   reviewMode: boolean;
   search: string;
-  sortBy: "newest" | "oldest";
+  sortBy: "newest" | "oldest" | "updated";
 }
 
 export interface SavedViewCounts {
@@ -109,7 +109,7 @@ export function normalizeSavedViewFilters(value: unknown): SavedViewFilters {
     inboxOnly: raw.inboxOnly === true,
     reviewMode: raw.reviewMode === true,
     search: typeof raw.search === "string" ? raw.search : base.search,
-    sortBy: raw.sortBy === "oldest" ? "oldest" : "newest",
+    sortBy: raw.sortBy === "oldest" || raw.sortBy === "updated" ? raw.sortBy : "newest",
   };
 }
 

@@ -40,6 +40,30 @@ const MIGRATION_STATEMENTS: [name: string, statement: string][] = [
   ["deleted_items index", `CREATE INDEX IF NOT EXISTS deleted_items_deleted_idx ON deleted_items USING btree (deleted_at)`],
   ["items.updated_at index", `CREATE INDEX IF NOT EXISTS items_updated_idx ON items USING btree (updated_at)`],
   ["items.embedding HNSW index", `CREATE INDEX IF NOT EXISTS items_embedding_hnsw_idx ON items USING hnsw (embedding vector_cosine_ops)`],
+  // Attachment filenames in search (weight B). Generated columns can't be
+  // altered in place, so rebuild search_tsv — but only when the live
+  // expression doesn't mention attachments yet, keeping this idempotent.
+  // Must stay in sync with db/schema.ts searchTsv.
+  [
+    "items.search_tsv incl. attachments",
+    `DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1
+        FROM pg_attribute a
+        JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+        WHERE a.attrelid = 'items'::regclass
+          AND a.attname = 'search_tsv'
+          AND pg_get_expr(d.adbin, d.adrelid) LIKE '%attachments%'
+      ) THEN
+        ALTER TABLE items DROP COLUMN IF EXISTS search_tsv;
+        ALTER TABLE items ADD COLUMN search_tsv tsvector GENERATED ALWAYS AS (
+          setweight(to_tsvector('english', coalesce(title, '')), 'A') || setweight(to_tsvector('simple', coalesce(tags::text, '') || ' ' || coalesce(category, '') || ' ' || coalesce(attachments::text, '')), 'B') || setweight(to_tsvector('english', coalesce(content, '') || ' ' || coalesce(notes, '') || ' ' || coalesce(note_entries::text, '') || ' ' || coalesce(checklist_items::text, '')), 'C') || setweight(to_tsvector('english', coalesce(og_title, '') || ' ' || coalesce(og_description, '') || ' ' || coalesce(site_name, '') || ' ' || coalesce(url, '')), 'D')
+        ) STORED;
+        CREATE INDEX IF NOT EXISTS items_search_tsv_idx ON items USING gin (search_tsv);
+      END IF;
+    END $$`,
+  ],
 ];
 
 async function runMigration(req: NextRequest) {

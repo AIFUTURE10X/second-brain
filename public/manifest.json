@@ -25,7 +25,24 @@
       "files": [
         {
           "name": "files",
-          "accept": ["image/*"]
+          "accept": [
+            "image/*",
+            "application/pdf",
+            "application/zip",
+            "application/x-zip-compressed",
+            "application/vnd.ms-excel",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "application/msword",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "text/csv",
+            "text/plain",
+            "text/markdown",
+            ".zip",
+            ".pdf",
+            ".csv",
+            ".txt",
+            ".md"
+          ]
         }
       ]
     }

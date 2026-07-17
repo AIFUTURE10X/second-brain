@@ -40,6 +40,10 @@ interface SharePayload {
 }
 
 function resolveContentType(file: File): string {
+  // Browsers report these inconsistently (empty or vendor-specific types) — pin
+  // them to what the upload allowlist expects so shared files aren't rejected.
+  if (/\.(md|markdown)$/i.test(file.name)) return "text/markdown";
+  if (/\.zip$/i.test(file.name)) return "application/zip";
   return file.type || "application/octet-stream";
 }
 
@@ -151,9 +155,12 @@ async function uploadSharedFiles(files: File[]): Promise<Attachment[]> {
 
 function titleForSharedItem(title: string, attachments: Attachment[]): string {
   if (title) return title;
-  if (attachments.length === 1) return "Shared photo";
-  if (attachments.length > 1) return "Shared photos";
-  return "";
+  if (attachments.length === 0) return "";
+  const allImages = attachments.every(a => a.contentType.startsWith("image/"));
+  if (allImages) return attachments.length === 1 ? "Shared photo" : "Shared photos";
+  // Non-image files (zip, pdf, docs): name the card after the file itself.
+  if (attachments.length === 1) return attachments[0].name;
+  return "Shared files";
 }
 
 function ShareHandler() {

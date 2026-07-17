@@ -882,13 +882,13 @@ export function ItemFormModal({
             />
 
             <label className="block text-[11px] font-mono text-gray-400 mb-1.5 tracking-wide">
-              Attachments <span className="text-gray-600 font-normal">(PDF, XLS, DOC, MD, images — max 50 MB · drop or paste here)</span>
+              Attachments <span className="text-gray-600 font-normal">(PDF, XLS, DOC, MD, ZIP, images — max 50 MB · drop or paste here)</span>
             </label>
             <input
               ref={fileInputRef}
               type="file"
               multiple
-              accept=".pdf,.xls,.xlsx,.doc,.docx,.csv,.txt,.md,.markdown,image/*"
+              accept=".pdf,.xls,.xlsx,.doc,.docx,.csv,.txt,.md,.markdown,.zip,image/*"
               onChange={e => handleFileUpload(e.target.files)}
               className="hidden"
               aria-label="Attach files"

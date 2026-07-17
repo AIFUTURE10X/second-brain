@@ -22,6 +22,8 @@ const ALLOWED_CONTENT_TYPES = [
   "image/heic",
   "image/heif",
   "image/svg+xml",
+  "application/zip",
+  "application/x-zip-compressed",
 ];
 
 const MAX_SIZE = 50 * 1024 * 1024; // 50 MB (Vercel Pro plan — plenty of blob storage)

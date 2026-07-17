@@ -66,6 +66,8 @@ test("resolveContentType forces markdown for .md files and defaults empty types"
   assert.equal(fmt.resolveContentType(new File([""], "notes.MARKDOWN", { type: "" })), "text/markdown");
   assert.equal(fmt.resolveContentType(new File([""], "a.txt", { type: "text/plain" })), "text/plain");
   assert.equal(fmt.resolveContentType(new File([""], "blob", { type: "" })), "application/octet-stream");
+  assert.equal(fmt.resolveContentType(new File([""], "archive.zip", { type: "" })), "application/zip");
+  assert.equal(fmt.resolveContentType(new File([""], "archive.ZIP", { type: "application/x-zip-compressed" })), "application/zip");
 });
 
 test("fileIcon picks icons by content type with markdown name fallback", () => {
@@ -76,7 +78,9 @@ test("fileIcon picks icons by content type with markdown name fallback", () => {
   assert.equal(fmt.fileIcon("text/markdown"), "Ⓜ");
   assert.equal(fmt.fileIcon("application/octet-stream", "readme.md"), "Ⓜ");
   assert.equal(fmt.fileIcon("text/plain"), "📃");
-  assert.equal(fmt.fileIcon("application/zip"), "📎");
+  assert.equal(fmt.fileIcon("application/zip"), "🗜");
+  assert.equal(fmt.fileIcon("application/octet-stream", "backup.zip"), "🗜");
+  assert.equal(fmt.fileIcon("application/octet-stream"), "📎");
 });
 
 test("formatSize renders B, KB, and MB", () => {

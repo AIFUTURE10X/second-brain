@@ -67,9 +67,12 @@ export function formatReminderDue(value: string): string {
 }
 
 // Some browsers report `.md` files with an empty type — force markdown so the
-// server allowlist accepts it. Pass through everything else.
+// server allowlist accepts it. Zip files are reported inconsistently (empty,
+// `application/x-zip-compressed`, `application/x-zip`) — normalize to
+// `application/zip`. Pass through everything else.
 export function resolveContentType(file: File): string {
   if (/\.(md|markdown)$/i.test(file.name)) return "text/markdown";
+  if (/\.zip$/i.test(file.name)) return "application/zip";
   return file.type || "application/octet-stream";
 }
 
@@ -80,6 +83,7 @@ export function fileIcon(contentType: string, name?: string): string {
   if (contentType.includes("word") || contentType.includes("document")) return "📝";
   if (contentType === "text/markdown" || contentType === "text/x-markdown" || (name && /\.(md|markdown)$/i.test(name))) return "Ⓜ";
   if (contentType === "text/plain") return "📃";
+  if (contentType === "application/zip" || contentType === "application/x-zip-compressed" || (name && /\.zip$/i.test(name))) return "🗜";
   return "📎";
 }
 

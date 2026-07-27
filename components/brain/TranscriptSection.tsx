@@ -40,7 +40,10 @@ interface TranscriptSectionProps {
 
 export function TranscriptSection({ itemId, variant = "panel" }: TranscriptSectionProps) {
   const [transcript, setTranscript] = useState<StoredTranscript | null>(null);
-  const [loading, setLoading] = useState(false);
+  // Starts true: there is always an initial read, and defaulting to false makes
+  // the first render — before the effect fires — claim there's no transcript and
+  // offer a paid fetch for a card that already has one.
+  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
 
@@ -51,7 +54,8 @@ export function TranscriptSection({ itemId, variant = "panel" }: TranscriptSecti
   const stop = (e: React.MouseEvent) => e.stopPropagation();
 
   const load = useCallback(async () => {
-    if (!itemId) return;
+    // Must clear `loading` on this path too, or the section sticks on "Loading…".
+    if (!itemId) { setLoading(false); return; }
     setLoading(true);
     try {
       const res = await fetch(`/api/transcript?itemId=${encodeURIComponent(itemId)}`);
@@ -138,19 +142,24 @@ export function TranscriptSection({ itemId, variant = "panel" }: TranscriptSecti
             className="text-[11px] font-mono text-gray-500 hover:text-gray-300 transition"
           >{open ? "Hide" : "Show"}</button>
         )}
-        <button
-          type="button"
-          disabled={busy}
-          onClick={e => { stop(e); fetchTranscript(); }}
-          className="px-2 py-1 rounded-md text-[11px] font-mono transition hover:brightness-125 active:scale-95 disabled:opacity-50 flex items-center gap-1.5"
-          style={{ border: "1px solid #6FCF9730", background: "#6FCF9710", color: "#6FCF97" }}
-          title={transcript
-            ? "Fetch the transcript again, replacing the stored copy"
-            : "Fetch this video's transcript"}
-        >
-          {busy && <span className="inline-block w-3 h-3 border border-current border-t-transparent rounded-full" style={{ animation: "spin 0.6s linear infinite" }} />}
-          {busy ? "Fetching…" : transcript ? "Re-fetch" : "Fetch transcript"}
-        </button>
+        {/* Withheld until the initial read settles. Rendering it mid-load shows
+            "Fetch transcript" on a card that already has one, which reads as
+            "nothing stored" and invites a pointless paid re-fetch. */}
+        {!loading && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={e => { stop(e); fetchTranscript(); }}
+            className="px-2 py-1 rounded-md text-[11px] font-mono transition hover:brightness-125 active:scale-95 disabled:opacity-50 flex items-center gap-1.5"
+            style={{ border: "1px solid #6FCF9730", background: "#6FCF9710", color: "#6FCF97" }}
+            title={transcript
+              ? "Fetch the transcript again, replacing the stored copy"
+              : "Fetch this video's transcript"}
+          >
+            {busy && <span className="inline-block w-3 h-3 border border-current border-t-transparent rounded-full" style={{ animation: "spin 0.6s linear infinite" }} />}
+            {busy ? "Fetching…" : transcript ? "Re-fetch" : "Fetch transcript"}
+          </button>
+        )}
       </div>
 
       {loading && (

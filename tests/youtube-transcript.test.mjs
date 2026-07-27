@@ -105,3 +105,22 @@ test("appendYouTubeDescriptionLinksToNotes preserves user notes and avoids dupli
 
   assert.equal(youtube.appendYouTubeDescriptionLinksToNotes(note, links), note);
 });
+
+const transcriptUiSource = await readFile(
+  new URL("../components/brain/TranscriptSection.tsx", import.meta.url), "utf8");
+
+test("transcript section does not offer a paid fetch while the stored copy is loading", () => {
+  // The initial read is always in flight on mount. If `loading` started false,
+  // the first render would claim no transcript exists and show a Fetch button
+  // for a card that already has one — inviting a pointless $0.01 re-fetch.
+  assert.match(transcriptUiSource, /const \[loading, setLoading\] = useState\(true\)/);
+  // And the button itself stays out of the DOM until that read settles.
+  assert.match(transcriptUiSource, /\{!loading && \(\s*<button/);
+});
+
+test("transcript section stops clicks escaping to the card it sits in", () => {
+  // The expanded grid card collapses on any body click, so controls that let
+  // the event bubble would shut the card the moment you used them.
+  assert.match(transcriptUiSource, /const stop = \(e: React\.MouseEvent\) => e\.stopPropagation\(\)/);
+  assert.match(transcriptUiSource, /aria-label="Video transcript"[\s\S]{0,200}onClick=\{stop\}|onClick=\{stop\}[\s\S]{0,200}aria-label="Video transcript"/);
+});

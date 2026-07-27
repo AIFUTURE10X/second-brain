@@ -8,7 +8,7 @@ import { mergeReminderDateTimeParts, splitReminderDateTime } from "@/lib/reminde
 import { newChecklistItem, normalizeChecklistItems, type ChecklistItem } from "@/lib/task-checklists";
 import { ensureWebsiteLinkUrl, extractCardLinks, formatCardLinkLabel } from "@/lib/card-links";
 import { localFileViewerHref, isLocalFileUrl } from "@/lib/local-file-links";
-import { showToast } from "@/components/Toast";
+import { showToast, ToastContainer } from "@/components/Toast";
 import { copyToClipboard } from "@/lib/clipboard";
 import { openLocalPathInDesktop, openLocalFileLink } from "@/lib/desktop";
 
@@ -135,6 +135,7 @@ export default function CardPopoutPage() {
   const [notFound, setNotFound] = useState(false);
   const [deleted, setDeleted] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [summarizing, setSummarizing] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [dirty, setDirty] = useState(false);
   const [remoteUpdate, setRemoteUpdate] = useState<number | null>(null);
@@ -445,8 +446,10 @@ export default function CardPopoutPage() {
     setDirty(true);
   };
 
-  const save = async () => {
-    if (!id || saving) return;
+  // Returns true when the card reached the server, so callers that need the
+  // saved state (e.g. summarize) can bail out instead of clobbering edits.
+  const save = async (): Promise<boolean> => {
+    if (!id || saving) return false;
     setSaving(true);
     const tags = form.tags.split(",").map(t => t.trim()).filter(Boolean);
     const { reminderId, reminderDueAt, reminderMessage, websiteLinks: rawWebsiteLinks, ...itemForm } = form;
@@ -466,14 +469,51 @@ export default function CardPopoutPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id, ...itemForm, tags, noteEntries: entries, checklistItems, websiteLinks, ...legacyClear }),
       });
-      if (!res.ok) { setSaving(false); return; }
+      if (!res.ok) { setSaving(false); return false; }
       const saved: Item = await res.json();
       applyItem(saved);
       setSavedAt(Date.now());
       broadcast({ type: "item-updated", item: saved });
       await syncReminder();
+      setSaving(false);
+      return true;
     } catch {}
     setSaving(false);
+    return false;
+  };
+
+  // Writes an "AI Summary" note entry server-side. Unsaved edits are flushed
+  // first — the route rebuilds noteEntries from the DB row, so summarizing over
+  // a dirty form would drop whatever hadn't been saved yet.
+  const handleSummarize = async () => {
+    if (!id || summarizing) return;
+    if (dirty) {
+      const saved = await save();
+      if (!saved) {
+        showToast("Couldn't save your changes — summarize skipped", "error");
+        return;
+      }
+    }
+    setSummarizing(true);
+    try {
+      const res = await fetch("/api/summarize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      if (res.ok) {
+        const updated: Item = await res.json();
+        applyItem(updated);
+        broadcast({ type: "item-updated", item: updated });
+        showToast("Summary added", "success");
+      } else {
+        const data = await res.json().catch(() => ({} as { error?: string }));
+        showToast(data.error || "Summarization failed", "error");
+      }
+    } catch {
+      showToast("Summarization failed", "error");
+    }
+    setSummarizing(false);
   };
 
   const reloadFromRemote = () => {
@@ -795,13 +835,26 @@ export default function CardPopoutPage() {
           </div>
         ))}
       </div>
-      <button
-        type="button"
-        onClick={addNoteEntry}
-        className="mb-2.5 text-[11px] font-mono text-gray-500 hover:text-gray-300 transition"
-      >
-        + Add entry
-      </button>
+      <div className="flex items-center gap-3 mb-2.5">
+        <button
+          type="button"
+          onClick={addNoteEntry}
+          className="text-[11px] font-mono text-gray-500 hover:text-gray-300 transition"
+        >
+          + Add entry
+        </button>
+        <button
+          type="button"
+          disabled={summarizing || saving}
+          onClick={handleSummarize}
+          title="Generate an AI summary of this card and save it as a note entry"
+          className="px-2.5 py-1 rounded-md text-[11px] font-mono transition hover:brightness-125 active:scale-95 disabled:opacity-50 flex items-center gap-1.5"
+          style={{ border: "1px solid #56CCF230", background: "#56CCF210", color: "#56CCF2" }}
+        >
+          {summarizing && <span className="inline-block w-3 h-3 border border-current border-t-transparent rounded-full" style={{ animation: "spin 0.6s linear infinite" }} />}
+          {summarizing ? "Summarizing…" : "✦ Summarize"}
+        </button>
+      </div>
 
       <label className="block text-[11px] font-mono text-gray-400 mb-1.5 tracking-wide">
         Website links <span className="text-gray-600 font-normal">(quick links shown on the card)</span>
@@ -975,6 +1028,9 @@ export default function CardPopoutPage() {
       <div className="mt-4 text-[10px] font-mono text-gray-600 text-center">
         Changes sync live with the main window.
       </div>
+
+      {/* This route mounts outside the home page, so it needs its own toast host. */}
+      <ToastContainer />
     </div>
   );
 }

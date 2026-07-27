@@ -356,11 +356,8 @@ export function ItemCard({
                 <button
                   disabled={isSummarizing}
                   onClick={e => { e.stopPropagation(); onSummarize(); }}
-                  className="rounded px-0.5 text-[10px] leading-none hover:bg-white/5"
-                  style={{
-                    color: isSummarizing || cardHasAiSummary ? "#56CCF2" : "#3a3d44",
-                    opacity: isSummarizing || cardHasAiSummary ? 1 : 0.7,
-                  }}
+                  className="rounded px-0.5 text-[10px] leading-none hover:bg-white/5 hover:brightness-150 transition"
+                  style={{ color: isSummarizing || cardHasAiSummary ? "#56CCF2" : "#6b7280" }}
                   title={isSummarizing
                     ? "Summarizing…"
                     : cardHasAiSummary ? "Summarized — click to regenerate" : "Summarize with AI"}
@@ -799,16 +796,15 @@ export function ItemCard({
                   aria-label={item.actionRequired ? "Clear action flag" : "Mark as needing action"}
                 >⚡</button>
                 {/* Compact cards hide the action bar, so summarize gets a footer
-                    slot of its own. Lit when the card already has a summary. */}
+                    slot of its own. Cyan once the card has a summary; otherwise a
+                    muted grey that still reads against the card (the ☆/⚡ "off"
+                    grey is ~1.7:1 here, which is invisible for a glyph this thin). */}
                 {isCompact && (
                   <button
                     disabled={isSummarizing}
                     onClick={e => { e.stopPropagation(); onSummarize(); }}
-                    className="text-[12px] leading-none px-1 py-0.5 rounded hover:bg-white/5 transition"
-                    style={{
-                      color: isSummarizing || cardHasAiSummary ? "#56CCF2" : "#3a3d44",
-                      opacity: isSummarizing || cardHasAiSummary ? 1 : 0.7,
-                    }}
+                    className="text-[12px] leading-none px-1 py-0.5 rounded hover:bg-white/5 hover:brightness-150 transition"
+                    style={{ color: isSummarizing || cardHasAiSummary ? "#56CCF2" : "#6b7280" }}
                     title={isSummarizing
                       ? "Summarizing…"
                       : cardHasAiSummary ? "Summarized — click to regenerate" : "Summarize with AI"}

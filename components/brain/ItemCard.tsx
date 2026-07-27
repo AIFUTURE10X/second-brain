@@ -352,6 +352,24 @@ export function ItemCard({
                 >
                   ⚡
                 </button>
+                {/* List rows hide the action bar too — same footer slot as compact. */}
+                <button
+                  disabled={isSummarizing}
+                  onClick={e => { e.stopPropagation(); onSummarize(); }}
+                  className="rounded px-0.5 text-[10px] leading-none hover:bg-white/5"
+                  style={{
+                    color: isSummarizing || cardHasAiSummary ? "#56CCF2" : "#3a3d44",
+                    opacity: isSummarizing || cardHasAiSummary ? 1 : 0.7,
+                  }}
+                  title={isSummarizing
+                    ? "Summarizing…"
+                    : cardHasAiSummary ? "Summarized — click to regenerate" : "Summarize with AI"}
+                  aria-label={isSummarizing ? "Summarizing" : "Summarize with AI"}
+                >
+                  {isSummarizing
+                    ? <span className="inline-block w-2 h-2 align-middle border border-current border-t-transparent rounded-full" style={{ animation: "spin 0.6s linear infinite" }} />
+                    : "✦"}
+                </button>
                 <span className="text-[9px] font-mono text-gray-700">{timeAgo(item.createdAt)}</span>
               </div>
             </div>

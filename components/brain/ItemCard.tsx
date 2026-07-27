@@ -12,6 +12,7 @@ import { readingStatusColor, readingStatusLabel } from "@/lib/reading-status.mjs
 import type { ViewMode } from "@/lib/view-mode";
 import { ShareMenu } from "./ShareMenu";
 import { localFileViewerHref, isLocalFileUrl } from "@/lib/local-file-links";
+import { TranscriptSection, isVideoUrl } from "./TranscriptSection";
 
 interface ItemCardProps {
   item: Item;
@@ -691,6 +692,12 @@ export function ItemCard({
                   </span>
                 )}
               </div>
+            )}
+
+            {/* Transcript loads only once a video card is expanded — one card
+                at a time, so the grid never pulls this text in bulk. */}
+            {expanded && !isCompact && !isList && isVideoUrl(item.url) && (
+              <TranscriptSection itemId={item.id} variant="inline" />
             )}
 
             {expanded && relatedItems.length > 0 && !isCompact && !isList && (

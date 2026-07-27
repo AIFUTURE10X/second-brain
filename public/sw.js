@@ -1,5 +1,6 @@
 // Service worker for Second Brain — read-only offline support.
 // Strategy:
+//   GET /api/items?id=<one card>         → network-first, cache fallback
 //   GET /api/items (and /api/categories) → stale-while-revalidate
 //   Navigation (HTML)                    → network-first, cache fallback
 //   Static assets (icons, manifest)      → cache-first
@@ -52,6 +53,13 @@ function isCacheableApi(url) {
     url.pathname === "/api/items" ||
     url.pathname === "/api/categories"
   );
+}
+
+// A single-card read backs the card detail page, where a stale copy reads as
+// data loss — a just-saved note or AI summary looks like it never persisted.
+function isSingleItemRead(url) {
+  if (url.origin !== self.location.origin) return false;
+  return url.pathname === "/api/items" && url.searchParams.has("id");
 }
 
 function shareFormValue(form, name) {
@@ -126,6 +134,29 @@ self.addEventListener("fetch", (event) => {
   if (req.method !== "GET") return; // pass through — writes always hit network
 
   if (req.cache === "reload" || req.cache === "no-store") return;
+
+  // Network-first for a single card — freshness matters more than instant paint
+  // here, and the cached copy still covers offline.
+  if (isSingleItemRead(url)) {
+    event.respondWith(
+      (async () => {
+        const cache = await caches.open(DATA_CACHE);
+        try {
+          const fresh = await fetch(req);
+          if (fresh && fresh.ok) cache.put(req, fresh.clone()).catch(() => {});
+          return fresh;
+        } catch {
+          const cached = await cache.match(req);
+          if (cached) return cached;
+          return new Response(JSON.stringify({ error: "Offline" }), {
+            status: 503,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      })()
+    );
+    return;
+  }
 
   // Stale-while-revalidate for read-only API data
   if (isCacheableApi(url)) {

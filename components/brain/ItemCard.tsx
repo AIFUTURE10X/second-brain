@@ -6,7 +6,7 @@ import { showToast } from "../Toast";
 import { extractCardLinks, formatCardLinkLabel } from "@/lib/card-links";
 import { copyToClipboard } from "@/lib/clipboard";
 import { openLocalPathInDesktop, openLocalFileLink } from "@/lib/desktop";
-import { TAG_COLORS, TYPES, WORKFLOW_STATUS_META, type Item, type RelatedItemSummary, type Reminder } from "@/lib/brain-model";
+import { TAG_COLORS, TYPES, WORKFLOW_STATUS_META, hasAiSummary, type Item, type RelatedItemSummary, type Reminder } from "@/lib/brain-model";
 import { checklistProgress, fileIcon, formatReminderDue, formatSize, timeAgo } from "@/lib/brain-format";
 import { readingStatusColor, readingStatusLabel } from "@/lib/reading-status.mjs";
 import type { ViewMode } from "@/lib/view-mode";
@@ -98,6 +98,7 @@ export function ItemCard({
     ? (item.attachments || []).filter(a => a.url !== firstImageAttachment?.url)
     : (item.attachments || []);
   const isYouTube = item.siteName === "YouTube";
+  const cardHasAiSummary = hasAiSummary(item.noteEntries);
   const isCompact = density === "compact" && !expanded;
   const isList = density === "list" && !expanded;
   const compactCardClass = isCompact ? "min-h-[13rem] flex flex-col" : "";
@@ -779,6 +780,27 @@ export function ItemCard({
                   title={item.actionRequired ? "Clear action flag" : "Mark as needing action"}
                   aria-label={item.actionRequired ? "Clear action flag" : "Mark as needing action"}
                 >⚡</button>
+                {/* Compact cards hide the action bar, so summarize gets a footer
+                    slot of its own. Lit when the card already has a summary. */}
+                {isCompact && (
+                  <button
+                    disabled={isSummarizing}
+                    onClick={e => { e.stopPropagation(); onSummarize(); }}
+                    className="text-[12px] leading-none px-1 py-0.5 rounded hover:bg-white/5 transition"
+                    style={{
+                      color: isSummarizing || cardHasAiSummary ? "#56CCF2" : "#3a3d44",
+                      opacity: isSummarizing || cardHasAiSummary ? 1 : 0.7,
+                    }}
+                    title={isSummarizing
+                      ? "Summarizing…"
+                      : cardHasAiSummary ? "Summarized — click to regenerate" : "Summarize with AI"}
+                    aria-label={isSummarizing ? "Summarizing" : "Summarize with AI"}
+                  >
+                    {isSummarizing
+                      ? <span className="inline-block w-2.5 h-2.5 align-middle border border-current border-t-transparent rounded-full" style={{ animation: "spin 0.6s linear infinite" }} />
+                      : "✦"}
+                  </button>
+                )}
                 <span className="text-[10px] text-gray-700 font-mono ml-1">{timeAgo(item.createdAt)}</span>
               </div>
             </div>

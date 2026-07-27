@@ -8,8 +8,8 @@ import { updateItemEmbedding } from "@/lib/embedding-store";
 import { isPrivateUrl } from "@/lib/enrich";
 import { rateLimit } from "@/lib/rate-limit";
 import { extractYouTubeId, fetchYouTubeTranscript } from "@/lib/youtube";
+import { AI_SUMMARY_HEADER, isAiSummaryEntry as isAiSummary } from "@/lib/brain-model";
 
-const AI_SUMMARY_HEADER = "--- AI Summary ---";
 const DEFAULT_OPENAI_SUMMARY_MODEL = "gpt-5.4-mini";
 
 export const maxDuration = 60;
@@ -161,10 +161,6 @@ function stripHtmlToText(html: string, limit: number): string {
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, limit);
-}
-
-function isAiSummary(body: string | null | undefined): boolean {
-  return (body || "").trim().startsWith(AI_SUMMARY_HEADER);
 }
 
 function stripLegacyAiSummary(notes: string): string {

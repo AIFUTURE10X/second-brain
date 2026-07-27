@@ -131,6 +131,19 @@ export const newEntryId = () =>
     ? crypto.randomUUID()
     : `e_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 
+// An AI summary is stored as an ordinary note entry, marked by this header so
+// re-summarizing replaces it instead of stacking up copies. Shared with
+// /api/summarize so the marker only exists in one place.
+export const AI_SUMMARY_HEADER = "--- AI Summary ---";
+
+export function isAiSummaryEntry(body: string | null | undefined): boolean {
+  return (body || "").trim().startsWith(AI_SUMMARY_HEADER);
+}
+
+export function hasAiSummary(entries: NoteEntry[] | null | undefined): boolean {
+  return (entries || []).some(entry => isAiSummaryEntry(entry.body));
+}
+
 export function hasMeaningfulFormContent(form: {
   title: string;
   content: string;

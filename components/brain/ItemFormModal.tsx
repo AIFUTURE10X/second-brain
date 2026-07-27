@@ -23,6 +23,7 @@ import {
   type WebsiteLink,
 } from "@/lib/brain-model";
 import { fileIcon, formatSize, formatStamp } from "@/lib/brain-format";
+import { TranscriptSection, isVideoUrl } from "./TranscriptSection";
 
 export interface ItemFormState {
   type: ItemType;
@@ -735,6 +736,14 @@ export function ItemFormModal({
             >
               + Add entry
             </button>
+
+            {/* Transcript — video cards only, and only once the card exists:
+                a transcript is keyed to an item id, so there's nothing to fetch
+                or show while creating an unsaved card. */}
+            {editingId && isVideoUrl(form.url) && (
+              <TranscriptSection itemId={editingId} />
+            )}
+
             <label className="block text-[11px] font-mono text-gray-400 mb-1.5 tracking-wide">
               Website links <span className="text-gray-600 font-normal">(quick links shown on the card)</span>
             </label>

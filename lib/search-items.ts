@@ -97,10 +97,14 @@ export async function hybridSearchItems(
     // Video transcripts live in their own table (they're far too large to sit
     // on the item row), so matching them means joining rather than extending
     // items.search_tsv. item_id is the primary key there, so the LEFT JOIN
-    // can't duplicate rows. The transcript rank is a tie-breaker below the
-    // card's own rank, which keeps existing result ordering untouched: a card
-    // matched only by its transcript scores 0 on search_tsv and therefore
-    // still sorts beneath every real field match.
+    // can't duplicate rows.
+    //
+    // Ordering is strictly additive. A card that matched on its own fields
+    // takes 0 from the CASE, so it still breaks ties by created_at exactly as
+    // before — transcript relevance never reshuffles results that already
+    // existed. Only transcript-only hits (which all score 0 on search_tsv and
+    // therefore sort beneath every real field match) use transcript rank, to
+    // order the new arrivals among themselves.
     ftsRows = await sql.query(
       `SELECT ${ITEM_COLUMNS_SQL}
        FROM items
@@ -110,7 +114,9 @@ export async function hybridSearchItems(
          ${archivedFilterSql}
        ORDER BY items.pinned DESC,
                 ts_rank_cd(items.search_tsv, query) DESC,
-                ts_rank_cd(coalesce(item_transcripts.transcript_tsv, ''::tsvector), query) DESC,
+                CASE WHEN items.search_tsv @@ query THEN 0
+                     ELSE ts_rank_cd(coalesce(item_transcripts.transcript_tsv, ''::tsvector), query)
+                END DESC,
                 items.created_at DESC`,
       [tsquery]
     );

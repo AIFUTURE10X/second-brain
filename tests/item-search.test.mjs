@@ -46,6 +46,17 @@ test("search also matches video transcripts, ranked below the card's own fields"
   assert.ok(cardRank > -1 && transcriptRank > cardRank);
 });
 
+test("transcript rank only orders transcript-only hits, leaving prior results untouched", () => {
+  // Without this CASE guard, transcript relevance breaks ties among cards that
+  // matched on their own fields — which silently reshuffles results that
+  // existed before transcripts were searchable. Cards that matched take 0 and
+  // keep falling back to created_at, exactly as they did before.
+  assert.match(routeSource, /CASE WHEN items\.search_tsv @@ query THEN 0/);
+  const caseGuard = routeSource.indexOf("CASE WHEN items.search_tsv @@ query THEN 0");
+  const createdAt = routeSource.indexOf("items.created_at DESC");
+  assert.ok(caseGuard > -1 && createdAt > caseGuard);
+});
+
 test("transcript search document is weighted lowest and length-capped", () => {
   // Weight D keeps bulk transcript text from outranking titles, and left()
   // keeps a long transcript under the 1MB tsvector ceiling.

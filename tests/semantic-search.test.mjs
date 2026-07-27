@@ -173,9 +173,10 @@ test("items search merges semantic ranking and flags it via header", () => {
   assert.match(searchLibSource, /embedding <=> \$1::vector/);
   assert.match(searchLibSource, /mergeHybridResults\(ftsRows, semanticRows\)/);
   assert.match(routeSource, /x-search-semantic/);
-  // FTS + trigram fallback must survive the hybrid rewrite.
-  assert.match(searchLibSource, /search_tsv @@ query/);
-  assert.match(searchLibSource, /ts_rank_cd\(search_tsv, query\)/);
+  // FTS + trigram fallback must survive the hybrid rewrite. Column references
+  // are table-qualified since search joins item_transcripts.
+  assert.match(searchLibSource, /items\.search_tsv @@ query/);
+  assert.match(searchLibSource, /ts_rank_cd\(items\.search_tsv, query\)/);
   assert.match(searchLibSource, /word_similarity/);
 });
 

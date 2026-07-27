@@ -94,14 +94,24 @@ export async function hybridSearchItems(
   const tsquery = buildItemSearchTsQuery(q);
   let ftsRows: SearchRow[] = [];
   if (tsquery) {
+    // Video transcripts live in their own table (they're far too large to sit
+    // on the item row), so matching them means joining rather than extending
+    // items.search_tsv. item_id is the primary key there, so the LEFT JOIN
+    // can't duplicate rows. The transcript rank is a tie-breaker below the
+    // card's own rank, which keeps existing result ordering untouched: a card
+    // matched only by its transcript scores 0 on search_tsv and therefore
+    // still sorts beneath every real field match.
     ftsRows = await sql.query(
       `SELECT ${ITEM_COLUMNS_SQL}
-       FROM items, to_tsquery('english', $1) AS query
-       WHERE search_tsv @@ query
+       FROM items
+       LEFT JOIN item_transcripts ON item_transcripts.item_id = items.id,
+            to_tsquery('english', $1) AS query
+       WHERE (items.search_tsv @@ query OR item_transcripts.transcript_tsv @@ query)
          ${archivedFilterSql}
-       ORDER BY pinned DESC,
-                ts_rank_cd(search_tsv, query) DESC,
-                created_at DESC`,
+       ORDER BY items.pinned DESC,
+                ts_rank_cd(items.search_tsv, query) DESC,
+                ts_rank_cd(coalesce(item_transcripts.transcript_tsv, ''::tsvector), query) DESC,
+                items.created_at DESC`,
       [tsquery]
     );
   }

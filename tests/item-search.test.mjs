@@ -29,9 +29,27 @@ const itemSearch = await loadTsModule("../lib/item-search.ts", "second-brain-ite
 const cardSearch = await loadTsModule("../lib/card-search.ts", "second-brain-card-search-");
 
 test("item search runs against the indexed search_tsv column with rank ordering", () => {
-  assert.match(routeSource, /search_tsv @@ query/);
-  assert.match(routeSource, /ts_rank_cd\(search_tsv, query\)/);
+  assert.match(routeSource, /items\.search_tsv @@ query/);
+  assert.match(routeSource, /ts_rank_cd\(items\.search_tsv, query\)/);
   assert.match(routeSource, /word_similarity/);
+});
+
+test("search also matches video transcripts, ranked below the card's own fields", () => {
+  // Transcripts are joined rather than folded into items.search_tsv — they are
+  // far too large to live on the item row.
+  assert.match(routeSource, /LEFT JOIN item_transcripts ON item_transcripts\.item_id = items\.id/);
+  assert.match(routeSource, /item_transcripts\.transcript_tsv @@ query/);
+  // The transcript rank must come after the card's own rank in ORDER BY, so a
+  // transcript-only hit can never displace a title match.
+  const cardRank = routeSource.indexOf("ts_rank_cd(items.search_tsv, query)");
+  const transcriptRank = routeSource.indexOf("ts_rank_cd(coalesce(item_transcripts.transcript_tsv");
+  assert.ok(cardRank > -1 && transcriptRank > cardRank);
+});
+
+test("transcript search document is weighted lowest and length-capped", () => {
+  // Weight D keeps bulk transcript text from outranking titles, and left()
+  // keeps a long transcript under the 1MB tsvector ceiling.
+  assert.match(schemaSource, /setweight\(to_tsvector\('english', left\(coalesce\(text, ''\), 400000\)\), 'D'\)/);
 });
 
 test("search document covers URL, source metadata, and note entries", () => {

@@ -138,6 +138,13 @@ export function TranscriptSection({ itemId, variant = "panel" }: TranscriptSecti
         {transcript && (
           <button
             type="button"
+            onClick={e => { stop(e); copy(); }}
+            className="text-[11px] font-mono text-gray-500 hover:text-gray-300 transition"
+          >Copy</button>
+        )}
+        {transcript && (
+          <button
+            type="button"
             onClick={e => { stop(e); setOpen(o => !o); }}
             className="text-[11px] font-mono text-gray-500 hover:text-gray-300 transition"
           >{open ? "Hide" : "Show"}</button>

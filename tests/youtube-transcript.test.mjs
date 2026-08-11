@@ -124,3 +124,16 @@ test("transcript section stops clicks escaping to the card it sits in", () => {
   assert.match(transcriptUiSource, /const stop = \(e: React\.MouseEvent\) => e\.stopPropagation\(\)/);
   assert.match(transcriptUiSource, /aria-label="Video transcript"[\s\S]{0,200}onClick=\{stop\}|onClick=\{stop\}[\s\S]{0,200}aria-label="Video transcript"/);
 });
+
+test("stored transcripts can be copied directly from the header", () => {
+  // A fetched transcript should not have to be opened before its text can be
+  // copied. The header control also keeps the action visible on long cards.
+  const headerSource = transcriptUiSource.slice(
+    transcriptUiSource.indexOf("<span className={inline"),
+    transcriptUiSource.indexOf("{/* Withheld until the initial read settles."),
+  );
+  assert.match(
+    headerSource,
+    /onClick=\{e => \{ stop\(e\); copy\(\); \}\}[\s\S]{0,200}>Copy<\/button>/,
+  );
+});

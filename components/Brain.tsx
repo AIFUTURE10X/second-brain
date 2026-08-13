@@ -2108,6 +2108,7 @@ export default function Brain() {
               className={`${headerIconButtonClass} text-white text-xl min-[1800px]:text-lg font-light transition-transform hover:scale-105`}
               style={{ background: "linear-gradient(135deg, #F2C94C, #E8A838)", boxShadow: "0 4px 16px rgba(232,168,56,0.35)" }}
               aria-label="Add new item"
+              title="Add new item"
             >+</button>
           </div>
         </div>

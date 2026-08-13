@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { put } from "@vercel/blob";
+import { asc } from "drizzle-orm";
 import { db } from "@/db";
 import { items, categories } from "@/db/schema";
+import { aiTagImage } from "@/lib/ai-vision-tagger";
 import { checkApiKeyHeaderOnly } from "@/lib/api-key";
 import { jsonError, parseBody, serverError } from "@/lib/api-errors";
 import { embeddingsEnabled } from "@/lib/embeddings.mjs";
@@ -14,10 +16,13 @@ import {
   buildIngestContent,
   defaultIngestTitle,
   ingestFieldsSchema,
+  mergeIngestAiSuggestion,
   normalizeImageContentType,
+  parseAutoTagFlag,
   parseCapturedAt,
   parseTagList,
   sanitizeFileName,
+  visionMediaType,
 } from "@/lib/ingest";
 
 /**
@@ -38,11 +43,14 @@ import {
  *   tags        optional — comma-separated
  *   category    optional — auto-created if unknown
  *   type        optional — defaults to "clip"
+ *   autoTag     optional — "1"/"true" asks Claude vision for title/category/tags
  *
- * Returns 201 { id, title, attachmentUrl }.
+ * Returns 201 { id, title, attachmentUrl, category, tags }.
  *
- * No AI tagging here: screenshots carry no text for the tagger to read, so it
- * would add latency for nothing. The client sends its own tags.
+ * With autoTag the image itself is sent to Claude vision. Anything the client
+ * supplied explicitly still wins; the AI only fills what was left blank. The
+ * call is best-effort — no key, an unsupported media type, an error or a
+ * timeout all fall back to the plain path rather than failing the upload.
  */
 export async function POST(req: NextRequest) {
   const denied = checkApiKeyHeaderOnly(req);
@@ -77,7 +85,7 @@ export async function POST(req: NextRequest) {
   // Only the text parts go through zod; a File where a string belongs is
   // dropped here and reported as a validation failure by the schema.
   const textFields: Record<string, string> = {};
-  for (const key of ["title", "notes", "source", "capturedAt", "tags", "category", "type"]) {
+  for (const key of ["title", "notes", "source", "capturedAt", "tags", "category", "type", "autoTag"]) {
     const value = form.get(key);
     if (typeof value === "string" && value.trim() !== "") textFields[key] = value;
   }
@@ -95,16 +103,43 @@ export async function POST(req: NextRequest) {
   }
 
   const type = fields.type || "clip";
-  const title = (fields.title || "").trim() || defaultIngestTitle(capturedDate, capturedOffset);
   const content = buildIngestContent(fields.notes || "", fields.source || "");
-  const tags = parseTagList(fields.tags);
-  let category = (fields.category || "").trim();
+  const autoTag = parseAutoTagFlag(fields.autoTag);
   const fileName = sanitizeFileName(file.name, contentType);
 
+  // What the client actually asked for — these always beat the AI suggestion.
+  let title = (fields.title || "").trim();
+  let category = (fields.category || "").trim();
+  let tags = parseTagList(fields.tags);
+
   try {
+    // One read of the category table serves both the AI prompt and the
+    // auto-create match below.
+    const needsCategoryList = autoTag || Boolean(category);
+    const existingCats = needsCategoryList
+      ? await db.select({ name: categories.name }).from(categories).orderBy(asc(categories.name))
+      : [];
+
+    // Everything the client left blank can come from the image. Skipped for
+    // media types Claude vision doesn't accept (avif/bmp/heic/heif).
+    const mediaType = autoTag ? visionMediaType(contentType) : null;
+    if (mediaType && (!title || !category || tags.length === 0)) {
+      const suggestion = await aiTagImage({
+        base64: Buffer.from(await file.arrayBuffer()).toString("base64"),
+        mediaType,
+        existingCategories: existingCats.map(c => c.name),
+        hintTitle: title || (fields.notes || "").trim(),
+      });
+      const merged = mergeIngestAiSuggestion({ title, category, tags }, suggestion);
+      title = merged.title;
+      category = merged.category;
+      tags = merged.tags;
+    }
+
+    if (!title) title = defaultIngestTitle(capturedDate, capturedOffset);
+
     // Auto-create the category if it doesn't exist (same rule as /api/save).
     if (category) {
-      const existingCats = await db.select({ name: categories.name }).from(categories);
       const match = existingCats.find(c => c.name.toLowerCase() === category.toLowerCase());
       if (match) {
         category = match.name; // preserve existing casing
@@ -136,14 +171,28 @@ export async function POST(req: NextRequest) {
         workflowStatus: "inbox",
         attachments: [{ url: blob.url, name: fileName, contentType, size: file.size }],
       })
-      .returning({ id: items.id, title: items.title });
+      .returning({
+        id: items.id,
+        title: items.title,
+        category: items.category,
+        tags: items.tags,
+      });
 
     // Post-response, same as /api/save: never block the upload on OpenAI.
     if (embeddingsEnabled()) after(() => updateItemEmbedding(row.id));
     // Notes may contain [[wiki links]] (roadmap 2.2).
     after(() => syncWikiRelations(row.id));
 
-    return NextResponse.json({ id: row.id, title: row.title, attachmentUrl: blob.url }, { status: 201 });
+    return NextResponse.json(
+      {
+        id: row.id,
+        title: row.title,
+        attachmentUrl: blob.url,
+        category: row.category ?? "",
+        tags: row.tags ?? [],
+      },
+      { status: 201 },
+    );
   } catch (error) {
     return serverError(error);
   }

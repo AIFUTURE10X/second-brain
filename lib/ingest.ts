@@ -118,6 +118,71 @@ export function parseTagList(raw: string | null | undefined): string[] {
 }
 
 /**
+ * Formats Claude vision accepts. A capture the client sends in another allowed
+ * format (avif/bmp/heic/heif) is still stored — we just skip the AI call for it
+ * rather than send a media type the API would reject.
+ */
+export const AI_VISION_MEDIA_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"] as const;
+
+export type AiVisionMediaType = (typeof AI_VISION_MEDIA_TYPES)[number];
+
+/** The canonical media type to send to Claude vision, or null if unsupported. */
+export function visionMediaType(raw: string | null | undefined): AiVisionMediaType | null {
+  const type = normalizeImageContentType(raw);
+  if (!type) return null;
+  return (AI_VISION_MEDIA_TYPES as readonly string[]).includes(type) ? (type as AiVisionMediaType) : null;
+}
+
+/**
+ * `autoTag` opt-in flag. Deliberately strict: only "1"/"true" (any casing) turn
+ * AI tagging on, so a client that sends "0"/"false"/junk gets the plain path.
+ */
+export function parseAutoTagFlag(raw: string | null | undefined): boolean {
+  if (!raw) return false;
+  const value = raw.trim().toLowerCase();
+  return value === "1" || value === "true";
+}
+
+/** Model output is untrusted: lowercase, trim, drop blanks/dupes, cap at 5. */
+export function normalizeAiTags(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  for (const entry of raw) {
+    if (typeof entry !== "string" && typeof entry !== "number") continue;
+    const tag = String(entry).trim().toLowerCase().slice(0, 40);
+    if (tag) seen.add(tag);
+    if (seen.size >= 5) break;
+  }
+  return [...seen];
+}
+
+export interface IngestAiSuggestion {
+  title?: string;
+  category?: string;
+  tags?: string[];
+}
+
+/**
+ * Precedence: whatever the client explicitly sent always wins; the AI only
+ * fills the gaps. So "I typed a title but left category on Auto" gets the typed
+ * title and an AI category. `title` may come back empty — the caller falls back
+ * to the timestamp default.
+ */
+export function mergeIngestAiSuggestion(
+  client: { title: string; category: string; tags: string[] },
+  ai: IngestAiSuggestion,
+): { title: string; category: string; tags: string[] } {
+  const clientTitle = (client.title || "").trim();
+  const clientCategory = (client.category || "").trim();
+  const clientTags = client.tags || [];
+  return {
+    title: clientTitle || (ai.title || "").trim(),
+    category: clientCategory || (ai.category || "").trim(),
+    tags: clientTags.length > 0 ? clientTags : normalizeAiTags(ai.tags),
+  };
+}
+
+/**
  * `source` has no DB column of its own (e.g. "screenshot-app/region"), so it
  * rides along as a provenance line at the end of the card body.
  */
@@ -139,6 +204,8 @@ export const ingestFieldsSchema = z
     tags: z.string().optional(),
     category: z.string().optional(),
     type: itemTypeSchema.optional(),
+    // "1"/"true" asks the server to derive title/category/tags from the image.
+    autoTag: z.string().optional(),
   })
   .strict();
 

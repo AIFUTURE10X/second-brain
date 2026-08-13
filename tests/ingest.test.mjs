@@ -87,6 +87,75 @@ test("buildIngestContent appends source provenance to the notes", () => {
   assert.equal(ingest.buildIngestContent("", ""), "");
 });
 
+test("parseAutoTagFlag only accepts 1/true", () => {
+  assert.equal(ingest.parseAutoTagFlag("1"), true);
+  assert.equal(ingest.parseAutoTagFlag("true"), true);
+  assert.equal(ingest.parseAutoTagFlag("TRUE"), true);
+  assert.equal(ingest.parseAutoTagFlag(" True "), true);
+  assert.equal(ingest.parseAutoTagFlag("0"), false);
+  assert.equal(ingest.parseAutoTagFlag("false"), false);
+  assert.equal(ingest.parseAutoTagFlag("yes"), false);
+  assert.equal(ingest.parseAutoTagFlag(""), false);
+  assert.equal(ingest.parseAutoTagFlag(undefined), false);
+  assert.equal(ingest.parseAutoTagFlag(null), false);
+});
+
+test("visionMediaType gates the formats Claude vision accepts", () => {
+  assert.equal(ingest.visionMediaType("image/png"), "image/png");
+  assert.equal(ingest.visionMediaType("image/jpg"), "image/jpeg");
+  assert.equal(ingest.visionMediaType("image/WEBP; charset=binary"), "image/webp");
+  assert.equal(ingest.visionMediaType("image/gif"), "image/gif");
+  // Accepted by the endpoint but not by the vision API — skip the AI call.
+  assert.equal(ingest.visionMediaType("image/avif"), null);
+  assert.equal(ingest.visionMediaType("image/bmp"), null);
+  assert.equal(ingest.visionMediaType("image/heic"), null);
+  assert.equal(ingest.visionMediaType("image/svg+xml"), null);
+  assert.equal(ingest.visionMediaType(undefined), null);
+});
+
+test("normalizeAiTags lowercases, dedupes and caps model output", () => {
+  assert.deepEqual(ingest.normalizeAiTags(["UI", " Design ", "ui", ""]), ["ui", "design"]);
+  assert.deepEqual(ingest.normalizeAiTags(["a", "b", "c", "d", "e", "f"]), ["a", "b", "c", "d", "e"]);
+  assert.deepEqual(ingest.normalizeAiTags([1, { x: 1 }, "ok"]), ["1", "ok"]);
+  assert.deepEqual(ingest.normalizeAiTags("screenshot"), []);
+  assert.deepEqual(ingest.normalizeAiTags(undefined), []);
+});
+
+test("mergeIngestAiSuggestion lets the client win field by field", () => {
+  const ai = { title: "Vercel deploy log", category: "Work", tags: ["Vercel", "deploy"] };
+
+  // Nothing supplied → everything comes from the AI.
+  assert.deepEqual(
+    ingest.mergeIngestAiSuggestion({ title: "", category: "", tags: [] }, ai),
+    { title: "Vercel deploy log", category: "Work", tags: ["vercel", "deploy"] },
+  );
+
+  // Typed a title, chose "Auto" for the category → keeps both choices.
+  assert.deepEqual(
+    ingest.mergeIngestAiSuggestion({ title: "My title", category: "", tags: [] }, ai),
+    { title: "My title", category: "Work", tags: ["vercel", "deploy"] },
+  );
+
+  // Explicit category and tags survive untouched (client tags are not lowercased).
+  assert.deepEqual(
+    ingest.mergeIngestAiSuggestion({ title: "", category: "Personal", tags: ["Screenshot"] }, ai),
+    { title: "Vercel deploy log", category: "Personal", tags: ["Screenshot"] },
+  );
+
+  // Whitespace-only client values count as unset.
+  assert.deepEqual(
+    ingest.mergeIngestAiSuggestion({ title: "   ", category: " ", tags: [] }, ai),
+    { title: "Vercel deploy log", category: "Work", tags: ["vercel", "deploy"] },
+  );
+
+  // AI failed / no key → client values pass through, title stays empty so the
+  // route falls back to the timestamp default.
+  assert.deepEqual(
+    ingest.mergeIngestAiSuggestion({ title: "", category: "Work", tags: [] }, {}),
+    { title: "", category: "Work", tags: [] },
+  );
+});
+
 test("ingestFieldsSchema accepts a client payload and rejects bad fields", () => {
   const payload = {
     title: "Bug repro",
@@ -96,9 +165,12 @@ test("ingestFieldsSchema accepts a client payload and rejects bad fields", () =>
     tags: "screenshot",
     category: "Work",
     type: "clip",
+    autoTag: "1",
   };
   assert.equal(ingest.ingestFieldsSchema.safeParse(payload).success, true);
   assert.equal(ingest.ingestFieldsSchema.safeParse({}).success, true);
+  // The strict schema would 400 the whole upload if autoTag weren't declared.
+  assert.equal(ingest.ingestFieldsSchema.safeParse({ autoTag: "true" }).success, true);
   assert.equal(ingest.ingestFieldsSchema.safeParse({ type: "screenshot" }).success, false);
   assert.equal(ingest.ingestFieldsSchema.safeParse({ workflowStatus: "done" }).success, false);
 });

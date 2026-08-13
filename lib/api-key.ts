@@ -26,3 +26,21 @@ export function checkApiKey(req: NextRequest): NextResponse | null {
 
   return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 }
+
+/**
+ * Stricter variant for endpoints built for external clients (desktop apps,
+ * scripts): the key is accepted from the `x-api-key` header only — never the
+ * query string, where it would leak into request logs and browser history.
+ * Same-origin browser requests are still allowed for in-app test buttons.
+ */
+export function checkApiKeyHeaderOnly(req: NextRequest): NextResponse | null {
+  const secret = process.env.API_SECRET;
+  if (!secret) return null; // no secret configured — allow all
+
+  const secFetchSite = req.headers.get("sec-fetch-site");
+  if (secFetchSite === "same-origin") return null;
+
+  if (req.headers.get("x-api-key") === secret) return null;
+
+  return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+}

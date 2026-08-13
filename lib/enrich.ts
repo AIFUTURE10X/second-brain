@@ -1,3 +1,4 @@
+import { decodeHtmlBytes, decodeHtmlEntities, stripReplacementChars } from "./html-text";
 import { extractYouTubeId } from "./youtube";
 import {
   buildYouTubeOwnerSearchText,
@@ -79,14 +80,15 @@ function meta(html: string, property: string): string {
   ];
   for (const re of patterns) {
     const m = html.match(re);
-    if (m?.[1]) return m[1].trim();
+    if (m?.[1]) return decodeHtmlEntities(m[1]).trim();
   }
   return "";
 }
 
 function extractTitle(html: string): string {
   const m = html.match(/<title[^>]*>([^<]*)<\/title>/i);
-  return m?.[1]?.trim() || "";
+  if (!m?.[1]) return "";
+  return decodeHtmlEntities(m[1]).trim();
 }
 
 export async function enrichUrl(url: string): Promise<EnrichResult> {
@@ -119,25 +121,44 @@ export async function enrichUrl(url: string): Promise<EnrichResult> {
 
     if (!res.ok) return channelFallback;
 
-    // Only read first 50KB to avoid loading huge pages
+    // Only read the first 50KB to avoid loading huge pages. Buffer raw bytes
+    // rather than decoding as we go: the charset isn't known until we've seen
+    // the Content-Type header (or a <meta charset>), and a hard-coded UTF-8
+    // decode mangles windows-1252 pages into U+FFFD.
     const reader = res.body?.getReader();
     if (!reader) return channelFallback;
-    let html = "";
-    const decoder = new TextDecoder();
-    while (html.length < 50_000) {
+    const chunks: Uint8Array[] = [];
+    let byteLength = 0;
+    while (byteLength < 50_000) {
       const { done, value } = await reader.read();
       if (done) break;
-      html += decoder.decode(value, { stream: true });
+      if (!value?.length) continue;
+      chunks.push(value);
+      byteLength += value.length;
     }
     reader.cancel();
+
+    const bytes = new Uint8Array(byteLength);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.length;
+    }
+    const html = decodeHtmlBytes(bytes, res.headers.get("content-type"));
 
     const origin = new URL(url).origin;
 
     const result = {
-      ogTitle: meta(html, "og:title") || meta(html, "twitter:title") || extractTitle(html),
-      ogDescription: meta(html, "og:description") || meta(html, "twitter:description") || meta(html, "description"),
+      ogTitle: stripReplacementChars(
+        meta(html, "og:title") || meta(html, "twitter:title") || extractTitle(html)
+      ),
+      ogDescription: stripReplacementChars(
+        meta(html, "og:description") || meta(html, "twitter:description") || meta(html, "description")
+      ),
       ogImage: meta(html, "og:image") || meta(html, "twitter:image"),
-      siteName: meta(html, "og:site_name") || new URL(url).hostname.replace(/^www\./, ""),
+      siteName: stripReplacementChars(
+        meta(html, "og:site_name") || new URL(url).hostname.replace(/^www\./, "")
+      ),
       favicon: `${origin}/favicon.ico`,
     };
 

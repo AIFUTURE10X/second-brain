@@ -11,14 +11,14 @@ test("Brain uses a direct view picker instead of cycling through modes", () => {
   assert.doesNotMatch(brainSource, /onClick=\{\(\) => setDensity\(nextViewMode\)\}/);
 });
 
-test("Brain places the view chips in the header actions next to Telegram", () => {
-  const telegramIndex = brainSource.indexOf("<TelegramHelpMenu");
+test("Brain keeps the view chips in the header actions above quick capture", () => {
   const viewChipsIndex = brainSource.indexOf("<ViewModePicker");
   const quickCaptureIndex = brainSource.indexOf("<QuickCaptureBar");
 
-  assert.ok(telegramIndex > -1, "Telegram menu should render in the header");
-  assert.ok(viewChipsIndex > telegramIndex, "view chips should render after the Telegram menu");
+  assert.ok(viewChipsIndex > -1, "view chips should render in the header");
   assert.ok(viewChipsIndex < quickCaptureIndex, "view chips should stay in the header above quick capture");
+  // The Telegram popover moved to /settings → Integrations.
+  assert.doesNotMatch(brainSource, /TelegramHelpMenu/);
 });
 
 test("ViewModePicker exposes all view modes as compact chips", () => {

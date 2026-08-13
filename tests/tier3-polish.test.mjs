@@ -30,6 +30,7 @@ const saveRouteSource = await readFile(new URL("../app/api/save/route.ts", impor
 const sharedPageSource = await readFile(new URL("../app/shared/[id]/page.tsx", import.meta.url), "utf8");
 const vaultSource = await readFile(new URL("../components/Vault.tsx", import.meta.url), "utf8");
 const brainSource = await readFile(new URL("../components/Brain.tsx", import.meta.url), "utf8");
+const generalSettingsSource = await readFile(new URL("../components/settings/GeneralSettings.tsx", import.meta.url), "utf8");
 const tauriLibSource = await readFile(new URL("../desktop/src-tauri/src/lib.rs", import.meta.url), "utf8");
 const tauriCapsSource = await readFile(new URL("../desktop/src-tauri/capabilities/default.json", import.meta.url), "utf8");
 
@@ -72,9 +73,10 @@ test("notified-id memory is capped", () => {
   assert.equal(grown.at(-1), "b");
 });
 
-test("Brain wires the notification toggle; Tauri registers the plugin", () => {
+test("Brain fires due reminders, settings owns the opt-in; Tauri registers the plugin", () => {
   assert.match(brainSource, /pickDueReminderNotifications/);
-  assert.match(brainSource, /ensureNotificationPermission/);
+  // The permission prompt moved to /settings → General.
+  assert.match(generalSettingsSource, /ensureNotificationPermission/);
   assert.match(tauriLibSource, /tauri_plugin_notification::init\(\)/);
   assert.match(tauriCapsSource, /"notification:default"/);
 });

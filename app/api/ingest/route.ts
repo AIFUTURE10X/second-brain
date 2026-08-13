@@ -21,6 +21,7 @@ import {
   parseAutoTagFlag,
   parseCapturedAt,
   parseTagList,
+  resolveAiCategory,
   sanitizeFileName,
   visionMediaType,
 } from "@/lib/ingest";
@@ -124,13 +125,19 @@ export async function POST(req: NextRequest) {
     // media types Claude vision doesn't accept (avif/bmp/heic/heif).
     const mediaType = autoTag ? visionMediaType(contentType) : null;
     if (mediaType && (!title || !category || tags.length === 0)) {
+      const catNames = existingCats.map(c => c.name);
       const suggestion = await aiTagImage({
         base64: Buffer.from(await file.arrayBuffer()).toString("base64"),
         mediaType,
-        existingCategories: existingCats.map(c => c.name),
+        existingCategories: catNames,
         hintTitle: title || (fields.notes || "").trim(),
       });
-      const merged = mergeIngestAiSuggestion({ title, category, tags }, suggestion);
+      const merged = mergeIngestAiSuggestion(
+        { title, category, tags },
+        // Belt and braces on top of the prompt: fold a near-duplicate
+        // suggestion back onto the category it obviously meant.
+        { ...suggestion, category: resolveAiCategory(suggestion.category, catNames) },
+      );
       title = merged.title;
       category = merged.category;
       tags = merged.tags;

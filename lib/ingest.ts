@@ -156,6 +156,41 @@ export function normalizeAiTags(raw: unknown): string[] {
   return [...seen];
 }
 
+/**
+ * Snaps an AI-suggested category onto an existing one when they are obviously
+ * the same bucket, so a model that answers "Brand" can't create a second row
+ * next to "Brand, ads, marketing". Prompting alone doesn't reliably prevent
+ * this, and Phil has just been through one duplicate-category cleanup.
+ *
+ * Exact (case-insensitive) match wins. Otherwise an existing name that *starts
+ * with* the suggestion at a word boundary counts as the same bucket, shortest
+ * candidate first. Deliberately one-directional and length-gated: "Design"
+ * must not get swallowed by "Claude Code Design", and a two-letter "AI" must
+ * not match half the list. Anything else is returned untouched, so a genuinely
+ * new category still gets created.
+ */
+export function resolveAiCategory(suggested: string | null | undefined, existing: string[]): string {
+  const wanted = (suggested || "").trim();
+  if (!wanted) return "";
+  const lower = wanted.toLowerCase();
+
+  const exact = existing.find(name => name.toLowerCase() === lower);
+  if (exact) return exact;
+
+  if (lower.length < 4) return wanted;
+
+  const prefixed = existing
+    .filter(name => {
+      const candidate = name.toLowerCase();
+      if (!candidate.startsWith(lower)) return false;
+      const next = candidate.charAt(lower.length);
+      return next === "" || !/[a-z0-9]/.test(next);
+    })
+    .sort((a, b) => a.length - b.length || a.localeCompare(b));
+
+  return prefixed[0] || wanted;
+}
+
 export interface IngestAiSuggestion {
   title?: string;
   category?: string;

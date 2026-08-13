@@ -37,8 +37,10 @@ export async function aiTagImage(input: {
   // Phil just cleaned up a pile of near-duplicate categories — the prompt has
   // to push hard on reusing one rather than inventing "Work stuff" next to "Work".
   const catList = input.existingCategories.length > 0
-    ? `These categories already exist: ${input.existingCategories.join(", ")}.
-STRONGLY prefer reusing one of them, copied exactly as written. Only invent a new category if none of them could plausibly hold this item, and never invent one that is a near-duplicate of an existing name.`
+    ? `These categories already exist:
+${input.existingCategories.map(name => `- ${name}`).join("\n")}
+
+Rules for "category": pick the closest one from that list and copy it character for character, including its punctuation and casing. Do not shorten it, extend it, reword it, or return a different capitalisation. Return a name that is not on the list ONLY if none of them could plausibly hold this item.`
     : "No categories exist yet. Suggest one short category name if the image suggests an obvious one.";
 
   const hint = (input.hintTitle || "").trim();

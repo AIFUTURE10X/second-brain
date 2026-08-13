@@ -29,6 +29,8 @@ const ingestModule = await transpile("ingest", output =>
 );
 const ingest = await import(pathToFileURL(ingestModule).href);
 
+const resolve = (suggested, existing) => ingest.resolveAiCategory(suggested, existing);
+
 after(async () => {
   await rm(validationModule, { force: true });
   await rm(ingestModule, { force: true });
@@ -119,6 +121,45 @@ test("normalizeAiTags lowercases, dedupes and caps model output", () => {
   assert.deepEqual(ingest.normalizeAiTags([1, { x: 1 }, "ok"]), ["1", "ok"]);
   assert.deepEqual(ingest.normalizeAiTags("screenshot"), []);
   assert.deepEqual(ingest.normalizeAiTags(undefined), []);
+});
+
+test("resolveAiCategory folds near-duplicate suggestions onto existing categories", () => {
+  const existing = [
+    "Brand, ads, marketing",
+    "Claude Code",
+    "Claude Code Design",
+    "Design",
+    "AI Technology",
+    "AI Future Studio Apps",
+    "Travel & Lifestyle",
+  ];
+
+  // Exact match wins, and restores the stored casing.
+  assert.equal(resolve("design", existing), "Design");
+  assert.equal(resolve("Claude Code Design", existing), "Claude Code Design");
+
+  // The real prod failure: "Brand" must not become a second Brand category.
+  assert.equal(resolve("Brand", existing), "Brand, ads, marketing");
+  assert.equal(resolve("Travel", existing), "Travel & Lifestyle");
+
+  // Shortest candidate wins when several share the prefix.
+  assert.equal(resolve("Claude", existing), "Claude Code");
+
+  // One-directional: an existing longer name must not swallow the suggestion
+  // when the suggestion isn't its prefix.
+  assert.equal(resolve("Code", existing), "Code");
+
+  // Too short to disambiguate — don't guess.
+  assert.equal(resolve("AI", existing), "AI");
+
+  // Word-boundary only: "Brandenburg" is not "Brand, ads, marketing".
+  assert.equal(resolve("Brandenburg", existing), "Brandenburg");
+
+  // Genuinely new categories pass straight through.
+  assert.equal(resolve("Pickleball", existing), "Pickleball");
+  assert.equal(resolve("  ", existing), "");
+  assert.equal(resolve(undefined, existing), "");
+  assert.equal(resolve("Anything", []), "Anything");
 });
 
 test("mergeIngestAiSuggestion lets the client win field by field", () => {

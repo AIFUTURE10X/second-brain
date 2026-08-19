@@ -29,7 +29,13 @@ export async function aiosNotifyGate(
     if (!res.ok) return { allow: true, verdict: 'open', reason: `gate http ${res.status}` };
     const data = (await res.json()) as Partial<GateVerdict>;
     if (typeof data.allow !== 'boolean') return { allow: true, verdict: 'open', reason: 'gate malformed' };
-    return { allow: data.allow, verdict: (data.verdict as GateVerdict['verdict']) ?? 'allow', reason: data.reason ?? '' };
+    // Validate the diagnostic verdict too: an unknown or missing one falls back to a value
+    // consistent with the decision, so a skipped send is never labelled "allow".
+    const verdict: GateVerdict['verdict'] =
+      data.verdict === 'allow' || data.verdict === 'hold' || data.verdict === 'suppress' || data.verdict === 'open'
+        ? data.verdict
+        : data.allow ? 'allow' : 'suppress';
+    return { allow: data.allow, verdict, reason: data.reason ?? '' };
   } catch (err) {
     return { allow: true, verdict: 'open', reason: `gate unreachable: ${err instanceof Error ? err.message : String(err)}` };
   } finally {

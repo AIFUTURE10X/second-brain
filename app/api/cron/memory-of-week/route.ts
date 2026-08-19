@@ -41,7 +41,9 @@ export async function GET(req: NextRequest) {
   const text = `💡 Memory of the week\n\n${memory.title || "Untitled"}${memory.content ? `\n\n${memory.content}` : ""}`;
 
   for (const userId of userIds) {
-    await sendTelegram(botToken, userId, text);
+    await sendTelegram(botToken, userId, text, {
+      source: "second-brain:memory-of-week", display_name: "Second Brain memory of the week", schedule: "Sunday 09:00 Asia/Bangkok",
+    });
   }
 
   return NextResponse.json({ ok: true, sent: userIds.length, memoryId: memory.id, pool: memories.length });

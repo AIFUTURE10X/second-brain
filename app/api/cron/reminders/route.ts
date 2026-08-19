@@ -45,7 +45,10 @@ export async function GET(req: NextRequest) {
     });
 
     for (const userId of userIds) {
-      await sendTelegram(botToken, userId, text, { replyMarkup: buildSnoozeKeyboard(row.reminder.id) });
+      await sendTelegram(botToken, userId, text, {
+        replyMarkup: buildSnoozeKeyboard(row.reminder.id),
+        source: "second-brain:reminders", display_name: "Second Brain reminders", schedule: "daily 07:10 Asia/Bangkok", priority: "P1",
+      });
       sent += 1;
     }
 

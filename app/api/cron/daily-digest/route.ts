@@ -50,7 +50,9 @@ export async function GET(req: NextRequest) {
   const text = lines.join("\n");
 
   for (const userId of userIds) {
-    await sendTelegram(botToken, userId, text);
+    await sendTelegram(botToken, userId, text, {
+      source: "second-brain:daily-digest", display_name: "Second Brain daily digest", schedule: "daily 07:00 Asia/Bangkok",
+    });
   }
 
   return NextResponse.json({ ok: true, sent: userIds.length, openTasks: openTaskCount, yesterday: yesterdayCount, week: weekCount });

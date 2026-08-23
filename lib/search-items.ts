@@ -2,7 +2,7 @@
 // command. Defaults to exact lexical search + trigram typo fallback; callers
 // can opt into pgvector semantic ranking when that broader behavior is useful.
 import { sql } from "@/db";
-import { buildItemSearchTsQuery } from "@/lib/item-search";
+import { buildExactItemSearchTsQuery, buildItemSearchTsQuery } from "@/lib/item-search";
 import {
   embeddingsEnabled,
   generateEmbedding,
@@ -91,21 +91,19 @@ export async function hybridSearchItems(
   const semanticMode = opts.semanticMode ?? "off";
   const archivedFilterSql = opts.archivedOnly ? "AND archived_at IS NOT NULL" : "AND archived_at IS NULL";
 
-  const tsquery = buildItemSearchTsQuery(q);
-  let ftsRows: SearchRow[] = [];
-  if (tsquery) {
-    // Video transcripts live in their own table (they're far too large to sit
-    // on the item row), so matching them means joining rather than extending
-    // items.search_tsv. item_id is the primary key there, so the LEFT JOIN
-    // can't duplicate rows.
-    //
-    // Ordering is strictly additive. A card that matched on its own fields
-    // takes 0 from the CASE, so it still breaks ties by created_at exactly as
-    // before — transcript relevance never reshuffles results that already
-    // existed. Only transcript-only hits (which all score 0 on search_tsv and
-    // therefore sort beneath every real field match) use transcript rank, to
-    // order the new arrivals among themselves.
-    ftsRows = await sql.query(
+  // Video transcripts live in their own table (they're far too large to sit
+  // on the item row), so matching them means joining rather than extending
+  // items.search_tsv. item_id is the primary key there, so the LEFT JOIN
+  // can't duplicate rows.
+  //
+  // Ordering is strictly additive. A card that matched on its own fields
+  // takes 0 from the CASE, so it still breaks ties by created_at exactly as
+  // before — transcript relevance never reshuffles results that already
+  // existed. Only transcript-only hits (which all score 0 on search_tsv and
+  // therefore sort beneath every real field match) use transcript rank, to
+  // order the new arrivals among themselves.
+  const runFtsQuery = async (tsquery: string): Promise<SearchRow[]> =>
+    await sql.query(
       `SELECT ${ITEM_COLUMNS_SQL}
        FROM items
        LEFT JOIN item_transcripts ON item_transcripts.item_id = items.id,
@@ -120,6 +118,19 @@ export async function hybridSearchItems(
                 items.created_at DESC`,
       [tsquery]
     );
+
+  // Precision-first staging: whole-word matches only, then prefix matches
+  // ("netw" → "network") only when no whole word matched, so a completed word
+  // never drags in cards that merely start with it ("mark" vs "market").
+  const exactTsquery = buildExactItemSearchTsQuery(q);
+  const prefixTsquery = buildItemSearchTsQuery(q);
+  const rowsPassFilter = (rows: SearchRow[]) => (opts.filter ? rows.some(opts.filter) : rows.length > 0);
+  let ftsRows: SearchRow[] = [];
+  if (exactTsquery) {
+    ftsRows = await runFtsQuery(exactTsquery);
+    if (!rowsPassFilter(ftsRows)) {
+      ftsRows = await runFtsQuery(prefixTsquery);
+    }
   }
 
   let semanticRows: SearchRow[] = [];

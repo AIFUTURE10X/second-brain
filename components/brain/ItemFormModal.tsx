@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type Dispatch, type RefObject, type SetStateAction } from "react";
 import TaskChecklistEditor from "../TaskChecklistEditor";
 import { showToast } from "../Toast";
-import { itemMatchesCardSearch } from "@/lib/card-search";
+import { filterCardsBySearch } from "@/lib/card-search";
 import { ensureWebsiteLinkUrl, formatCardLinkLabel } from "@/lib/card-links";
 import { isLocalFileUrl } from "@/lib/local-file-links";
 import { openLocalFileLink } from "@/lib/desktop";
@@ -1007,9 +1007,7 @@ export function ItemFormModal({
             <div className="flex-1 overflow-y-auto flex flex-col gap-1.5">
               {(() => {
                 const q = pickerSearch.trim().toLowerCase();
-                const matches = items
-                  .filter(it => it.id !== editingId)
-                  .filter(it => itemMatchesCardSearch(it, q))
+                const matches = filterCardsBySearch(items.filter(it => it.id !== editingId), q)
                   .slice(0, 100);
                 if (matches.length === 0) {
                   return <div className="text-xs text-gray-500 font-mono py-6 text-center">No cards found</div>;
@@ -1070,9 +1068,7 @@ export function ItemFormModal({
             <div className="flex-1 overflow-y-auto flex flex-col gap-1.5">
               {(() => {
                 const q = relatedPickerSearch.trim().toLowerCase();
-                const matches = items
-                  .filter(it => it.id !== editingId)
-                  .filter(it => itemMatchesCardSearch(it, q))
+                const matches = filterCardsBySearch(items.filter(it => it.id !== editingId), q)
                   .slice(0, 100);
                 if (matches.length === 0) {
                   return <div className="text-xs text-gray-500 font-mono py-6 text-center">No cards found</div>;

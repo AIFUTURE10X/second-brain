@@ -75,6 +75,17 @@ test("server search requires all terms and prefix-matches every term", () => {
   assert.equal(itemSearch.buildItemSearchTsQuery("market"), "market:*");
 });
 
+test("server search tries exact whole-word matching before the prefix query", () => {
+  assert.equal(itemSearch.buildExactItemSearchTsQuery("mark kashef"), "mark & kashef");
+  assert.equal(itemSearch.buildExactItemSearchTsQuery("mark"), "mark");
+  // search-items.ts must run the exact query first and only fall back to the
+  // prefix query when nothing (post structured filters) matched.
+  assert.match(routeSource, /buildExactItemSearchTsQuery\(q\)/);
+  const exactStage = routeSource.indexOf("runFtsQuery(exactTsquery)");
+  const prefixStage = routeSource.indexOf("runFtsQuery(prefixTsquery)");
+  assert.ok(exactStage > -1 && prefixStage > exactStage);
+});
+
 test("related-card search prefix-matches uniformly across metadata", () => {
   const ownerCard = {
     title: "Build Your Agentic OS Better Than The 99%",
@@ -104,10 +115,16 @@ test("related-card search prefix-matches uniformly across metadata", () => {
 
   assert.equal(cardSearch.itemMatchesCardSearch(ownerCard, "Mark"), true);
   assert.equal(cardSearch.itemMatchesCardSearch(ownerCard, "mark kashef"), true);
-  // Prefix matching is uniform since the PLAN.md 1.2 search overhaul:
-  // "mark" intentionally also matches "market trends" — server-side
-  // ts_rank_cd ordering is responsible for relevance now.
+  // The per-item matcher stays prefix-based (it powers mid-typing partials),
+  // so "mark" still matches "market trends" here...
   assert.equal(cardSearch.itemMatchesCardSearch(marketCard, "Mark"), true);
+  // ...but the staged filter prefers exact whole-word matches: with a card
+  // that literally contains "Mark", the "market trends" card is excluded.
+  assert.deepEqual(cardSearch.filterCardsBySearch([ownerCard, marketCard], "Mark"), [ownerCard]);
+  // With no exact match anywhere, prefix matching kicks back in so partials
+  // like "kash" keep working while typing.
+  assert.deepEqual(cardSearch.filterCardsBySearch([ownerCard, marketCard], "kash"), [ownerCard]);
+  assert.deepEqual(cardSearch.filterCardsBySearch([ownerCard, marketCard], "marke"), [marketCard]);
 });
 
 test("card search matches checklist row text inside a task card", () => {

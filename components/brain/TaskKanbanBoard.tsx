@@ -44,7 +44,7 @@ export function TaskKanbanBoard({ items, layout, movingTaskId, onOpenTask, onMov
               </span>
             </div>
 
-            <div className="min-h-28">
+            <div className={layout === "list" ? "grid min-h-28 grid-cols-[repeat(auto-fill,8rem)] items-start gap-1.5" : "min-h-28"}>
               {columnItems.length > 0 ? (
                 columnItems.map(item => {
                   const currentColumn = taskKanbanColumn(item) as TaskKanbanColumnKey;
@@ -56,7 +56,7 @@ export function TaskKanbanBoard({ items, layout, movingTaskId, onOpenTask, onMov
                   return (
                     <article
                       key={item.id}
-                      className={layout === "list" ? "flex h-[6.5rem] flex-col overflow-hidden rounded-lg border border-brand-border/80 bg-brand-card" : "flex h-[9rem] flex-col overflow-hidden rounded-lg border border-brand-border/80 bg-brand-card"}
+                      className={layout === "list" ? "flex h-32 w-32 flex-col overflow-hidden rounded-lg border border-brand-border/80 bg-brand-card" : "flex h-[9rem] flex-col overflow-hidden rounded-lg border border-brand-border/80 bg-brand-card"}
                     >
                       <button
                         type="button"
@@ -79,15 +79,24 @@ export function TaskKanbanBoard({ items, layout, movingTaskId, onOpenTask, onMov
                           </span>
                           <div className="min-w-0">
                             <h3
-                              className="line-clamp-2 text-base font-semibold leading-snug text-gray-100"
-                              style={{
-                                fontFamily: "'Space Grotesk', sans-serif",
-                                display: "-webkit-box",
-                                WebkitBoxOrient: "vertical",
-                                WebkitLineClamp: 2,
-                                maxHeight: "2.75rem",
-                                overflow: "hidden",
-                              }}
+                              className={layout === "list" ? "line-clamp-3 text-[11px] font-semibold leading-tight text-gray-100" : "line-clamp-2 text-base font-semibold leading-snug text-gray-100"}
+                              style={layout === "list"
+                                ? {
+                                    fontFamily: "'Space Grotesk', sans-serif",
+                                    display: "-webkit-box",
+                                    WebkitBoxOrient: "vertical",
+                                    WebkitLineClamp: 3,
+                                    maxHeight: "2.475rem",
+                                    overflow: "hidden",
+                                  }
+                                : {
+                                    fontFamily: "'Space Grotesk', sans-serif",
+                                    display: "-webkit-box",
+                                    WebkitBoxOrient: "vertical",
+                                    WebkitLineClamp: 2,
+                                    maxHeight: "2.75rem",
+                                    overflow: "hidden",
+                                  }}
                             >
                               {taskTitle}
                             </h3>
@@ -127,10 +136,10 @@ export function TaskKanbanBoard({ items, layout, movingTaskId, onOpenTask, onMov
                               aria-current={active ? "step" : undefined}
                               aria-label={`Move ${taskTitle} to ${option.label}`}
                               title={`Move to ${option.label}`}
-                              className={`${layout === "list" ? "min-h-7" : "min-h-8"} rounded px-1 text-[9px] font-semibold uppercase tracking-[0.06em] transition ${active ? "bg-white/[0.06]" : "text-gray-600 hover:bg-white/[0.04] hover:text-gray-300"} disabled:cursor-default`}
+                              className={`${layout === "list" ? "min-h-7 text-[8px] tracking-normal" : "min-h-8 text-[9px] tracking-[0.06em]"} rounded px-1 font-semibold uppercase transition ${active ? "bg-white/[0.06]" : "text-gray-600 hover:bg-white/[0.04] hover:text-gray-300"} disabled:cursor-default`}
                               style={active ? { color: option.color } : undefined}
                             >
-                              {option.label}
+                              {layout === "list" && option.key === "in-progress" ? "Doing" : option.label}
                             </button>
                           );
                         })}
@@ -139,7 +148,7 @@ export function TaskKanbanBoard({ items, layout, movingTaskId, onOpenTask, onMov
                   );
                 })
               ) : (
-                <div className="flex min-h-24 items-center justify-center rounded-lg border border-dashed border-brand-border px-3 text-center text-[11px] font-mono text-gray-600">
+                <div className={`${layout === "list" ? "col-span-full" : ""} flex min-h-24 items-center justify-center rounded-lg border border-dashed border-brand-border px-3 text-center text-[11px] font-mono text-gray-600`}>
                   No tasks
                 </div>
               )}

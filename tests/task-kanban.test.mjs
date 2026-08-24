@@ -27,7 +27,7 @@ test("task columns derive from existing completion and workflow status", () => {
 test("the Kanban renders a purpose-built compact task card", () => {
   assert.doesNotMatch(kanbanSource, /renderCard/);
   assert.match(kanbanSource, /: "flex h-\[9rem\] flex-col/);
-  assert.match(kanbanSource, /className="line-clamp-2 text-base font-semibold leading-snug text-gray-100/);
+  assert.match(kanbanSource, /: "line-clamp-2 text-base font-semibold leading-snug text-gray-100/);
   assert.match(kanbanSource, /WebkitLineClamp: 2/);
   assert.match(kanbanSource, /maxHeight: "2\.75rem"/);
   assert.equal(taskWorkflow.taskDisplayTitle({ title: "  ", content: "Do the actual work" }), "Do the actual work");
@@ -36,7 +36,7 @@ test("the Kanban renders a purpose-built compact task card", () => {
   assert.match(brainSource, /onOpenTask={handleEdit}/);
 });
 
-test("Tasks List keeps the Kanban columns and uses shorter cards", () => {
+test("Tasks List keeps the Kanban columns and uses small square tiles", () => {
   assert.match(layoutPickerSource, /export type TaskLayout = "board" \| "list"/);
   assert.match(layoutPickerSource, /aria-label="Task layout"/);
   assert.match(layoutPickerSource, /label: "Board"/);
@@ -46,8 +46,11 @@ test("Tasks List keeps the Kanban columns and uses shorter cards", () => {
   assert.match(kanbanSource, /layout: TaskLayout/);
   assert.match(brainSource, /<TaskKanbanBoard[\s\S]*layout={taskLayout}/);
   assert.doesNotMatch(brainSource, /visibleItems\.map\(renderTaskListCard\)/);
-  assert.match(kanbanSource, /layout === "list" \? "flex h-\[6\.5rem\]/);
-  assert.match(kanbanSource, /layout === "list" \? "min-h-7" : "min-h-8"/);
+  assert.match(kanbanSource, /layout === "list" \? "grid min-h-28 grid-cols-\[repeat\(auto-fill,8rem\)\]/);
+  assert.match(kanbanSource, /layout === "list" \? "flex h-32 w-32/);
+  assert.match(kanbanSource, /layout === "list" \? "line-clamp-3 text-\[11px\]/);
+  assert.match(kanbanSource, /layout === "list" \? "min-h-7 text-\[8px\] tracking-normal"/);
+  assert.match(kanbanSource, /option\.key === "in-progress" \? "Doing" : option\.label/);
   assert.match(brainSource, /sb_task_layout/);
 });
 

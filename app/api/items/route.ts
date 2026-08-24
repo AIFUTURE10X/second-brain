@@ -19,7 +19,6 @@ import { deriveTaskCompletion, normalizeChecklistItems } from "@/lib/task-checkl
 import { appendYouTubeDescriptionLinksToNotes, fetchYouTubeDescriptionLinks, type YouTubeDescriptionLink } from "@/lib/youtube";
 import { fallbackTitleFromUrl } from "@/lib/url-title";
 import { formatLocalPathLabel } from "@/lib/local-path";
-import { wouldReopenDoneTask } from "@/lib/task-workflow.mjs";
 
 function prepareTaskFields(
   type: unknown,
@@ -39,6 +38,19 @@ function prepareTaskFields(
   const checklistItems = normalizeChecklistItems(
     incomingChecklistItems === undefined ? fallbackChecklistItems : incomingChecklistItems
   );
+  if (incomingChecklistItems === undefined) {
+    return {
+      checklistItems,
+      completed: fallbackCompleted === true,
+      completedAt: fallbackCompleted === true
+        ? fallbackCompletedAt instanceof Date
+          ? fallbackCompletedAt
+          : typeof fallbackCompletedAt === "string"
+            ? new Date(fallbackCompletedAt)
+            : null
+        : null,
+    };
+  }
   const derived = deriveTaskCompletion(
     checklistItems,
     fallbackCompleted === true,
@@ -305,17 +317,9 @@ export async function PUT(req: NextRequest) {
     nextType,
     updates.checklistItems,
     current.checklistItems,
-    current.completed,
-    current.completedAt,
+    updates.completed === undefined ? current.completed : updates.completed,
+    updates.completedAt === undefined ? current.completedAt : updates.completedAt,
   );
-
-  if (wouldReopenDoneTask(current, {
-    workflowStatus: updates.workflowStatus,
-    completionChanged: updates.completed !== undefined || updates.checklistItems !== undefined,
-    nextCompleted: taskFields.completed,
-  })) {
-    return jsonError(409, "Done tasks cannot be moved back to an active column");
-  }
 
   // archivedAt arrives as an ISO string (or null to unarchive) but the
   // timestamp column needs a Date.

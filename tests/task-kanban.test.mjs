@@ -4,6 +4,7 @@ import test from "node:test";
 
 const brainSource = await readFile(new URL("../components/Brain.tsx", import.meta.url), "utf8");
 const kanbanSource = await readFile(new URL("../components/brain/TaskKanbanBoard.tsx", import.meta.url), "utf8").catch(() => "");
+const layoutPickerSource = await readFile(new URL("../components/brain/TaskLayoutPicker.tsx", import.meta.url), "utf8").catch(() => "");
 const itemsRouteSource = await readFile(new URL("../app/api/items/route.ts", import.meta.url), "utf8");
 const taskWorkflow = await import("../lib/task-workflow.mjs").catch(() => null);
 
@@ -35,6 +36,19 @@ test("the Kanban renders a purpose-built compact task card", () => {
   assert.match(brainSource, /onOpenTask={handleEdit}/);
 });
 
+test("Tasks offers a second List layout using the normal small list cards", () => {
+  assert.match(layoutPickerSource, /export type TaskLayout = "board" \| "list"/);
+  assert.match(layoutPickerSource, /aria-label="Task layout"/);
+  assert.match(layoutPickerSource, /label: "Board"/);
+  assert.match(layoutPickerSource, /label: "List"/);
+  assert.match(brainSource, /const \[taskLayout, setTaskLayout\] = useState<TaskLayout>\("board"\)/);
+  assert.match(brainSource, /<TaskLayoutPicker layout={taskLayout} onLayoutChange={setTaskLayout}/);
+  assert.match(brainSource, /const renderTaskListCard = \(item: Item, idx: number\) => renderItemCardAtDensity\(item, idx, "list"\)/);
+  assert.match(brainSource, /taskLayout === "board" \? \(/);
+  assert.match(brainSource, /visibleItems\.map\(renderTaskListCard\)/);
+  assert.match(brainSource, /sb_task_layout/);
+});
+
 test("saving a new task opens the Kanban and starts the task in Todo", () => {
   assert.match(brainSource, /!editingId && saved\.type === "task" && !andAddAnother/);
   assert.match(brainSource, /applySavedView\("tasks"\)/);
@@ -47,30 +61,29 @@ test("each Kanban card has status tabs in its footer wired to persistence", () =
   assert.match(kanbanSource, /aria-label={`Move \$\{taskTitle\} to \$\{option\.label\}`}/);
   assert.match(kanbanSource, /onMoveTask\(item, option\.key\)/);
   assert.match(brainSource, /const handleMoveTask = async \(item: Item, column: TaskKanbanColumnKey\)/);
-  assert.match(brainSource, /workflowStatus = column === "todo" \? "inbox" : column === "in-progress" \? "active" : "done"/);
+  assert.match(brainSource, /const taskUpdates = taskMoveUpdates\(item, column\)/);
   assert.match(brainSource, /onMoveTask={handleMoveTask}/);
 });
 
-test("Done is terminal while completed task details can still be opened", () => {
+test("Done tasks can move back to Todo or In Progress", () => {
   assert.ok(taskWorkflow);
-  assert.equal(taskWorkflow.canMoveTask({ type: "task", workflowStatus: "done" }, "in-progress"), false);
-  assert.equal(taskWorkflow.canMoveTask({ type: "task", completed: true, workflowStatus: "inbox" }, "todo"), false);
+  assert.equal(taskWorkflow.canMoveTask({ type: "task", workflowStatus: "done" }, "in-progress"), true);
+  assert.equal(taskWorkflow.canMoveTask({ type: "task", completed: true, workflowStatus: "inbox" }, "todo"), true);
   assert.equal(taskWorkflow.canMoveTask({ type: "task", workflowStatus: "active" }, "todo"), true);
   assert.equal(taskWorkflow.canMoveTask({ type: "task", workflowStatus: "inbox" }, "in-progress"), true);
-  assert.equal(taskWorkflow.wouldReopenDoneTask(
-    { type: "task", workflowStatus: "done", completed: false },
-    { workflowStatus: "active", completionChanged: false, nextCompleted: false },
-  ), true);
-  assert.equal(taskWorkflow.wouldReopenDoneTask(
-    { type: "task", workflowStatus: "done", completed: false },
-    { workflowStatus: undefined, completionChanged: false, nextCompleted: false },
-  ), false);
-  assert.equal(taskWorkflow.wouldReopenDoneTask(
-    { type: "task", workflowStatus: "inbox", completed: true },
-    { workflowStatus: undefined, completionChanged: true, nextCompleted: false },
-  ), true);
+  assert.deepEqual(taskWorkflow.taskMoveUpdates({ type: "task", workflowStatus: "done" }, "in-progress"), {
+    workflowStatus: "active",
+    completed: false,
+    completedAt: null,
+  });
+  assert.deepEqual(taskWorkflow.taskMoveUpdates({ type: "task", completed: true, workflowStatus: "inbox" }, "todo"), {
+    workflowStatus: "inbox",
+    completed: false,
+    completedAt: null,
+  });
   assert.match(kanbanSource, /onClick=\{\(\) => onOpenTask\(item\)\}/);
-  assert.match(brainSource, /if \(!canMoveTask\(item, column\)\)/);
-  assert.match(itemsRouteSource, /wouldReopenDoneTask\(current,/);
-  assert.match(itemsRouteSource, /Done tasks cannot be moved back to an active column/);
+  assert.match(kanbanSource, /const disabled = movingTaskId === item\.id \|\| active/);
+  assert.match(brainSource, /const taskUpdates = taskMoveUpdates\(item, column\)/);
+  assert.match(itemsRouteSource, /updates\.completed === undefined \? current\.completed : updates\.completed/);
+  assert.doesNotMatch(itemsRouteSource, /Done tasks cannot be moved back to an active column/);
 });

@@ -70,7 +70,8 @@ import { BulkTriageBar } from "./brain/BulkTriageBar";
 import { TableView } from "./brain/TableView";
 import { BoardView } from "./brain/BoardView";
 import { TaskKanbanBoard, type TaskKanbanColumnKey } from "./brain/TaskKanbanBoard";
-import { canMoveTask } from "@/lib/task-workflow.mjs";
+import { TaskLayoutPicker, type TaskLayout } from "./brain/TaskLayoutPicker";
+import { taskMoveUpdates } from "@/lib/task-workflow.mjs";
 import { ViewModePicker } from "./brain/ViewModePicker";
 import { withConcurrencyGuard } from "@/lib/item-updates.mjs";
 import { ensureWebsiteLinkUrl } from "@/lib/card-links";
@@ -189,6 +190,7 @@ export default function Brain() {
   const [movingTaskId, setMovingTaskId] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState(50);
   const [density, setDensity] = useState<ViewMode>("list");
+  const [taskLayout, setTaskLayout] = useState<TaskLayout>("board");
   const [bulkUpdating, setBulkUpdating] = useState(false);
   const [bulkCategory, setBulkCategory] = useState("");
   const [bulkStatus, setBulkStatus] = useState<WorkflowStatus | "">("");
@@ -211,6 +213,13 @@ export default function Brain() {
   useEffect(() => {
     if (typeof window !== "undefined") window.localStorage.setItem("sb_density", density);
   }, [density]);
+  useEffect(() => {
+    const saved = typeof window !== "undefined" ? window.localStorage.getItem("sb_task_layout") : null;
+    if (saved === "board" || saved === "list") setTaskLayout(saved);
+  }, []);
+  useEffect(() => {
+    if (typeof window !== "undefined") window.localStorage.setItem("sb_task_layout", taskLayout);
+  }, [taskLayout]);
 
   useEffect(() => {
     fetch(`/api/settings?key=${CUSTOM_SAVED_VIEWS_KEY}`)
@@ -1467,20 +1476,19 @@ export default function Brain() {
 
   const handleMoveTask = async (item: Item, column: TaskKanbanColumnKey) => {
     if (isOfflineTempId(item.id)) return;
-    if (!canMoveTask(item, column)) {
-      if (item.completed || item.workflowStatus === "done") {
-        showToast("Done tasks stay completed. Open the task to edit its details.", "error");
-      }
-      return;
-    }
-    const workflowStatus = column === "todo" ? "inbox" : column === "in-progress" ? "active" : "done";
+    const taskUpdates = taskMoveUpdates(item, column) as {
+      workflowStatus: WorkflowStatus;
+      completed?: boolean;
+      completedAt?: string | null;
+    } | null;
+    if (!taskUpdates) return;
     const label = column === "todo" ? "Todo" : column === "in-progress" ? "In Progress" : "Done";
     setMovingTaskId(item.id);
     try {
       const res = await fetch("/api/items", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: item.id, workflowStatus }),
+        body: JSON.stringify({ id: item.id, ...taskUpdates }),
       });
       if (!res.ok) {
         showToast("Failed to move task", "error");
@@ -1491,8 +1499,8 @@ export default function Brain() {
       broadcastSync({ type: "item-updated", item: saved });
       showToast(`Moved to ${label}`, "success");
     } catch {
-      if (await queueWriteOffline({ kind: "update", payload: { id: item.id, workflowStatus } })) {
-        setItems(prev => prev.map(existing => existing.id === item.id ? { ...existing, workflowStatus } : existing));
+      if (await queueWriteOffline({ kind: "update", payload: { id: item.id, ...taskUpdates } })) {
+        setItems(prev => prev.map(existing => existing.id === item.id ? { ...existing, ...taskUpdates } : existing));
         showToast(`Moved to ${label} offline — will sync`, "success");
       } else {
         showToast("Failed to move task", "error");
@@ -2090,13 +2098,13 @@ export default function Brain() {
   const gridFullSpanClass = density === "list" || density === "compact" ? "col-span-full" : "";
   const headerIconButtonClass = "w-11 h-11 sm:w-10 sm:h-10 min-[1800px]:h-9 min-[1800px]:w-9 rounded-xl min-[1800px]:rounded-lg flex items-center justify-center active:scale-95 transition";
 
-  const renderItemCard = (item: Item, idx: number) => (
+  const renderItemCardAtDensity = (item: Item, idx: number, cardDensity: ViewMode) => (
     <ItemCard
       key={item.id}
       item={item}
       idx={idx}
       expanded={expandedId === item.id}
-      density={density}
+      density={cardDensity}
       isSummarizing={summarizing === item.id}
       isOrganizing={organizing === item.id}
       isDragTarget={dragOverCardId === item.id}
@@ -2126,6 +2134,8 @@ export default function Brain() {
       onSuggestOrganization={() => handleSuggestOrganization(item)}
     />
   );
+  const renderItemCard = (item: Item, idx: number) => renderItemCardAtDensity(item, idx, density);
+  const renderTaskListCard = (item: Item, idx: number) => renderItemCardAtDensity(item, idx, "list");
 
   return (
     <div className="min-h-screen relative pb-8">
@@ -2435,27 +2445,30 @@ export default function Brain() {
       {/* Quick-add task input (on Task view) */}
       {view === "task" && (
         <div className="px-4 pt-2 pb-1">
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={quickTaskText}
-              onChange={e => setQuickTaskText(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter") quickAddTask(); }}
-              placeholder="Add a task…"
-              className="flex-1 px-3 py-2 rounded-lg bg-brand-muted border border-brand-border text-sm text-gray-200 outline-none placeholder:text-gray-500 focus:border-gray-500"
-            />
-            <VoiceButton
-              onTranscript={t => setQuickTaskText(prev => (prev ? prev + " " : "") + t)}
-              disabled={quickTaskSaving}
-            />
-            <button
-              onClick={quickAddTask}
-              disabled={!quickTaskText.trim() || quickTaskSaving}
-              className="px-4 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-50 active:scale-95 transition"
-              style={{ background: "linear-gradient(135deg, #56CCF2, #2D9CDB)" }}
-            >
-              {quickTaskSaving ? "…" : "Add"}
-            </button>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <div className="flex min-w-0 flex-1 gap-2">
+              <input
+                type="text"
+                value={quickTaskText}
+                onChange={e => setQuickTaskText(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") quickAddTask(); }}
+                placeholder="Add a task…"
+                className="min-w-0 flex-1 px-3 py-2 rounded-lg bg-brand-muted border border-brand-border text-sm text-gray-200 outline-none placeholder:text-gray-500 focus:border-gray-500"
+              />
+              <VoiceButton
+                onTranscript={t => setQuickTaskText(prev => (prev ? prev + " " : "") + t)}
+                disabled={quickTaskSaving}
+              />
+              <button
+                onClick={quickAddTask}
+                disabled={!quickTaskText.trim() || quickTaskSaving}
+                className="px-4 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-50 active:scale-95 transition"
+                style={{ background: "linear-gradient(135deg, #56CCF2, #2D9CDB)" }}
+              >
+                {quickTaskSaving ? "…" : "Add"}
+              </button>
+            </div>
+            <TaskLayoutPicker layout={taskLayout} onLayoutChange={setTaskLayout} />
           </div>
         </div>
       )}
@@ -2490,7 +2503,7 @@ export default function Brain() {
 
       {/* Items */}
       <div
-        className={view === "task" || density === "table" || density === "board" ? "px-4 min-[1800px]:px-3" : density === "list" ? "grid items-start grid-cols-[repeat(auto-fill,minmax(min(100%,12rem),1fr))] min-[1500px]:grid-cols-[repeat(auto-fill,minmax(min(100%,9rem),1fr))] min-[1800px]:grid-cols-[repeat(auto-fill,minmax(min(100%,8.5rem),1fr))] gap-2 min-[1800px]:gap-1.5 px-4 min-[1800px]:px-3" : "grid grid-cols-[repeat(auto-fill,minmax(min(100%,13rem),1fr))] min-[1800px]:grid-cols-[repeat(auto-fill,minmax(min(100%,11rem),1fr))] gap-2 min-[1800px]:gap-1.5 px-4 min-[1800px]:px-3"}
+        className={view === "task" && taskLayout === "board" || density === "table" || density === "board" ? "px-4 min-[1800px]:px-3" : view === "task" || density === "list" ? "grid items-start grid-cols-[repeat(auto-fill,minmax(min(100%,12rem),1fr))] min-[1500px]:grid-cols-[repeat(auto-fill,minmax(min(100%,9rem),1fr))] min-[1800px]:grid-cols-[repeat(auto-fill,minmax(min(100%,8.5rem),1fr))] gap-2 min-[1800px]:gap-1.5 px-4 min-[1800px]:px-3" : "grid grid-cols-[repeat(auto-fill,minmax(min(100%,13rem),1fr))] min-[1800px]:grid-cols-[repeat(auto-fill,minmax(min(100%,11rem),1fr))] gap-2 min-[1800px]:gap-1.5 px-4 min-[1800px]:px-3"}
       >
         {searchFuzzy && search.trim() && filtered.length > 0 && (
           <div className={`mb-2 rounded-lg border border-[#E8A83840] bg-[#E8A83810] px-3 py-2 text-[11px] font-mono text-[#E8A838] ${gridFullSpanClass}`}>
@@ -2529,12 +2542,16 @@ export default function Brain() {
         )}
 
         {view === "task" && visibleItems.length > 0 ? (
-          <TaskKanbanBoard
-            items={visibleItems}
-            movingTaskId={movingTaskId}
-            onOpenTask={handleEdit}
-            onMoveTask={handleMoveTask}
-          />
+          taskLayout === "board" ? (
+            <TaskKanbanBoard
+              items={visibleItems}
+              movingTaskId={movingTaskId}
+              onOpenTask={handleEdit}
+              onMoveTask={handleMoveTask}
+            />
+          ) : (
+            visibleItems.map(renderTaskListCard)
+          )
         ) : density === "table" && visibleItems.length > 0 ? (
           <TableView
             items={visibleItems}

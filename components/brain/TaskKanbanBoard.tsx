@@ -112,7 +112,7 @@ export function TaskKanbanBoard({ items, movingTaskId, onOpenTask, onMoveTask }:
                       <div className="mt-auto grid shrink-0 grid-cols-3 border-t border-brand-border bg-[#0D1016] p-1">
                         {TASK_KANBAN_COLUMNS.map(option => {
                           const active = option.key === currentColumn;
-                          const disabled = movingTaskId === item.id || taskDone || active;
+                          const disabled = movingTaskId === item.id || active;
 
                           return (
                             <button
@@ -122,7 +122,7 @@ export function TaskKanbanBoard({ items, movingTaskId, onOpenTask, onMoveTask }:
                               disabled={disabled}
                               aria-current={active ? "step" : undefined}
                               aria-label={`Move ${taskTitle} to ${option.label}`}
-                              title={taskDone ? "Done tasks stay completed. Open the card to edit its details." : `Move to ${option.label}`}
+                              title={`Move to ${option.label}`}
                               className={`min-h-8 rounded px-1 text-[9px] font-semibold uppercase tracking-[0.06em] transition ${active ? "bg-white/[0.06]" : "text-gray-600 hover:bg-white/[0.04] hover:text-gray-300"} disabled:cursor-default`}
                               style={active ? { color: option.color } : undefined}
                             >

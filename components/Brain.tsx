@@ -69,6 +69,7 @@ import { ConflictDialog } from "./brain/ConflictDialog";
 import { BulkTriageBar } from "./brain/BulkTriageBar";
 import { TableView } from "./brain/TableView";
 import { BoardView } from "./brain/BoardView";
+import { TaskKanbanBoard } from "./brain/TaskKanbanBoard";
 import { ViewModePicker } from "./brain/ViewModePicker";
 import { withConcurrencyGuard } from "@/lib/item-updates.mjs";
 import { ensureWebsiteLinkUrl } from "@/lib/card-links";
@@ -2048,6 +2049,43 @@ export default function Brain() {
   const gridFullSpanClass = density === "list" || density === "compact" ? "col-span-full" : "";
   const headerIconButtonClass = "w-11 h-11 sm:w-10 sm:h-10 min-[1800px]:h-9 min-[1800px]:w-9 rounded-xl min-[1800px]:rounded-lg flex items-center justify-center active:scale-95 transition";
 
+  const renderItemCard = (item: Item, idx: number) => (
+    <ItemCard
+      key={item.id}
+      item={item}
+      idx={idx}
+      expanded={expandedId === item.id}
+      density={density}
+      isSummarizing={summarizing === item.id}
+      isOrganizing={organizing === item.id}
+      isDragTarget={dragOverCardId === item.id}
+      selected={selectedIds.has(item.id)}
+      relationCount={relationCountsByItemId.get(item.id) || 0}
+      relatedItems={relatedItemsForId(item.id)}
+      reminder={activeReminderForId(item.id)}
+      failedPreviewUrls={failedPreviewUrls}
+      getCatColor={getCatColor}
+      onToggleExpanded={() => setExpandedId(expandedId === item.id ? null : item.id)}
+      setDragTargetId={setDragOverCardId}
+      onAttachFiles={files => attachFilesToItem(item.id, files)}
+      onEdit={() => handleEdit(item)}
+      onArchive={() => handleArchive(item.id)}
+      onCycleReadingStatus={() => handleCycleReadingStatus(item.id)}
+      onShare={() => handleShare(item.id)}
+      onPopOut={() => popOutCard(item.id)}
+      onDelete={() => handleDelete(item.id)}
+      onPreviewImageFailed={markPreviewImageFailed}
+      onToggleSelected={() => toggleSelectedId(item.id)}
+      onToggleChecklistRow={rowId => toggleChecklistItemOnCard(item, rowId)}
+      onOpenCard={openCardInCurrentTab}
+      onToggleFlag={flag => handleToggleFlag(item.id, flag)}
+      onMarkReviewed={() => handleMarkReviewed(item.id)}
+      onPin={() => handlePin(item.id)}
+      onSummarize={() => handleSummarize(item.id)}
+      onSuggestOrganization={() => handleSuggestOrganization(item)}
+    />
+  );
+
   return (
     <div className="min-h-screen relative pb-8">
       {/* Header */}
@@ -2411,7 +2449,7 @@ export default function Brain() {
 
       {/* Items */}
       <div
-        className={density === "table" || density === "board" ? "px-4 min-[1800px]:px-3" : density === "list" ? "grid items-start grid-cols-[repeat(auto-fill,minmax(min(100%,12rem),1fr))] min-[1500px]:grid-cols-[repeat(auto-fill,minmax(min(100%,9rem),1fr))] min-[1800px]:grid-cols-[repeat(auto-fill,minmax(min(100%,8.5rem),1fr))] gap-2 min-[1800px]:gap-1.5 px-4 min-[1800px]:px-3" : "grid grid-cols-[repeat(auto-fill,minmax(min(100%,13rem),1fr))] min-[1800px]:grid-cols-[repeat(auto-fill,minmax(min(100%,11rem),1fr))] gap-2 min-[1800px]:gap-1.5 px-4 min-[1800px]:px-3"}
+        className={view === "task" || density === "table" || density === "board" ? "px-4 min-[1800px]:px-3" : density === "list" ? "grid items-start grid-cols-[repeat(auto-fill,minmax(min(100%,12rem),1fr))] min-[1500px]:grid-cols-[repeat(auto-fill,minmax(min(100%,9rem),1fr))] min-[1800px]:grid-cols-[repeat(auto-fill,minmax(min(100%,8.5rem),1fr))] gap-2 min-[1800px]:gap-1.5 px-4 min-[1800px]:px-3" : "grid grid-cols-[repeat(auto-fill,minmax(min(100%,13rem),1fr))] min-[1800px]:grid-cols-[repeat(auto-fill,minmax(min(100%,11rem),1fr))] gap-2 min-[1800px]:gap-1.5 px-4 min-[1800px]:px-3"}
       >
         {searchFuzzy && search.trim() && filtered.length > 0 && (
           <div className={`mb-2 rounded-lg border border-[#E8A83840] bg-[#E8A83810] px-3 py-2 text-[11px] font-mono text-[#E8A838] ${gridFullSpanClass}`}>
@@ -2449,7 +2487,12 @@ export default function Brain() {
           />
         )}
 
-        {density === "table" && visibleItems.length > 0 ? (
+        {view === "task" && visibleItems.length > 0 ? (
+          <TaskKanbanBoard
+            items={visibleItems}
+            renderCard={renderItemCard}
+          />
+        ) : density === "table" && visibleItems.length > 0 ? (
           <TableView
             items={visibleItems}
             selectedIds={selectedIds}
@@ -2479,42 +2522,7 @@ export default function Brain() {
                 {timelineHeaderLabel(group.key)} <span className="opacity-50">· {group.items.length}</span>
               </div>
             )}
-            {group.items.map((item, idx) => (
-              <ItemCard
-                key={item.id}
-                item={item}
-                idx={idx}
-                expanded={expandedId === item.id}
-                density={density}
-                isSummarizing={summarizing === item.id}
-                isOrganizing={organizing === item.id}
-                isDragTarget={dragOverCardId === item.id}
-                selected={selectedIds.has(item.id)}
-                relationCount={relationCountsByItemId.get(item.id) || 0}
-                relatedItems={relatedItemsForId(item.id)}
-                reminder={activeReminderForId(item.id)}
-                failedPreviewUrls={failedPreviewUrls}
-                getCatColor={getCatColor}
-                onToggleExpanded={() => setExpandedId(expandedId === item.id ? null : item.id)}
-                setDragTargetId={setDragOverCardId}
-                onAttachFiles={files => attachFilesToItem(item.id, files)}
-                onEdit={() => handleEdit(item)}
-                onArchive={() => handleArchive(item.id)}
-                onCycleReadingStatus={() => handleCycleReadingStatus(item.id)}
-                onShare={() => handleShare(item.id)}
-                onPopOut={() => popOutCard(item.id)}
-                onDelete={() => handleDelete(item.id)}
-                onPreviewImageFailed={markPreviewImageFailed}
-                onToggleSelected={() => toggleSelectedId(item.id)}
-                onToggleChecklistRow={rowId => toggleChecklistItemOnCard(item, rowId)}
-                onOpenCard={openCardInCurrentTab}
-                onToggleFlag={flag => handleToggleFlag(item.id, flag)}
-                onMarkReviewed={() => handleMarkReviewed(item.id)}
-                onPin={() => handlePin(item.id)}
-                onSummarize={() => handleSummarize(item.id)}
-                onSuggestOrganization={() => handleSuggestOrganization(item)}
-              />
-            ))}
+            {group.items.map(renderItemCard)}
           </div>
         ))}
 

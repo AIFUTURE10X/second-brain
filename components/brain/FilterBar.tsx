@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useState, type RefObject } from "react";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { TYPES, type Category, type ItemType } from "@/lib/brain-model";
 
 type OpenMenu = null | "type" | "category" | "tags" | "more";
@@ -19,6 +19,7 @@ interface FilterBarProps {
   getChildren: (parentId: string) => Category[];
   getCatNamesUnderParent: (name: string) => string[];
   usedCatNames: Set<string>;
+  categoryItemCounts: Map<string, number>;
   itemCount: number;
   sourceCounts: { key: string; label: string; count: number }[];
   sourceFilter: string | null;
@@ -75,7 +76,7 @@ export function FilterBar(props: FilterBarProps) {
   const {
     search, onSearchChange, searchInputRef, searching,
     view, onViewChange, counts,
-    catFilter, onCatFilterChange, parentCats, getChildren, getCatNamesUnderParent, usedCatNames, itemCount,
+    catFilter, onCatFilterChange, parentCats, getChildren, getCatNamesUnderParent, usedCatNames, categoryItemCounts, itemCount,
     sourceCounts, sourceFilter, onSourceFilterChange,
     tagsByCount, tagCounts, tagFilter, onTagFilterChange, tagColor, duplicateGroupCount, onOpenTagManager,
     sortBy, onSortByChange,
@@ -95,6 +96,7 @@ export function FilterBar(props: FilterBarProps) {
   const [catMenuSearch, setCatMenuSearch] = useState("");
   const [sourceMenuSearch, setSourceMenuSearch] = useState("");
   const [tagMenuSearch, setTagMenuSearch] = useState("");
+  const morePanelRef = useRef<HTMLDivElement>(null);
 
   const closeMenus = () => {
     setOpenMenu(null);
@@ -121,6 +123,19 @@ export function FilterBar(props: FilterBarProps) {
       document.removeEventListener("mousedown", handleClick);
       window.removeEventListener("keydown", handleKey);
     };
+  }, [openMenu]);
+
+  useLayoutEffect(() => {
+    if (openMenu !== "more") return;
+    const fitPanelToViewport = () => {
+      const panel = morePanelRef.current;
+      if (!panel) return;
+      const availableHeight = Math.max(160, window.innerHeight - panel.getBoundingClientRect().top - 8);
+      panel.style.maxHeight = `${availableHeight}px`;
+    };
+    fitPanelToViewport();
+    window.addEventListener("resize", fitPanelToViewport);
+    return () => window.removeEventListener("resize", fitPanelToViewport);
   }, [openMenu]);
 
   const categoryMenuQuery = catMenuSearch.trim().toLowerCase();
@@ -391,7 +406,10 @@ export function FilterBar(props: FilterBarProps) {
               ) : (
                 categoryMenuGroups.map(({ parent, children }) => {
                   const parentActive = catFilter === parent.name;
-                  const parentCount = getCatNamesUnderParent(parent.name).filter(name => usedCatNames.has(name)).length;
+                  const parentCount = getCatNamesUnderParent(parent.name).reduce(
+                    (total, name) => total + (categoryItemCounts.get(name) ?? 0),
+                    0,
+                  );
 
                   if (children.length === 0) {
                     return (
@@ -451,6 +469,7 @@ export function FilterBar(props: FilterBarProps) {
                             }}
                           >
                             <span className="truncate">{child.name}</span>
+                            <span className="shrink-0 text-[10px] opacity-60">{categoryItemCounts.get(child.name) ?? 0}</span>
                           </button>
                         );
                       })}
@@ -519,7 +538,11 @@ export function FilterBar(props: FilterBarProps) {
       )}
 
       {openMenu === "more" && (
-        <div className={panelClass}>
+        <div
+          ref={morePanelRef}
+          className={`${panelClass} overflow-y-auto overscroll-contain`}
+          data-more-filter-panel
+        >
           <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-gray-500 mb-2">Quick filters</p>
           <div className="flex flex-wrap gap-1.5">
             {withNotesCount > 0 && togglePill(withNotesOnly, onWithNotesOnly, "#6FCF97", "✎ With notes", withNotesCount, "Show only items with notes attached")}
@@ -616,7 +639,7 @@ export function FilterBar(props: FilterBarProps) {
                 placeholder="Search sources…"
                 className={menuSearchClass}
               />
-              <div className="max-h-48 overflow-y-auto no-scrollbar">
+              <div>
                 <div className="flex flex-wrap gap-1.5">
                   <button
                     type="button"

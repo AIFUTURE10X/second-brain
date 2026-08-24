@@ -166,8 +166,8 @@ export function normalizeAiTags(raw: unknown): string[] {
  * with* the suggestion at a word boundary counts as the same bucket, shortest
  * candidate first. Deliberately one-directional and length-gated: "Design"
  * must not get swallowed by "Claude Code Design", and a two-letter "AI" must
- * not match half the list. Anything else is returned untouched, so a genuinely
- * new category still gets created.
+ * not match half the list. Anything else is rejected: AI categorization may
+ * select from the controlled list, but only a person may create a new category.
  */
 export function resolveAiCategory(suggested: string | null | undefined, existing: string[]): string {
   const wanted = (suggested || "").trim();
@@ -177,7 +177,7 @@ export function resolveAiCategory(suggested: string | null | undefined, existing
   const exact = existing.find(name => name.toLowerCase() === lower);
   if (exact) return exact;
 
-  if (lower.length < 4) return wanted;
+  if (lower.length < 4) return "";
 
   const prefixed = existing
     .filter(name => {
@@ -188,7 +188,7 @@ export function resolveAiCategory(suggested: string | null | undefined, existing
     })
     .sort((a, b) => a.length - b.length || a.localeCompare(b));
 
-  return prefixed[0] || wanted;
+  return prefixed[0] || "";
 }
 
 export interface IngestAiSuggestion {

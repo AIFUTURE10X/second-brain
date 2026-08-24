@@ -123,7 +123,7 @@ test("normalizeAiTags lowercases, dedupes and caps model output", () => {
   assert.deepEqual(ingest.normalizeAiTags(undefined), []);
 });
 
-test("resolveAiCategory folds near-duplicate suggestions onto existing categories", () => {
+test("resolveAiCategory only returns controlled existing categories", () => {
   const existing = [
     "Brand, ads, marketing",
     "Claude Code",
@@ -145,21 +145,31 @@ test("resolveAiCategory folds near-duplicate suggestions onto existing categorie
   // Shortest candidate wins when several share the prefix.
   assert.equal(resolve("Claude", existing), "Claude Code");
 
-  // One-directional: an existing longer name must not swallow the suggestion
-  // when the suggestion isn't its prefix.
-  assert.equal(resolve("Code", existing), "Code");
+  // Unmatched suggestions are rejected instead of creating a new category.
+  assert.equal(resolve("Code", existing), "");
 
-  // Too short to disambiguate — don't guess.
-  assert.equal(resolve("AI", existing), "AI");
+  // Too short to disambiguate — don't guess or create.
+  assert.equal(resolve("AI", existing), "");
 
   // Word-boundary only: "Brandenburg" is not "Brand, ads, marketing".
-  assert.equal(resolve("Brandenburg", existing), "Brandenburg");
+  assert.equal(resolve("Brandenburg", existing), "");
 
-  // Genuinely new categories pass straight through.
-  assert.equal(resolve("Pickleball", existing), "Pickleball");
+  // New categories are manual-only, including on an empty category list.
+  assert.equal(resolve("Pickleball", existing), "");
   assert.equal(resolve("  ", existing), "");
   assert.equal(resolve(undefined, existing), "");
-  assert.equal(resolve("Anything", []), "Anything");
+  assert.equal(resolve("Anything", []), "");
+});
+
+const aiTaggerSource = await readFile(new URL("../lib/ai-tagger.ts", import.meta.url), "utf8");
+const aiVisionTaggerSource = await readFile(new URL("../lib/ai-vision-tagger.ts", import.meta.url), "utf8");
+
+test("text and vision AI taggers forbid new category names", () => {
+  assert.match(aiTaggerSource, /resolveAiCategory\(parsed\.category, input\.existingCategories\)/);
+  assert.match(aiTaggerSource, /Return an empty category/);
+  assert.doesNotMatch(aiTaggerSource, /suggest a new one/i);
+  assert.match(aiVisionTaggerSource, /Return an empty category/);
+  assert.doesNotMatch(aiVisionTaggerSource, /Return a name that is not on the list/i);
 });
 
 test("mergeIngestAiSuggestion lets the client win field by field", () => {

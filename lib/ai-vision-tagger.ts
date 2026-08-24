@@ -40,8 +40,8 @@ export async function aiTagImage(input: {
     ? `These categories already exist:
 ${input.existingCategories.map(name => `- ${name}`).join("\n")}
 
-Rules for "category": pick the closest one from that list and copy it character for character, including its punctuation and casing. Do not shorten it, extend it, reword it, or return a different capitalisation. Return a name that is not on the list ONLY if none of them could plausibly hold this item.`
-    : "No categories exist yet. Suggest one short category name if the image suggests an obvious one.";
+Rules for "category": pick the closest one from that list and copy it character for character, including its punctuation and casing. Do not shorten it, extend it, reword it, or return a different capitalisation. Return an empty category if none fits. Never invent a category.`
+    : "No categories are configured. Return an empty category; do not invent one.";
 
   const hint = (input.hintTitle || "").trim();
   const hintLine = hint ? `\nThe user's own note about this capture: "${hint.slice(0, 200)}"\n` : "";

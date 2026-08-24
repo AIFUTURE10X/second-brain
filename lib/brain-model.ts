@@ -96,6 +96,16 @@ export interface Category {
   position?: number;
 }
 
+export function itemCountsByCategory(items: ReadonlyArray<{ category?: string | null }>): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const item of items) {
+    const category = item.category?.trim();
+    if (!category) continue;
+    counts.set(category, (counts.get(category) ?? 0) + 1);
+  }
+  return counts;
+}
+
 export const TYPES: Record<ItemType, { icon: string; label: string; color: string }> = {
   note: { icon: "✎", label: "Note", color: "#E8A838" },
   link: { icon: "◈", label: "Link", color: "#5B8DEF" },

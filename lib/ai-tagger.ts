@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { resolveAiCategory } from "./ingest";
 
 interface TagResult {
   tags: string[];
@@ -32,8 +33,10 @@ export async function aiTagAndCategorize(input: {
   ].filter(Boolean).join("\n");
 
   const catList = input.existingCategories.length > 0
-    ? `Existing categories: ${input.existingCategories.join(", ")}. Pick one if it fits, or suggest a new one.`
-    : "No categories exist yet. Suggest one if appropriate.";
+    ? `Choose only from these existing categories and copy the name exactly:
+${input.existingCategories.map(name => `- ${name}`).join("\n")}
+Return an empty category if none fits. Never invent, rename, or extend a category.`
+    : "No categories are configured. Return an empty category; do not invent one.";
 
   try {
     const client = new Anthropic({ apiKey });
@@ -60,7 +63,7 @@ Reply ONLY with JSON, no explanation:
     const parsed = JSON.parse(match[0]);
     return {
       tags: Array.isArray(parsed.tags) ? parsed.tags.map(String).slice(0, 5) : [],
-      category: typeof parsed.category === "string" ? parsed.category : "",
+      category: resolveAiCategory(parsed.category, input.existingCategories),
     };
   } catch {
     return { tags: [], category: "" };

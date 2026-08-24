@@ -153,6 +153,21 @@ test("newEntryId returns unique non-empty ids", () => {
   assert.notEqual(a, b);
 });
 
+test("itemCountsByCategory counts cards instead of distinct category labels", () => {
+  assert.equal(typeof model.itemCountsByCategory, "function");
+  const counts = model.itemCountsByCategory([
+    { category: "AI Technology" },
+    { category: "AI Technology" },
+    { category: "Claude Code" },
+    { category: "" },
+    { category: null },
+  ]);
+
+  assert.equal(counts.get("AI Technology"), 2);
+  assert.equal(counts.get("Claude Code"), 1);
+  assert.equal(counts.has(""), false);
+});
+
 test("REMINDER_TIME_OPTIONS spans 07:00 to 22:00 in half-hour steps", () => {
   assert.equal(model.REMINDER_TIME_OPTIONS.length, 31);
   assert.equal(model.REMINDER_TIME_OPTIONS[0], "07:00");

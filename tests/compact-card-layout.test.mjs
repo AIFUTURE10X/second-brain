@@ -93,6 +93,22 @@ test("category dropdown chips match saved-view chip sizing", () => {
   assert.doesNotMatch(filterBarSource, /rounded-lg border px-2\.5 py-1 text-\[10px\]/);
 });
 
+test("category dropdown badges use card totals for parents and children", () => {
+  assert.match(brainSource, /categoryItemCounts=\{itemCountsByCategory\(items\)\}/);
+  assert.match(filterBarSource, /getCatNamesUnderParent\(parent\.name\)\.reduce\(/);
+  assert.match(filterBarSource, /categoryItemCounts\.get\(child\.name\) \?\? 0/);
+  assert.doesNotMatch(filterBarSource, /filter\(name => usedCatNames\.has\(name\)\)\.length/);
+});
+
+test("More filters use one viewport-bounded scroll region", () => {
+  assert.match(filterBarSource, /data-more-filter-panel/);
+  assert.match(filterBarSource, /const morePanelRef = useRef<HTMLDivElement>\(null\);/);
+  assert.match(filterBarSource, /window\.innerHeight - panel\.getBoundingClientRect\(\)\.top - 8/);
+  assert.match(filterBarSource, /ref=\{morePanelRef\}/);
+  assert.match(filterBarSource, /overflow-y-auto overscroll-contain/);
+  assert.doesNotMatch(filterBarSource, /className="max-h-48 overflow-y-auto no-scrollbar"/);
+});
+
 test("filter controls shrink on wide desktop screens", () => {
   assert.match(filterBarSource, /min-\[1800px\]:min-h-\[34px\]/);
   assert.match(filterBarSource, /min-\[1800px\]:text-\[11px\]/);

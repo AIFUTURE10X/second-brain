@@ -41,6 +41,7 @@ import {
   TAG_COLORS,
   TYPES,
   WORKFLOW_STATUS_META,
+  itemCountsByCategory,
   newEntryId,
   type Attachment,
   type Category,
@@ -2202,6 +2203,7 @@ export default function Brain() {
           getChildren={getChildren}
           getCatNamesUnderParent={getCatNamesUnderParent}
           usedCatNames={usedCatNames}
+          categoryItemCounts={itemCountsByCategory(items)}
           itemCount={items.length}
           sourceCounts={sourceCounts}
           sourceFilter={sourceFilter}

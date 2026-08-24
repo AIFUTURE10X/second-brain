@@ -20,9 +20,10 @@ interface TaskKanbanBoardProps {
   movingTaskId: string | null;
   onOpenTask: (item: Item) => void;
   onMoveTask: (item: Item, column: TaskKanbanColumnKey) => void;
+  onDeleteTask: (item: Item) => void;
 }
 
-export function TaskKanbanBoard({ items, layout, movingTaskId, onOpenTask, onMoveTask }: TaskKanbanBoardProps) {
+export function TaskKanbanBoard({ items, layout, movingTaskId, onOpenTask, onMoveTask, onDeleteTask }: TaskKanbanBoardProps) {
   return (
     <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-3" aria-label="Task Kanban board">
       {TASK_KANBAN_COLUMNS.map(column => {
@@ -56,12 +57,21 @@ export function TaskKanbanBoard({ items, layout, movingTaskId, onOpenTask, onMov
                   return (
                     <article
                       key={item.id}
-                      className={layout === "list" ? "flex h-32 w-32 flex-col overflow-hidden rounded-lg border border-brand-border/80 bg-brand-card" : "flex h-[9rem] flex-col overflow-hidden rounded-lg border border-brand-border/80 bg-brand-card"}
+                      className={layout === "list" ? "relative flex h-32 w-32 flex-col overflow-hidden rounded-lg border border-brand-border/80 bg-brand-card" : "relative flex h-[9rem] flex-col overflow-hidden rounded-lg border border-brand-border/80 bg-brand-card"}
                     >
                       <button
                         type="button"
+                        onClick={() => onDeleteTask(item)}
+                        aria-label={`Delete ${taskTitle}`}
+                        title="Delete task"
+                        className="absolute right-1.5 top-1.5 z-10 inline-flex h-6 w-6 items-center justify-center rounded-md border border-[#EB575740] bg-[#0D1016E6] text-[13px] text-[#EB5757] transition hover:border-[#EB575780] hover:bg-[#EB575718]"
+                      >
+                        ×
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => onOpenTask(item)}
-                        className={`min-h-0 flex-1 overflow-hidden text-left transition hover:bg-white/[0.025] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#56CCF280] ${layout === "list" ? "px-2.5 py-2" : "px-3 py-3"}`}
+                        className={`min-h-0 flex-1 overflow-hidden text-left transition hover:bg-white/[0.025] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#56CCF280] ${layout === "list" ? "py-2 pl-2.5 pr-8" : "py-3 pl-3 pr-10"}`}
                         aria-label={`Open ${taskTitle}`}
                         title="Open task details"
                       >

@@ -2546,6 +2546,7 @@ export default function Brain() {
             movingTaskId={movingTaskId}
             onOpenTask={handleEdit}
             onMoveTask={handleMoveTask}
+            onDeleteTask={item => handleDelete(item.id)}
           />
         ) : density === "table" && visibleItems.length > 0 ? (
           <TableView

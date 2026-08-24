@@ -26,7 +26,7 @@ test("task columns derive from existing completion and workflow status", () => {
 
 test("the Kanban renders a purpose-built compact task card", () => {
   assert.doesNotMatch(kanbanSource, /renderCard/);
-  assert.match(kanbanSource, /: "flex h-\[9rem\] flex-col/);
+  assert.match(kanbanSource, /: "relative flex h-\[9rem\] flex-col/);
   assert.match(kanbanSource, /: "line-clamp-2 text-base font-semibold leading-snug text-gray-100/);
   assert.match(kanbanSource, /WebkitLineClamp: 2/);
   assert.match(kanbanSource, /maxHeight: "2\.75rem"/);
@@ -47,7 +47,7 @@ test("Tasks List keeps the Kanban columns and uses small square tiles", () => {
   assert.match(brainSource, /<TaskKanbanBoard[\s\S]*layout={taskLayout}/);
   assert.doesNotMatch(brainSource, /visibleItems\.map\(renderTaskListCard\)/);
   assert.match(kanbanSource, /layout === "list" \? "grid min-h-28 grid-cols-\[repeat\(auto-fill,8rem\)\]/);
-  assert.match(kanbanSource, /layout === "list" \? "flex h-32 w-32/);
+  assert.match(kanbanSource, /layout === "list" \? "relative flex h-32 w-32/);
   assert.match(kanbanSource, /layout === "list" \? "line-clamp-3 text-\[11px\]/);
   assert.match(kanbanSource, /layout === "list" \? "min-h-7 text-\[8px\] tracking-normal"/);
   assert.match(kanbanSource, /option\.key === "in-progress" \? "Doing" : option\.label/);
@@ -68,6 +68,15 @@ test("each Kanban card has status tabs in its footer wired to persistence", () =
   assert.match(brainSource, /const handleMoveTask = async \(item: Item, column: TaskKanbanColumnKey\)/);
   assert.match(brainSource, /const taskUpdates = taskMoveUpdates\(item, column\)/);
   assert.match(brainSource, /onMoveTask={handleMoveTask}/);
+});
+
+test("each Kanban card can be deleted directly with the existing confirmation flow", () => {
+  assert.match(kanbanSource, /onDeleteTask: \(item: Item\) => void/);
+  assert.match(kanbanSource, /aria-label={`Delete \$\{taskTitle\}`}/);
+  assert.match(kanbanSource, /title="Delete task"/);
+  assert.match(kanbanSource, /onClick=\{\(\) => onDeleteTask\(item\)\}/);
+  assert.match(brainSource, /onDeleteTask={item => handleDelete\(item\.id\)}/);
+  assert.match(brainSource, /if \(!confirm\("Delete this item\?"\)\) return/);
 });
 
 test("Done tasks can move back to Todo or In Progress", () => {

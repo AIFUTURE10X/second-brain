@@ -70,6 +70,7 @@ import { BulkTriageBar } from "./brain/BulkTriageBar";
 import { TableView } from "./brain/TableView";
 import { BoardView } from "./brain/BoardView";
 import { TaskKanbanBoard, type TaskKanbanColumnKey } from "./brain/TaskKanbanBoard";
+import { canMoveTask } from "@/lib/task-workflow.mjs";
 import { ViewModePicker } from "./brain/ViewModePicker";
 import { withConcurrencyGuard } from "@/lib/item-updates.mjs";
 import { ensureWebsiteLinkUrl } from "@/lib/card-links";
@@ -1466,6 +1467,12 @@ export default function Brain() {
 
   const handleMoveTask = async (item: Item, column: TaskKanbanColumnKey) => {
     if (isOfflineTempId(item.id)) return;
+    if (!canMoveTask(item, column)) {
+      if (item.completed || item.workflowStatus === "done") {
+        showToast("Done tasks stay completed. Open the task to edit its details.", "error");
+      }
+      return;
+    }
     const workflowStatus = column === "todo" ? "inbox" : column === "in-progress" ? "active" : "done";
     const label = column === "todo" ? "Todo" : column === "in-progress" ? "In Progress" : "Done";
     setMovingTaskId(item.id);
@@ -2525,7 +2532,7 @@ export default function Brain() {
           <TaskKanbanBoard
             items={visibleItems}
             movingTaskId={movingTaskId}
-            renderCard={renderItemCard}
+            onOpenTask={handleEdit}
             onMoveTask={handleMoveTask}
           />
         ) : density === "table" && visibleItems.length > 0 ? (

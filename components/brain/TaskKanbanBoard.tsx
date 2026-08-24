@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
 import type { Item } from "@/lib/brain-model";
+import { isTaskDone, taskDisplayTitle, taskKanbanColumn } from "@/lib/task-workflow.mjs";
 
 export type TaskKanbanColumnKey = "todo" | "in-progress" | "done";
 
@@ -16,23 +16,15 @@ const TASK_KANBAN_COLUMNS: Array<{
 interface TaskKanbanBoardProps {
   items: Item[];
   movingTaskId: string | null;
-  renderCard: (item: Item, index: number) => ReactNode;
+  onOpenTask: (item: Item) => void;
   onMoveTask: (item: Item, column: TaskKanbanColumnKey) => void;
 }
 
-function taskKanbanColumn(item: Item): TaskKanbanColumnKey {
-  if (item.completed || item.workflowStatus === "done") return "done";
-  if (item.workflowStatus === "active") return "in-progress";
-  return "todo";
-}
-
-export function TaskKanbanBoard({ items, movingTaskId, renderCard, onMoveTask }: TaskKanbanBoardProps) {
-  const indexedItems = items.map((item, index) => ({ item, index }));
-
+export function TaskKanbanBoard({ items, movingTaskId, onOpenTask, onMoveTask }: TaskKanbanBoardProps) {
   return (
     <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-3" aria-label="Task Kanban board">
       {TASK_KANBAN_COLUMNS.map(column => {
-        const columnItems = indexedItems.filter(({ item }) => taskKanbanColumn(item) === column.key);
+        const columnItems = items.filter(item => taskKanbanColumn(item) === column.key);
 
         return (
           <section
@@ -52,26 +44,96 @@ export function TaskKanbanBoard({ items, movingTaskId, renderCard, onMoveTask }:
 
             <div className="min-h-28">
               {columnItems.length > 0 ? (
-                columnItems.map(({ item, index }) => (
-                  <div key={item.id} className="mb-2.5 rounded-xl border border-brand-border/70 bg-brand-muted/30 p-1.5 pb-2">
-                    {renderCard(item, index)}
-                    <label className="flex items-center justify-between gap-2 px-1 text-[10px] font-mono text-gray-500">
-                      <span>Status</span>
-                      <select
-                        value={taskKanbanColumn(item)}
-                        onChange={event => onMoveTask(item, event.target.value as TaskKanbanColumnKey)}
-                        disabled={movingTaskId === item.id || item.completed}
-                        aria-label={`Move ${item.title || "task"} to`}
-                        title={item.completed ? "Uncheck a checklist item to reopen this task" : `Move to ${column.label}`}
-                        className="min-h-8 rounded-md border border-brand-border bg-[#0D0F12] px-2 text-[10px] text-gray-300 outline-none transition focus:border-[#56CCF280] disabled:opacity-50"
+                columnItems.map(item => {
+                  const currentColumn = taskKanbanColumn(item) as TaskKanbanColumnKey;
+                  const taskDone = isTaskDone(item);
+                  const checklistItems = item.checklistItems || [];
+                  const completedChecklistItems = checklistItems.filter(checklistItem => checklistItem.completed).length;
+                  const taskTitle = taskDisplayTitle(item);
+
+                  return (
+                    <article
+                      key={item.id}
+                      className="flex h-[9rem] flex-col overflow-hidden rounded-lg border border-brand-border/80 bg-brand-card"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => onOpenTask(item)}
+                        className="min-h-0 flex-1 overflow-hidden px-3 py-3 text-left transition hover:bg-white/[0.025] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#56CCF280]"
+                        aria-label={`Open ${taskTitle}`}
+                        title="Open task details"
                       >
-                        {TASK_KANBAN_COLUMNS.map(option => (
-                          <option key={option.key} value={option.key}>{option.label}</option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
-                ))
+                        <div className="flex items-start gap-2.5">
+                          <span
+                            className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border text-[12px]"
+                            style={{
+                              borderColor: taskDone ? "#56CCF260" : "#56CCF230",
+                              color: taskDone ? "#56CCF2" : "#9CA3AF",
+                              background: taskDone ? "#56CCF215" : "#56CCF208",
+                            }}
+                            aria-hidden="true"
+                          >
+                            {taskDone ? "✓" : "□"}
+                          </span>
+                          <div className="min-w-0">
+                            <h3
+                              className="line-clamp-2 text-base font-semibold leading-snug text-gray-100"
+                              style={{
+                                fontFamily: "'Space Grotesk', sans-serif",
+                                display: "-webkit-box",
+                                WebkitBoxOrient: "vertical",
+                                WebkitLineClamp: 2,
+                                maxHeight: "2.75rem",
+                                overflow: "hidden",
+                              }}
+                            >
+                              {taskTitle}
+                            </h3>
+                          </div>
+                        </div>
+
+                        <div className="mt-3 flex min-h-5 flex-wrap items-center gap-1.5 text-[9px] font-mono text-gray-600">
+                          {item.category && (
+                            <span className="rounded border border-brand-border px-1.5 py-0.5 text-gray-500">
+                              {item.category}
+                            </span>
+                          )}
+                          {(item.tags || []).slice(0, 2).map(tag => (
+                            <span key={tag}>#{tag}</span>
+                          ))}
+                          {checklistItems.length > 0 && (
+                            <span className="ml-auto shrink-0">
+                              {completedChecklistItems}/{checklistItems.length} steps
+                            </span>
+                          )}
+                        </div>
+                      </button>
+
+                      <div className="mt-auto grid shrink-0 grid-cols-3 border-t border-brand-border bg-[#0D1016] p-1">
+                        {TASK_KANBAN_COLUMNS.map(option => {
+                          const active = option.key === currentColumn;
+                          const disabled = movingTaskId === item.id || taskDone || active;
+
+                          return (
+                            <button
+                              key={option.key}
+                              type="button"
+                              onClick={() => onMoveTask(item, option.key)}
+                              disabled={disabled}
+                              aria-current={active ? "step" : undefined}
+                              aria-label={`Move ${taskTitle} to ${option.label}`}
+                              title={taskDone ? "Done tasks stay completed. Open the card to edit its details." : `Move to ${option.label}`}
+                              className={`min-h-8 rounded px-1 text-[9px] font-semibold uppercase tracking-[0.06em] transition ${active ? "bg-white/[0.06]" : "text-gray-600 hover:bg-white/[0.04] hover:text-gray-300"} disabled:cursor-default`}
+                              style={active ? { color: option.color } : undefined}
+                            >
+                              {option.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </article>
+                  );
+                })
               ) : (
                 <div className="flex min-h-24 items-center justify-center rounded-lg border border-dashed border-brand-border px-3 text-center text-[11px] font-mono text-gray-600">
                   No tasks

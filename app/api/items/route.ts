@@ -19,6 +19,7 @@ import { deriveTaskCompletion, normalizeChecklistItems } from "@/lib/task-checkl
 import { appendYouTubeDescriptionLinksToNotes, fetchYouTubeDescriptionLinks, type YouTubeDescriptionLink } from "@/lib/youtube";
 import { fallbackTitleFromUrl } from "@/lib/url-title";
 import { formatLocalPathLabel } from "@/lib/local-path";
+import { wouldReopenDoneTask } from "@/lib/task-workflow.mjs";
 
 function prepareTaskFields(
   type: unknown,
@@ -307,6 +308,14 @@ export async function PUT(req: NextRequest) {
     current.completed,
     current.completedAt,
   );
+
+  if (wouldReopenDoneTask(current, {
+    workflowStatus: updates.workflowStatus,
+    completionChanged: updates.completed !== undefined || updates.checklistItems !== undefined,
+    nextCompleted: taskFields.completed,
+  })) {
+    return jsonError(409, "Done tasks cannot be moved back to an active column");
+  }
 
   // archivedAt arrives as an ISO string (or null to unarchive) but the
   // timestamp column needs a Date.

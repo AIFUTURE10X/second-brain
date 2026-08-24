@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import type { Item } from "@/lib/brain-model";
 
-type TaskKanbanColumnKey = "todo" | "in-progress" | "done";
+export type TaskKanbanColumnKey = "todo" | "in-progress" | "done";
 
 const TASK_KANBAN_COLUMNS: Array<{
   key: TaskKanbanColumnKey;
@@ -15,7 +15,9 @@ const TASK_KANBAN_COLUMNS: Array<{
 
 interface TaskKanbanBoardProps {
   items: Item[];
+  movingTaskId: string | null;
   renderCard: (item: Item, index: number) => ReactNode;
+  onMoveTask: (item: Item, column: TaskKanbanColumnKey) => void;
 }
 
 function taskKanbanColumn(item: Item): TaskKanbanColumnKey {
@@ -24,7 +26,7 @@ function taskKanbanColumn(item: Item): TaskKanbanColumnKey {
   return "todo";
 }
 
-export function TaskKanbanBoard({ items, renderCard }: TaskKanbanBoardProps) {
+export function TaskKanbanBoard({ items, movingTaskId, renderCard, onMoveTask }: TaskKanbanBoardProps) {
   const indexedItems = items.map((item, index) => ({ item, index }));
 
   return (
@@ -50,7 +52,26 @@ export function TaskKanbanBoard({ items, renderCard }: TaskKanbanBoardProps) {
 
             <div className="min-h-28">
               {columnItems.length > 0 ? (
-                columnItems.map(({ item, index }) => renderCard(item, index))
+                columnItems.map(({ item, index }) => (
+                  <div key={item.id} className="mb-2.5 rounded-xl border border-brand-border/70 bg-brand-muted/30 p-1.5 pb-2">
+                    {renderCard(item, index)}
+                    <label className="flex items-center justify-between gap-2 px-1 text-[10px] font-mono text-gray-500">
+                      <span>Status</span>
+                      <select
+                        value={taskKanbanColumn(item)}
+                        onChange={event => onMoveTask(item, event.target.value as TaskKanbanColumnKey)}
+                        disabled={movingTaskId === item.id || item.completed}
+                        aria-label={`Move ${item.title || "task"} to`}
+                        title={item.completed ? "Uncheck a checklist item to reopen this task" : `Move to ${column.label}`}
+                        className="min-h-8 rounded-md border border-brand-border bg-[#0D0F12] px-2 text-[10px] text-gray-300 outline-none transition focus:border-[#56CCF280] disabled:opacity-50"
+                      >
+                        {TASK_KANBAN_COLUMNS.map(option => (
+                          <option key={option.key} value={option.key}>{option.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                ))
               ) : (
                 <div className="flex min-h-24 items-center justify-center rounded-lg border border-dashed border-brand-border px-3 text-center text-[11px] font-mono text-gray-600">
                   No tasks

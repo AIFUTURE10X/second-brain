@@ -69,7 +69,7 @@ import { ConflictDialog } from "./brain/ConflictDialog";
 import { BulkTriageBar } from "./brain/BulkTriageBar";
 import { TableView } from "./brain/TableView";
 import { BoardView } from "./brain/BoardView";
-import { TaskKanbanBoard } from "./brain/TaskKanbanBoard";
+import { TaskKanbanBoard, type TaskKanbanColumnKey } from "./brain/TaskKanbanBoard";
 import { ViewModePicker } from "./brain/ViewModePicker";
 import { withConcurrencyGuard } from "@/lib/item-updates.mjs";
 import { ensureWebsiteLinkUrl } from "@/lib/card-links";
@@ -185,6 +185,7 @@ export default function Brain() {
   const [saving, setSaving] = useState(false);
   const [summarizing, setSummarizing] = useState<string | null>(null);
   const [organizing, setOrganizing] = useState<string | null>(null);
+  const [movingTaskId, setMovingTaskId] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState(50);
   const [density, setDensity] = useState<ViewMode>("list");
   const [bulkUpdating, setBulkUpdating] = useState(false);
@@ -1042,7 +1043,7 @@ export default function Brain() {
     const legacyClear = noteEntries.length > 0 && editingId ? { notes: "" } : {};
     const payload = editingId
       ? withConcurrencyGuard({ id: editingId, ...itemForm, tags, noteEntries, checklistItems, websiteLinks, recurrence: recurrenceValue, ...legacyClear }, editBaseUpdatedAt, force)
-      : { ...itemForm, tags, noteEntries, checklistItems, websiteLinks, recurrence: recurrenceValue };
+      : { ...itemForm, tags, noteEntries, checklistItems, websiteLinks, recurrence: recurrenceValue, ...(form.type === "task" ? { workflowStatus: "inbox" as const } : {}) };
     try {
       const res = await fetch(editingId ? "/api/items" : "/api/items", {
         method: editingId ? "PUT" : "POST",
@@ -1068,6 +1069,7 @@ export default function Brain() {
           await syncRelatedItems(saved.id, relatedItemIds, previousRelatedIds);
           await syncReminder(saved.id);
           broadcastSync({ type: editingId ? "item-updated" : "item-created", item: saved });
+          if (!editingId && saved.type === "task" && !andAddAnother) applySavedView("tasks");
         }
       } catch {}
       showToast(editingId ? "Item updated" : "Item saved", "success");
@@ -1097,6 +1099,7 @@ export default function Brain() {
           setItems(prev => prev.map(i => i.id === editingId ? applyOfflineUpdate(i, payload) as Item : i));
         }
         showToast("Offline — saved to sync queue", "success");
+        if (!editingId && form.type === "task" && !andAddAnother) applySavedView("tasks");
         if (editingId && !andAddAnother) closeForm();
         else resetForm(true);
       } else {
@@ -1110,7 +1113,7 @@ export default function Brain() {
     const text = quickTaskText.trim();
     if (!text || quickTaskSaving) return;
     setQuickTaskSaving(true);
-    const payload = { type: "task", title: text, tags: [], category: "" };
+    const payload = { type: "task", title: text, tags: [], category: "", workflowStatus: "inbox" as const };
     try {
       const res = await fetch("/api/items", {
         method: "POST",
@@ -1458,6 +1461,37 @@ export default function Brain() {
       } else {
         showToast("Failed to update reading status", "error");
       }
+    }
+  };
+
+  const handleMoveTask = async (item: Item, column: TaskKanbanColumnKey) => {
+    if (isOfflineTempId(item.id)) return;
+    const workflowStatus = column === "todo" ? "inbox" : column === "in-progress" ? "active" : "done";
+    const label = column === "todo" ? "Todo" : column === "in-progress" ? "In Progress" : "Done";
+    setMovingTaskId(item.id);
+    try {
+      const res = await fetch("/api/items", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: item.id, workflowStatus }),
+      });
+      if (!res.ok) {
+        showToast("Failed to move task", "error");
+        return;
+      }
+      const saved: Item = await res.json();
+      setItems(prev => prev.map(existing => existing.id === saved.id ? saved : existing));
+      broadcastSync({ type: "item-updated", item: saved });
+      showToast(`Moved to ${label}`, "success");
+    } catch {
+      if (await queueWriteOffline({ kind: "update", payload: { id: item.id, workflowStatus } })) {
+        setItems(prev => prev.map(existing => existing.id === item.id ? { ...existing, workflowStatus } : existing));
+        showToast(`Moved to ${label} offline — will sync`, "success");
+      } else {
+        showToast("Failed to move task", "error");
+      }
+    } finally {
+      setMovingTaskId(null);
     }
   };
 
@@ -2490,7 +2524,9 @@ export default function Brain() {
         {view === "task" && visibleItems.length > 0 ? (
           <TaskKanbanBoard
             items={visibleItems}
+            movingTaskId={movingTaskId}
             renderCard={renderItemCard}
+            onMoveTask={handleMoveTask}
           />
         ) : density === "table" && visibleItems.length > 0 ? (
           <TableView

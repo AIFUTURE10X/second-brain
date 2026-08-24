@@ -233,7 +233,7 @@ export async function POST(req: NextRequest) {
       completed: taskFields.completed,
       completedAt: taskFields.completedAt,
       reviewedAt: body.reviewedAt ? new Date(body.reviewedAt) : null,
-      workflowStatus: body.workflowStatus || (body.reviewedAt === null ? "inbox" : "active"),
+      workflowStatus: body.workflowStatus || ((body.type || "note") === "task" || body.reviewedAt === null ? "inbox" : "active"),
       attachments: Array.isArray(body.attachments) ? body.attachments : [],
       ogTitle: body.ogTitle || og.ogTitle || "",
       ogDescription: body.ogDescription || og.ogDescription || "",

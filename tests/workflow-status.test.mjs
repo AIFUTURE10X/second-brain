@@ -25,7 +25,7 @@ test("item validation and APIs accept workflow status", () => {
   assert.match(validationSource, /workflowStatusSchema = z\.enum\(\["inbox", "active", "waiting", "done", "archived"\]\)/);
   assert.match(validationSource, /workflowStatus: workflowStatusSchema\.optional\(\)/);
   assert.match(searchItemsSource, /workflow_status AS "workflowStatus"/);
-  assert.match(itemsRouteSource, /workflowStatus: body\.workflowStatus \|\| \(body\.reviewedAt === null \? "inbox" : "active"\)/);
+  assert.match(itemsRouteSource, /workflowStatus: body\.workflowStatus \|\| \(\(body\.type \|\| "note"\) === "task" \|\| body\.reviewedAt === null \? "inbox" : "active"\)/);
   assert.match(saveRouteSource, /workflowStatus:\s*"inbox"/);
 });
 

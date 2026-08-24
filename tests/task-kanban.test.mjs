@@ -26,7 +26,7 @@ test("task columns derive from existing completion and workflow status", () => {
 
 test("the Kanban renders a purpose-built compact task card", () => {
   assert.doesNotMatch(kanbanSource, /renderCard/);
-  assert.match(kanbanSource, /className="flex h-\[9rem\] flex-col/);
+  assert.match(kanbanSource, /: "flex h-\[9rem\] flex-col/);
   assert.match(kanbanSource, /className="line-clamp-2 text-base font-semibold leading-snug text-gray-100/);
   assert.match(kanbanSource, /WebkitLineClamp: 2/);
   assert.match(kanbanSource, /maxHeight: "2\.75rem"/);
@@ -36,16 +36,18 @@ test("the Kanban renders a purpose-built compact task card", () => {
   assert.match(brainSource, /onOpenTask={handleEdit}/);
 });
 
-test("Tasks offers a second List layout using the normal small list cards", () => {
+test("Tasks List keeps the Kanban columns and uses shorter cards", () => {
   assert.match(layoutPickerSource, /export type TaskLayout = "board" \| "list"/);
   assert.match(layoutPickerSource, /aria-label="Task layout"/);
   assert.match(layoutPickerSource, /label: "Board"/);
   assert.match(layoutPickerSource, /label: "List"/);
   assert.match(brainSource, /const \[taskLayout, setTaskLayout\] = useState<TaskLayout>\("board"\)/);
   assert.match(brainSource, /<TaskLayoutPicker layout={taskLayout} onLayoutChange={setTaskLayout}/);
-  assert.match(brainSource, /const renderTaskListCard = \(item: Item, idx: number\) => renderItemCardAtDensity\(item, idx, "list"\)/);
-  assert.match(brainSource, /taskLayout === "board" \? \(/);
-  assert.match(brainSource, /visibleItems\.map\(renderTaskListCard\)/);
+  assert.match(kanbanSource, /layout: TaskLayout/);
+  assert.match(brainSource, /<TaskKanbanBoard[\s\S]*layout={taskLayout}/);
+  assert.doesNotMatch(brainSource, /visibleItems\.map\(renderTaskListCard\)/);
+  assert.match(kanbanSource, /layout === "list" \? "flex h-\[6\.5rem\]/);
+  assert.match(kanbanSource, /layout === "list" \? "min-h-7" : "min-h-8"/);
   assert.match(brainSource, /sb_task_layout/);
 });
 

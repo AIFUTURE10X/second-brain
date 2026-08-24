@@ -2098,13 +2098,13 @@ export default function Brain() {
   const gridFullSpanClass = density === "list" || density === "compact" ? "col-span-full" : "";
   const headerIconButtonClass = "w-11 h-11 sm:w-10 sm:h-10 min-[1800px]:h-9 min-[1800px]:w-9 rounded-xl min-[1800px]:rounded-lg flex items-center justify-center active:scale-95 transition";
 
-  const renderItemCardAtDensity = (item: Item, idx: number, cardDensity: ViewMode) => (
+  const renderItemCard = (item: Item, idx: number) => (
     <ItemCard
       key={item.id}
       item={item}
       idx={idx}
       expanded={expandedId === item.id}
-      density={cardDensity}
+      density={density}
       isSummarizing={summarizing === item.id}
       isOrganizing={organizing === item.id}
       isDragTarget={dragOverCardId === item.id}
@@ -2134,8 +2134,6 @@ export default function Brain() {
       onSuggestOrganization={() => handleSuggestOrganization(item)}
     />
   );
-  const renderItemCard = (item: Item, idx: number) => renderItemCardAtDensity(item, idx, density);
-  const renderTaskListCard = (item: Item, idx: number) => renderItemCardAtDensity(item, idx, "list");
 
   return (
     <div className="min-h-screen relative pb-8">
@@ -2503,7 +2501,7 @@ export default function Brain() {
 
       {/* Items */}
       <div
-        className={view === "task" && taskLayout === "board" || density === "table" || density === "board" ? "px-4 min-[1800px]:px-3" : view === "task" || density === "list" ? "grid items-start grid-cols-[repeat(auto-fill,minmax(min(100%,12rem),1fr))] min-[1500px]:grid-cols-[repeat(auto-fill,minmax(min(100%,9rem),1fr))] min-[1800px]:grid-cols-[repeat(auto-fill,minmax(min(100%,8.5rem),1fr))] gap-2 min-[1800px]:gap-1.5 px-4 min-[1800px]:px-3" : "grid grid-cols-[repeat(auto-fill,minmax(min(100%,13rem),1fr))] min-[1800px]:grid-cols-[repeat(auto-fill,minmax(min(100%,11rem),1fr))] gap-2 min-[1800px]:gap-1.5 px-4 min-[1800px]:px-3"}
+        className={view === "task" || density === "table" || density === "board" ? "px-4 min-[1800px]:px-3" : density === "list" ? "grid items-start grid-cols-[repeat(auto-fill,minmax(min(100%,12rem),1fr))] min-[1500px]:grid-cols-[repeat(auto-fill,minmax(min(100%,9rem),1fr))] min-[1800px]:grid-cols-[repeat(auto-fill,minmax(min(100%,8.5rem),1fr))] gap-2 min-[1800px]:gap-1.5 px-4 min-[1800px]:px-3" : "grid grid-cols-[repeat(auto-fill,minmax(min(100%,13rem),1fr))] min-[1800px]:grid-cols-[repeat(auto-fill,minmax(min(100%,11rem),1fr))] gap-2 min-[1800px]:gap-1.5 px-4 min-[1800px]:px-3"}
       >
         {searchFuzzy && search.trim() && filtered.length > 0 && (
           <div className={`mb-2 rounded-lg border border-[#E8A83840] bg-[#E8A83810] px-3 py-2 text-[11px] font-mono text-[#E8A838] ${gridFullSpanClass}`}>
@@ -2542,16 +2540,13 @@ export default function Brain() {
         )}
 
         {view === "task" && visibleItems.length > 0 ? (
-          taskLayout === "board" ? (
-            <TaskKanbanBoard
-              items={visibleItems}
-              movingTaskId={movingTaskId}
-              onOpenTask={handleEdit}
-              onMoveTask={handleMoveTask}
-            />
-          ) : (
-            visibleItems.map(renderTaskListCard)
-          )
+          <TaskKanbanBoard
+            items={visibleItems}
+            layout={taskLayout}
+            movingTaskId={movingTaskId}
+            onOpenTask={handleEdit}
+            onMoveTask={handleMoveTask}
+          />
         ) : density === "table" && visibleItems.length > 0 ? (
           <TableView
             items={visibleItems}

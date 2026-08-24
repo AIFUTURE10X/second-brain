@@ -1,5 +1,6 @@
 import type { Item } from "@/lib/brain-model";
 import { isTaskDone, taskDisplayTitle, taskKanbanColumn } from "@/lib/task-workflow.mjs";
+import type { TaskLayout } from "./TaskLayoutPicker";
 
 export type TaskKanbanColumnKey = "todo" | "in-progress" | "done";
 
@@ -15,12 +16,13 @@ const TASK_KANBAN_COLUMNS: Array<{
 
 interface TaskKanbanBoardProps {
   items: Item[];
+  layout: TaskLayout;
   movingTaskId: string | null;
   onOpenTask: (item: Item) => void;
   onMoveTask: (item: Item, column: TaskKanbanColumnKey) => void;
 }
 
-export function TaskKanbanBoard({ items, movingTaskId, onOpenTask, onMoveTask }: TaskKanbanBoardProps) {
+export function TaskKanbanBoard({ items, layout, movingTaskId, onOpenTask, onMoveTask }: TaskKanbanBoardProps) {
   return (
     <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-3" aria-label="Task Kanban board">
       {TASK_KANBAN_COLUMNS.map(column => {
@@ -54,12 +56,12 @@ export function TaskKanbanBoard({ items, movingTaskId, onOpenTask, onMoveTask }:
                   return (
                     <article
                       key={item.id}
-                      className="flex h-[9rem] flex-col overflow-hidden rounded-lg border border-brand-border/80 bg-brand-card"
+                      className={layout === "list" ? "flex h-[6.5rem] flex-col overflow-hidden rounded-lg border border-brand-border/80 bg-brand-card" : "flex h-[9rem] flex-col overflow-hidden rounded-lg border border-brand-border/80 bg-brand-card"}
                     >
                       <button
                         type="button"
                         onClick={() => onOpenTask(item)}
-                        className="min-h-0 flex-1 overflow-hidden px-3 py-3 text-left transition hover:bg-white/[0.025] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#56CCF280]"
+                        className={`min-h-0 flex-1 overflow-hidden text-left transition hover:bg-white/[0.025] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#56CCF280] ${layout === "list" ? "px-2.5 py-2" : "px-3 py-3"}`}
                         aria-label={`Open ${taskTitle}`}
                         title="Open task details"
                       >
@@ -92,6 +94,7 @@ export function TaskKanbanBoard({ items, movingTaskId, onOpenTask, onMoveTask }:
                           </div>
                         </div>
 
+                        {layout === "board" && (
                         <div className="mt-3 flex min-h-5 flex-wrap items-center gap-1.5 text-[9px] font-mono text-gray-600">
                           {item.category && (
                             <span className="rounded border border-brand-border px-1.5 py-0.5 text-gray-500">
@@ -107,6 +110,7 @@ export function TaskKanbanBoard({ items, movingTaskId, onOpenTask, onMoveTask }:
                             </span>
                           )}
                         </div>
+                        )}
                       </button>
 
                       <div className="mt-auto grid shrink-0 grid-cols-3 border-t border-brand-border bg-[#0D1016] p-1">
@@ -123,7 +127,7 @@ export function TaskKanbanBoard({ items, movingTaskId, onOpenTask, onMoveTask }:
                               aria-current={active ? "step" : undefined}
                               aria-label={`Move ${taskTitle} to ${option.label}`}
                               title={`Move to ${option.label}`}
-                              className={`min-h-8 rounded px-1 text-[9px] font-semibold uppercase tracking-[0.06em] transition ${active ? "bg-white/[0.06]" : "text-gray-600 hover:bg-white/[0.04] hover:text-gray-300"} disabled:cursor-default`}
+                              className={`${layout === "list" ? "min-h-7" : "min-h-8"} rounded px-1 text-[9px] font-semibold uppercase tracking-[0.06em] transition ${active ? "bg-white/[0.06]" : "text-gray-600 hover:bg-white/[0.04] hover:text-gray-300"} disabled:cursor-default`}
                               style={active ? { color: option.color } : undefined}
                             >
                               {option.label}

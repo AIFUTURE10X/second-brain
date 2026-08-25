@@ -1,0 +1,18 @@
+{
+  "max-lines": {
+    "components/Brain.tsx": 2667,
+    "components/Vault.tsx": 724,
+    "components/brain/FilterBar.tsx": 699,
+    "components/brain/ItemCard.tsx": 937,
+    "components/brain/ItemFormModal.tsx": 1119,
+    "components/settings/CategorySettings.tsx": 466,
+    "components/settings/TemplateSettings.tsx": 310,
+    "lib/youtube.ts": 434
+  },
+  "no-console-log": {
+    "app/card/[id]/page.tsx": 3,
+    "components/Brain.tsx": 4,
+    "components/brain/ItemFormModal.tsx": 2
+  },
+  "bounded-findmany": {}
+}

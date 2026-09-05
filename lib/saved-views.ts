@@ -2,6 +2,35 @@ export type SavedViewKey = "all" | "inbox" | "actions" | "favorites" | "tasks" |
 
 export const CUSTOM_SAVED_VIEWS_KEY = "custom_saved_views";
 
+// Keep legacy single-category snapshots readable; arrays represent multiple choices.
+export type CategoryFilter = string | string[];
+export const MAX_CATEGORY_FILTERS = 4;
+
+export function categoryFilterNames(value: unknown): string[] {
+  const values = Array.isArray(value) ? value : [value];
+  return [...new Set(values.filter((name): name is string => typeof name === "string")
+    .map(name => name.trim()).filter(name => name && name !== "all"))].slice(0, MAX_CATEGORY_FILTERS);
+}
+
+export function normalizeCategoryFilter(value: unknown): CategoryFilter {
+  const names = categoryFilterNames(value);
+  return names.length > 1 ? names : names[0] ?? "all";
+}
+
+export function toggleCategoryFilter(value: CategoryFilter, name: string): CategoryFilter {
+  const names = categoryFilterNames(value);
+  return normalizeCategoryFilter(names.includes(name)
+    ? names.filter(selected => selected !== name)
+    : [...names, name]);
+}
+
+export function matchesCategoryFilter(
+  category: string, value: CategoryFilter, expand: (name: string) => string[],
+): boolean {
+  const names = categoryFilterNames(value);
+  return names.length === 0 || names.some(name => expand(name).includes(category));
+}
+
 export interface SavedViewDefinition {
   key: SavedViewKey;
   label: string;
@@ -11,7 +40,7 @@ export interface SavedViewDefinition {
 
 export interface SavedViewFilters {
   view: "all" | "note" | "link" | "clip" | "thought" | "task" | "memory" | "folder";
-  catFilter: string;
+  catFilter: CategoryFilter;
   sourceFilter: string | null;
   tagFilter: string | null;
   withNotesOnly: boolean;
@@ -99,7 +128,7 @@ export function normalizeSavedViewFilters(value: unknown): SavedViewFilters {
   const raw = value as Partial<SavedViewFilters>;
   return {
     view: typeof raw.view === "string" && VALID_ITEM_FILTERS.has(raw.view) ? raw.view as SavedViewFilters["view"] : base.view,
-    catFilter: typeof raw.catFilter === "string" ? raw.catFilter : base.catFilter,
+    catFilter: normalizeCategoryFilter(raw.catFilter),
     sourceFilter: typeof raw.sourceFilter === "string" ? raw.sourceFilter : null,
     tagFilter: typeof raw.tagFilter === "string" ? raw.tagFilter : null,
     withNotesOnly: raw.withNotesOnly === true,
@@ -209,7 +238,7 @@ export function inferSavedViewKey(filters: SavedViewFilters): SavedViewKey | nul
 
 export function savedViewFiltersEqual(a: SavedViewFilters, b: SavedViewFilters): boolean {
   return a.view === b.view
-    && a.catFilter === b.catFilter
+    && JSON.stringify(categoryFilterNames(a.catFilter).sort()) === JSON.stringify(categoryFilterNames(b.catFilter).sort())
     && a.sourceFilter === b.sourceFilter
     && a.tagFilter === b.tagFilter
     && a.withNotesOnly === b.withNotesOnly

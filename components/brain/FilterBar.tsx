@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { TYPES, type Category, type ItemType } from "@/lib/brain-model";
+import { categoryFilterNames, toggleCategoryFilter, MAX_CATEGORY_FILTERS, type CategoryFilter } from "@/lib/saved-views";
 
 type OpenMenu = null | "type" | "category" | "tags" | "more";
 
@@ -13,8 +14,8 @@ interface FilterBarProps {
   view: "all" | ItemType;
   onViewChange: (view: "all" | ItemType) => void;
   counts: Record<string, number>;
-  catFilter: string;
-  onCatFilterChange: (name: string) => void;
+  catFilter: CategoryFilter;
+  onCatFilterChange: (value: CategoryFilter) => void;
   parentCats: Category[];
   getChildren: (parentId: string) => Category[];
   getCatNamesUnderParent: (name: string) => string[];
@@ -139,6 +140,9 @@ export function FilterBar(props: FilterBarProps) {
   }, [openMenu]);
 
   const categoryMenuQuery = catMenuSearch.trim().toLowerCase();
+  const selectedCategories = categoryFilterNames(catFilter);
+  const categoryLimitReached = selectedCategories.length >= MAX_CATEGORY_FILTERS;
+  const toggleCategory = (name: string) => onCatFilterChange(toggleCategoryFilter(catFilter, name));
   const categoryMenuGroups = parentCats
     .map(parent => {
       const children = getChildren(parent.id).filter(sub => usedCatNames.has(sub.name));
@@ -277,7 +281,7 @@ export function FilterBar(props: FilterBarProps) {
             }}
             aria-expanded={openMenu === "category"}
           >
-            <span className="max-w-[140px] truncate">⊞ {catFilter === "all" ? "Categories" : catFilter}</span>
+            <span className="max-w-[140px] truncate">⊞ {selectedCategories.length === 0 ? "Categories" : selectedCategories.length === 1 ? selectedCategories[0] : `${selectedCategories.length} categories`}</span>
             <span className="text-[10px]">{openMenu === "category" ? "▴" : "▾"}</span>
           </button>
         )}
@@ -373,6 +377,10 @@ export function FilterBar(props: FilterBarProps) {
 
       {openMenu === "category" && (
         <div className={panelClass}>
+          <div className="mb-2 flex items-center justify-between gap-2 text-xs text-gray-400">
+            <span role="status">{selectedCategories.length}/{MAX_CATEGORY_FILTERS} selected · Matches any selected category</span>
+            <button type="button" onClick={closeMenus} className="rounded-lg border border-brand-border px-3 py-1 text-gray-200">Done</button>
+          </div>
           <input
             type="text"
             autoFocus
@@ -387,9 +395,8 @@ export function FilterBar(props: FilterBarProps) {
                 type="button"
                 onClick={() => {
                   onCatFilterChange("all");
-                  onViewChange("all");
-                  closeMenus();
                 }}
+                aria-pressed={selectedCategories.length === 0}
                 className={menuChipClass}
                 style={{
                   borderColor: catFilter === "all" ? "#E8A83860" : "#343842",
@@ -405,42 +412,19 @@ export function FilterBar(props: FilterBarProps) {
                 <div className="w-full p-4 text-center text-xs text-gray-500">No categories match &ldquo;{catMenuSearch}&rdquo;</div>
               ) : (
                 categoryMenuGroups.map(({ parent, children }) => {
-                  const parentActive = catFilter === parent.name;
+                  const parentActive = selectedCategories.includes(parent.name);
                   const parentCount = getCatNamesUnderParent(parent.name).reduce(
                     (total, name) => total + (categoryItemCounts.get(name) ?? 0),
                     0,
                   );
 
-                  if (children.length === 0) {
-                    return (
-                      <button
-                        key={parent.id}
-                        type="button"
-                        onClick={() => {
-                          onCatFilterChange(parentActive ? "all" : parent.name);
-                          closeMenus();
-                        }}
-                        className={menuChipClass}
-                        style={{
-                          borderColor: `${parent.color}${parentActive ? "70" : "35"}`,
-                          background: parentActive ? `${parent.color}20` : `${parent.color}10`,
-                          color: parent.color,
-                        }}
-                      >
-                        <span className="truncate">{parent.name}</span>
-                        <span className="shrink-0 text-[10px] opacity-60">{parentCount}</span>
-                      </button>
-                    );
-                  }
-
                   return (
                     <Fragment key={parent.id}>
                       <button
                         type="button"
-                        onClick={() => {
-                          onCatFilterChange(parentActive ? "all" : parent.name);
-                          closeMenus();
-                        }}
+                        onClick={() => toggleCategory(parent.name)}
+                        aria-pressed={parentActive}
+                        disabled={categoryLimitReached && !parentActive}
                         className={menuChipClass}
                         style={{
                           borderColor: `${parent.color}${parentActive ? "70" : "35"}`,
@@ -448,19 +432,18 @@ export function FilterBar(props: FilterBarProps) {
                           color: parent.color,
                         }}
                       >
-                        <span className="truncate">{parent.name}</span>
+                        <span className="truncate">{parentActive ? "✓ " : ""}{parent.name}</span>
                         <span className="shrink-0 text-[10px] opacity-60">{parentCount}</span>
                       </button>
                       {children.map(child => {
-                        const childActive = catFilter === child.name;
+                        const childActive = selectedCategories.includes(child.name);
                         return (
                           <button
                             key={child.id}
                             type="button"
-                            onClick={() => {
-                              onCatFilterChange(child.name);
-                              closeMenus();
-                            }}
+                            onClick={() => toggleCategory(child.name)}
+                            aria-pressed={childActive}
+                            disabled={categoryLimitReached && !childActive}
                             className={childMenuChipClass}
                             style={{
                               borderColor: childActive ? `${child.color}60` : `${child.color}25`,
@@ -468,7 +451,7 @@ export function FilterBar(props: FilterBarProps) {
                               color: childActive ? child.color : "#7b8190",
                             }}
                           >
-                            <span className="truncate">{child.name}</span>
+                            <span className="truncate">{childActive ? "✓ " : ""}{child.name}</span>
                             <span className="shrink-0 text-[10px] opacity-60">{categoryItemCounts.get(child.name) ?? 0}</span>
                           </button>
                         );

@@ -33,6 +33,7 @@ import {
   itemNeedsCleanupReview,
   normalizeCustomSavedViews,
   savedViewFiltersEqual,
+  categoryFilterNames, normalizeCategoryFilter, matchesCategoryFilter, toggleCategoryFilter, type CategoryFilter,
   type CustomSavedViewDefinition,
   type SavedViewFilters,
   type SavedViewKey,
@@ -116,7 +117,7 @@ export default function Brain() {
   const [searchFuzzy, setSearchFuzzy] = useState(false);
   const [searching, setSearching] = useState(false);
   const [view, setView] = useState<"all" | ItemType>("all");
-  const [catFilter, setCatFilter] = useState<string>("all");
+  const [catFilter, setCatFilter] = useState<CategoryFilter>("all");
   const [sourceFilter, setSourceFilter] = useState<string | null>(null);
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [withNotesOnly, setWithNotesOnly] = useState(false);
@@ -289,7 +290,7 @@ export default function Brain() {
     const state = expandFilterState(entry.state);
     setSearch(state.search as string);
     setView(state.view as "all" | ItemType);
-    setCatFilter(state.catFilter as string);
+    setCatFilter(normalizeCategoryFilter(state.catFilter));
     setTagFilter(state.tagFilter as string | null);
     setSourceFilter(state.sourceFilter as string | null);
     setWithNotesOnly(Boolean(state.withNotesOnly));
@@ -1847,11 +1848,7 @@ export default function Brain() {
     .filter(i => (archivedOnly ? !!i.archivedAt : !i.archivedAt))
     .filter(i => itemInDateRange(i, { preset: datePreset, from: dateFrom, to: dateTo }))
     .filter(i => view === "all" || i.type === view)
-    .filter(i => {
-      if (catFilter === "all") return true;
-      const matchNames = getCatNamesUnderParent(catFilter);
-      return matchNames.includes(i.category);
-    })
+    .filter(i => matchesCategoryFilter(i.category, catFilter, getCatNamesUnderParent))
     .filter(i => {
       if (!sourceFilter) return true;
       return sourceFromUrl(i.url)?.key === sourceFilter;
@@ -2410,14 +2407,15 @@ export default function Brain() {
               title="Clear type filter"
             >{TYPES[view].icon} {TYPES[view].label} ×</button>
           )}
-          {catFilter !== "all" && (
+          {categoryFilterNames(catFilter).map(category => (
             <button
-              onClick={() => setCatFilter("all")}
+              key={category}
+              onClick={() => setCatFilter(current => toggleCategoryFilter(current, category))}
               className="inline-flex max-w-[11rem] items-center truncate px-2.5 py-1 rounded-lg text-[11px] font-mono transition"
-              style={{ border: `1px solid ${getCatColor(catFilter)}50`, background: `${getCatColor(catFilter)}15`, color: getCatColor(catFilter) }}
-              title="Clear category filter"
-            >⊞ {catFilter} ×</button>
-          )}
+              style={{ border: `1px solid ${getCatColor(category)}50`, background: `${getCatColor(category)}15`, color: getCatColor(category) }}
+              title={`Remove ${category} filter`}
+            >⊞ {category} ×</button>
+          ))}
           {sourceFilter && (
             <button
               onClick={() => setSourceFilter(null)}

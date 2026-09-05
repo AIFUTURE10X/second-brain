@@ -2,7 +2,7 @@
 // command. Defaults to exact lexical search + trigram typo fallback; callers
 // can opt into pgvector semantic ranking when that broader behavior is useful.
 import { sql } from "@/db";
-import { buildExactItemSearchTsQuery, buildItemSearchTsQuery } from "@/lib/item-search";
+import { buildExactItemSearchTsQuery, buildItemSearchTsQuery, searchTokens } from "@/lib/item-search";
 import {
   embeddingsEnabled,
   generateEmbedding,
@@ -89,6 +89,9 @@ export async function hybridSearchItems(
   } = {},
 ): Promise<HybridSearchResult> {
   const semanticMode = opts.semanticMode ?? "off";
+  // Multiple words are a filter, not a request for approximate suggestions.
+  // Keep partial/typo assistance for single words and explicit semantic search.
+  const strictMultiword = semanticMode === "off" && searchTokens(q).length > 1;
   const archivedFilterSql = opts.archivedOnly ? "AND archived_at IS NOT NULL" : "AND archived_at IS NULL";
 
   // Video transcripts live in their own table (they're far too large to sit
@@ -128,7 +131,7 @@ export async function hybridSearchItems(
   let ftsRows: SearchRow[] = [];
   if (exactTsquery) {
     ftsRows = await runFtsQuery(exactTsquery);
-    if (!rowsPassFilter(ftsRows)) {
+    if (!strictMultiword && !rowsPassFilter(ftsRows)) {
       ftsRows = await runFtsQuery(prefixTsquery);
     }
   }
@@ -154,6 +157,7 @@ export async function hybridSearchItems(
   if (matched.length > 0) {
     return { rows: matched, semanticUsed, fuzzy: false };
   }
+  if (strictMultiword) return { rows: [], semanticUsed, fuzzy: false };
 
   try {
     const fuzzy: SearchRow[] = await sql.query(

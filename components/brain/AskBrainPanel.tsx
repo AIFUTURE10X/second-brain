@@ -1,170 +1,49 @@
-"use client";
-
-import { useEffect, useRef, useState } from "react";
-import { TYPES, type ItemType } from "@/lib/brain-model";
-
-type AskSource = { id: string; title: string; url: string; type: string };
-type AskMessage =
-  | { role: "user"; content: string }
-  | { role: "assistant"; content: string; sources: AskSource[] };
+'use client';
+import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import type { Item } from '@/lib/brain-model';
+import type { Conversation, Project, WorkspaceRecord } from '@/lib/workspace-types';
+import { loadWorkspaceRecords, workspaceRequest } from '@/lib/workspace-client';
+import { KnowledgeChat } from '../workspace/KnowledgeChat';
 
 interface AskBrainPanelProps {
   onClose: () => void;
   onOpenCard: (id: string) => void;
+  selectedIds?: string[];
 }
 
-// "Ask my brain" chat (roadmap 2.13): RAG over the card corpus via /api/ask,
-// with the source cards cited under each answer.
-export function AskBrainPanel({ onClose, onOpenCard }: AskBrainPanelProps) {
-  const [messages, setMessages] = useState<AskMessage[]>([]);
-  const [input, setInput] = useState("");
-  const [asking, setAsking] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => { inputRef.current?.focus(); }, []);
+export function AskBrainPanel({ onClose, selectedIds = [] }: AskBrainPanelProps) {
+  const [items, setItems] = useState<Item[]>([]);
+  const [records, setRecords] = useState<WorkspaceRecord[]>([]);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [locked, setLocked] = useState(false);
+  const [conversationId, setConversationId] = useState('');
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, asking]);
-
-  const ask = async () => {
-    const question = input.trim();
-    if (!question || asking) return;
-    setInput("");
-    const history = messages.map(m => ({ role: m.role, content: m.content }));
-    setMessages(prev => [...prev, { role: "user", content: question }]);
-    setAsking(true);
-    try {
-      const res = await fetch("/api/ask", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question, history }),
-      });
-      const data = await res.json().catch(() => null);
-      if (!res.ok || !data?.answer) {
-        setMessages(prev => [...prev, {
-          role: "assistant",
-          content: data?.error || "Something went wrong — try again.",
-          sources: [],
-        }]);
-      } else {
-        setMessages(prev => [...prev, {
-          role: "assistant",
-          content: data.answer,
-          sources: Array.isArray(data.sources) ? data.sources : [],
-        }]);
-      }
-    } catch {
-      setMessages(prev => [...prev, { role: "assistant", content: "Network error — try again.", sources: [] }]);
-    } finally {
-      setAsking(false);
-      inputRef.current?.focus();
-    }
-  };
-
-  const sourceIcon = (type: string) => TYPES[type as ItemType]?.icon || "◉";
-
-  return (
-    <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div
-        className="flex h-[85vh] w-full max-w-2xl flex-col rounded-t-2xl sm:rounded-2xl border border-brand-border bg-[#0D0F12] shadow-2xl"
-        onClick={e => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between border-b border-brand-border px-4 py-3">
-          <h2 className="font-bold text-[#E8A838]" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-            ✦ Ask my brain
-          </h2>
-          <button
-            onClick={onClose}
-            className="h-8 w-8 rounded-full text-gray-500 hover:text-gray-200 transition"
-            aria-label="Close"
-          >×</button>
-        </div>
-
-        <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
-          {messages.length === 0 && (
-            <div className="px-2 py-8 text-center text-sm text-gray-500 font-mono">
-              Ask anything about what you&rsquo;ve saved — answers cite the source cards.
-              <div className="mt-3 flex flex-wrap justify-center gap-1.5">
-                {["What did I save about AI agents?", "Summarize my notes on productivity", "Which tasks mention the vault?"].map(suggestion => (
-                  <button
-                    key={suggestion}
-                    onClick={() => setInput(suggestion)}
-                    className="rounded-full border border-brand-border px-3 py-1 text-[11px] text-gray-400 hover:text-[#E8A838] hover:border-[#E8A83860] transition"
-                  >
-                    {suggestion}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {messages.map((msg, i) => (
-            <div key={i} className={msg.role === "user" ? "flex justify-end" : "flex justify-start"}>
-              <div
-                className={`max-w-[85%] rounded-xl px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${
-                  msg.role === "user"
-                    ? "bg-[#E8A83820] border border-[#E8A83840] text-gray-100"
-                    : "bg-brand-muted border border-brand-border text-gray-200"
-                }`}
-              >
-                {msg.content}
-                {msg.role === "assistant" && msg.sources.length > 0 && (
-                  <div className="mt-2.5 border-t border-brand-border pt-2">
-                    <p className="mb-1.5 text-[10px] font-mono uppercase tracking-[0.15em] text-gray-500">Sources</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {msg.sources.map((source, n) => (
-                        <button
-                          key={source.id}
-                          onClick={() => onOpenCard(source.id)}
-                          className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-brand-border bg-[#13161B] px-2.5 py-1 text-[11px] font-mono text-gray-300 hover:text-[#E8A838] hover:border-[#E8A83860] transition"
-                          title={source.title}
-                        >
-                          <span className="opacity-60">[{n + 1}]</span>
-                          <span>{sourceIcon(source.type)}</span>
-                          <span className="max-w-[180px] truncate">{source.title}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
-
-          {asking && (
-            <div className="flex justify-start">
-              <div className="rounded-xl border border-brand-border bg-brand-muted px-3.5 py-2.5 text-sm text-gray-400 font-mono">
-                <span className="inline-block h-3 w-3 rounded-full border border-gray-500 border-t-transparent align-middle mr-2" style={{ animation: "spin 0.6s linear infinite" }} />
-                thinking…
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="border-t border-brand-border p-3">
-          <div className="flex gap-2">
-            <input
-              ref={inputRef}
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(); } }}
-              placeholder="Ask your second brain…"
-              aria-label="Question"
-              className="min-h-[44px] flex-1 rounded-lg border border-brand-border bg-brand-muted px-3 text-sm text-gray-200 outline-none placeholder:text-gray-500 focus:border-gray-500"
-              disabled={asking}
-            />
-            <button
-              onClick={ask}
-              disabled={asking || !input.trim()}
-              className="rounded-lg px-4 text-sm font-medium text-[#13161B] disabled:opacity-50 active:scale-95 transition"
-              style={{ background: "linear-gradient(135deg, #F2C94C, #F2994A)" }}
-            >
-              Ask
-            </button>
-          </div>
-        </div>
-      </div>
+    let active = true;
+    Promise.all([workspaceRequest<Item[]>('/api/items'), loadWorkspaceRecords()])
+      .then(([cards, saved]) => { if (active) { setItems(cards); setRecords(saved); setError(''); } })
+      .catch(e => { if (active) setError((e as Error).message); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [attempt]);
+  useEffect(() => {
+    const close = (e: KeyboardEvent) => { if (e.key === 'Escape' && !locked) onClose(); };
+    window.addEventListener('keydown', close);
+    return () => window.removeEventListener('keydown', close);
+  }, [locked, onClose]);
+  const conversations = records.filter((r): r is Conversation => r.kind === 'conversation');
+  const selected = conversations.find(c => c.id === conversationId);
+  const project = records.find((r): r is Project => r.kind === 'project' && r.id === selected?.data.projectId);
+  return <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/70 p-2 backdrop-blur-sm sm:items-center" onClick={() => { if (!locked) onClose(); }}>
+    <div role="dialog" aria-modal="true" aria-label="Ask my brain" className="max-h-[95vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-brand-border bg-[#0D0F12] p-3" onClick={e => e.stopPropagation()}>
+      <header className="mb-3 flex flex-wrap items-center gap-3"><h2 className="mr-auto font-semibold text-amber-200">Ask my brain</h2><Link className="text-sm text-amber-200 underline" href="/workspace">Workspace</Link><button aria-label="Close" className="rounded px-3 py-2 disabled:opacity-40" disabled={locked} onClick={onClose}>Close</button></header>
+      {loading ? <p role="status">Loading conversations…</p> : error ? <p role="alert" className="text-red-300">{error} <button onClick={() => setAttempt(a => a + 1)} className="underline">Retry</button></p> : <>
+        <label className="mb-3 block text-xs text-gray-400">Conversation<select aria-label="Saved conversation" className="ml-2 max-w-full rounded bg-brand-dark p-2 text-sm" disabled={locked} value={conversationId} onChange={e => setConversationId(e.target.value)}><option value="">New conversation{selectedIds.length ? ` (${Math.min(8, selectedIds.length)} selected cards)` : ''}</option>{conversations.map(c => <option key={c.id} value={c.id}>{c.data.title}</option>)}</select></label>
+        <KnowledgeChat key={conversationId || 'new'} initial={selected} itemIds={selectedIds.slice(0, 8)} items={items} project={project} onLock={setLocked} onSaved={record => setRecords(old => [...old.filter(r => r.id !== record.id), record])} />
+      </>}
+      {locked && <p className="mt-2 text-xs text-gray-400">Finish saving your draft before closing.</p>}
     </div>
-  );
+  </div>;
 }

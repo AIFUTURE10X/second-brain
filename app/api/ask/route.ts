@@ -1,101 +1,78 @@
-import { NextRequest, NextResponse } from "next/server";
-import { checkApiKey } from "@/lib/api-key";
-import { rateLimit } from "@/lib/rate-limit";
-import { hybridSearchItems } from "@/lib/search-items";
-import { buildAskContext, trimAskHistory } from "@/lib/ask-brain.mjs";
-
-const DEFAULT_ASK_MODEL = "gpt-5.4-mini";
+import { NextRequest, NextResponse } from 'next/server';
+import { and, desc, eq, inArray, isNull, or } from 'drizzle-orm';
+import { db } from '@/db';
+import { items, itemTranscripts } from '@/db/schema';
+import { checkApiKey } from '@/lib/api-key';
+import { jsonError, serverError } from '@/lib/api-errors';
+import { rateLimit } from '@/lib/rate-limit';
+import { hybridSearchItems, type SearchRow } from '@/lib/search-items';
+import { buildAskContext, trimAskHistory, ASK_MAX_SOURCES } from '@/lib/ask-brain.mjs';
+import { askRequestSchema } from '@/lib/workspace-model.mjs';
+import { readWorkspaceRecord, readProjectDecisions } from '@/lib/workspace-store';
+import { generateKnowledgeAnswer, prepareAttachmentInputs } from '@/lib/knowledge-provider.mjs';
+import { knowledgeTokens } from '@/lib/knowledge-passages.mjs';
 
 export const maxDuration = 60;
 
-type OpenAIResponse = {
-  output_text?: string;
-  output?: Array<{ content?: Array<{ type?: string; text?: string }> }>;
-  error?: { message?: string };
-};
-
-/**
- * POST /api/ask  (roadmap 2.13 — "Ask my brain")
- * Body: { question: string, history?: [{ role: "user"|"assistant", content }] }
- *
- * RAG over the item corpus: retrieves the most relevant cards with the same
- * hybrid search that powers ?q= (semantic ranking when embeddings exist),
- * then answers strictly from those cards with [n] citations.
- * Response: { answer, sources: [{ id, title, url, type }] }.
- */
+// Cite cards inline using the numbered evidence assembled by buildAskContext.
 export async function POST(req: NextRequest) {
   const denied = checkApiKey(req);
   if (denied) return denied;
-
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
-  const { allowed } = rateLimit(`ask:${ip}`);
-  if (!allowed) return NextResponse.json({ error: "Too many requests" }, { status: 429 });
-
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json({ error: "OPENAI_API_KEY not configured" }, { status: 500 });
-  }
-
-  const body = await req.json().catch(() => null) as { question?: unknown; history?: unknown } | null;
-  const question = typeof body?.question === "string" ? body.question.trim().slice(0, 1_000) : "";
-  if (!question) return NextResponse.json({ error: "Missing question" }, { status: 400 });
-  const history = trimAskHistory(body?.history);
-
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+  if (!rateLimit(`ask:${ip}`).allowed) return jsonError(429, 'Too many requests');
+  const raw = await req.text();
+  if (raw.length > 100000) return jsonError(413, 'Request is too large. Start a new conversation.');
+  let body;
+  try { body = JSON.parse(raw); } catch { return jsonError(400, 'Invalid JSON'); }
+  const parsed = askRequestSchema.safeParse(body);
+  if (!parsed.success) return jsonError(400, 'Choose valid sources and enter a question.');
+  const { question, itemIds, projectId, mode, attachments } = parsed.data;
+  if (itemIds.length > ASK_MAX_SOURCES) return jsonError(400, 'Choose up to eight cards for one answer.');
+  if (mode === 'connections' && itemIds.length !== 2) return jsonError(400, 'Choose exactly two cards to connect.');
+  if (attachments.some(a => !itemIds.includes(a.itemId))) return jsonError(400, 'Select the card containing each attachment.');
+  if (!process.env.OPENAI_API_KEY) return jsonError(503, 'AI is not configured.');
   try {
-    const result = await hybridSearchItems(question, { semanticMode: "auto" });
-    const { contextText, sources } = buildAskContext(result.rows);
-
-    if (sources.length === 0) {
-      return NextResponse.json({
-        answer: "I couldn't find anything in your brain related to that. Try rephrasing, or capture some cards about it first.",
-        sources: [],
-      });
+    const project = projectId ? await readWorkspaceRecord('project', projectId) : null;
+    if (projectId && project?.kind !== 'project') return jsonError(404, 'Project not found.');
+    const scope = project?.kind === 'project' ? project.data : null;
+    const projectFilter = scope ? or(eq(items.category, scope.category || '__no_category__'), inArray(items.id, scope.itemIds.length ? scope.itemIds : ['00000000-0000-0000-0000-000000000000'])) : undefined;
+    let rows: SearchRow[];
+    if (itemIds.length) {
+      rows = await db.select().from(items).where(and(inArray(items.id, itemIds), isNull(items.archivedAt), projectFilter)).limit(ASK_MAX_SOURCES);
+      if (rows.length !== new Set(itemIds).size) return jsonError(400, 'Some selected cards are unavailable or outside this project. Refresh your selection.');
+    } else if (scope) {
+      rows = await db.select().from(items).where(and(projectFilter, isNull(items.archivedAt))).orderBy(desc(items.updatedAt)).limit(100);
+    } else {
+      const previous = parsed.data.history.filter(m => m.role === 'user').slice(-1)[0]?.content || '';
+      rows = (await hybridSearchItems(`${question} ${previous.slice(0, 300)}`, { semanticMode: "auto" })).rows.slice(0, 100);
     }
-
-    const historyText = history.length > 0
-      ? `\n\nConversation so far:\n${history.map(m => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`).join("\n")}`
-      : "";
-
-    const response = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: process.env.OPENAI_ASK_MODEL || process.env.OPENAI_SUMMARY_MODEL || DEFAULT_ASK_MODEL,
-        instructions:
-          "You answer questions about the user's personal knowledge base (their 'second brain'). " +
-          "Use ONLY the numbered source cards provided. Cite cards inline as [1], [2] etc. wherever they support a claim. " +
-          "If the sources don't contain the answer, say so plainly. Be concise; plain text only.",
-        input: `Source cards:\n\n${contextText}${historyText}\n\nQuestion: ${question}`,
-        max_output_tokens: 700,
-      }),
+    const ids = rows.map(r => String(r.id));
+    const transcripts = ids.length ? await db.select({ itemId: itemTranscripts.itemId, text: itemTranscripts.text }).from(itemTranscripts).where(inArray(itemTranscripts.itemId, ids)).limit(100) : [];
+    const byId = new Map(transcripts.map(t => [t.itemId, t.text]));
+    const tokens = knowledgeTokens(question);
+    const enriched: (SearchRow & { transcript: string })[] = rows.map(row => ({ ...row, transcript: byId.get(String(row.id)) || '' }));
+    if (!itemIds.length) enriched.sort((a, b) => {
+      const score = (r: typeof a) => { const haystack = `${r.title} ${r.content} ${r.transcript}`.toLowerCase(); return tokens.reduce((n, t) => n + (haystack.includes(t) ? 1 : 0), 0); };
+      return score(b) - score(a);
     });
-
-    const data = await response.json().catch(() => ({})) as OpenAIResponse;
-    if (!response.ok) {
-      return NextResponse.json(
-        { error: data.error?.message || "Ask failed" },
-        { status: 502 }
-      );
-    }
-
-    const answer = extractOpenAIText(data).trim();
-    if (!answer) return NextResponse.json({ error: "Empty answer from model" }, { status: 502 });
-
-    return NextResponse.json({ answer, sources });
+    const decisions = projectId && !itemIds.length ? (await readProjectDecisions(projectId)).slice(0, 2) : [];
+    const decisionRows = decisions.map(d => ({ id: d.id, title: d.data.title, type: 'decision', url: new URL('/workspace?tab=Decisions', req.url).href, content: `Recorded choice: ${d.data.choice}\nReason: ${d.data.rationale}\nAlternatives: ${d.data.alternatives}\nReconsider: ${d.data.reviewOn}` }));
+    const { contextText, sources } = buildAskContext([...decisionRows, ...enriched.slice(0, ASK_MAX_SOURCES - decisionRows.length)], { question });
+    let files;
+    try { files = prepareAttachmentInputs(enriched, attachments); } catch (error) { return jsonError(400, (error as Error).message); }
+    if (!sources.length) return NextResponse.json({ answer: 'I could not find relevant saved material in this scope. Add cards or choose a different scope.', sources: [] });
+    const projectContext = scope ? `Project goal (user supplied): ${scope.goal}\nOpen questions: ${scope.questions}\n` : '';
+    const answer = await generateKnowledgeAnswer({
+      apiKey: process.env.OPENAI_API_KEY,
+      model: process.env.OPENAI_ASK_MODEL || process.env.OPENAI_SUMMARY_MODEL || 'gpt-5.4-mini',
+      context: projectContext + contextText, question, mode,
+      history: trimAskHistory(parsed.data.history), attachments: files.inputs,
+    }).catch(error => { throw new KnowledgeProviderError((error as Error).message); });
+    return NextResponse.json({ answer, sources, attachments: files.sources, coverage: `Used ${sources.length} of ${rows.length} retrieved cards${rows.length === 100 ? ' (retrieval limited to 100)' : ''}.` });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Ask failed";
-    return NextResponse.json({ error: message }, { status: 500 });
+    if (error instanceof KnowledgeProviderError) return jsonError(502, error.message);
+    return serverError(error);
   }
 }
 
-function extractOpenAIText(data: OpenAIResponse): string {
-  if (typeof data.output_text === "string") return data.output_text;
-  return (data.output || [])
-    .flatMap(item => item.content || [])
-    .map(content => content.text || "")
-    .join("\n")
-    .trim();
-}
+class KnowledgeProviderError extends Error {}

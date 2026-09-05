@@ -2145,7 +2145,7 @@ export default function Brain() {
               ◆ Second Brain
             </h1>
             <p className="text-[11px] min-[1800px]:text-[10px] text-gray-600 font-mono mt-0.5">
-              {items.length} items · synced
+              {items.length} items · synced · <Link href={`/workspace${selectedIds.size ? `?cards=${Array.from(selectedIds).join(',')}` : ''}`} className="text-amber-300 hover:underline">{selectedIds.size ? 'Use selected cards →' : 'Workspace →'}</Link>
             </p>
           </div>
           <div className="flex items-center gap-1.5 min-[1800px]:gap-1 justify-start sm:justify-end flex-wrap">
@@ -2608,7 +2608,7 @@ export default function Brain() {
         />
       )}
 
-      {askOpen && <AskBrainPanel onClose={() => setAskOpen(false)} onOpenCard={(id) => { setAskOpen(false); openCardInCurrentTab(id); }} />}
+      {askOpen && <AskBrainPanel selectedIds={Array.from(selectedIds)} onClose={() => setAskOpen(false)} onOpenCard={(id) => { setAskOpen(false); openCardInCurrentTab(id); }} />}
 
       {vaultOpen && <Vault onClose={() => setVaultOpen(false)} />}
 

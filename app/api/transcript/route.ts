@@ -4,10 +4,21 @@ import { items, itemTranscripts } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { checkApiKey } from "@/lib/api-key";
 import { rateLimit } from "@/lib/rate-limit";
-import { extractYouTubeId, fetchYouTubeTranscript } from "@/lib/youtube";
+import { extractYouTubeId, fetchYouTubeTranscriptResult, type TranscriptFetchFailure } from "@/lib/youtube";
 
-// The Apify fallback runs to ~55s on a cold actor.
-export const maxDuration = 60;
+// YouTube caption probes run before the Apify fallback, whose cold start can
+// take more than a minute. Keep enough headroom for both stages.
+export const maxDuration = 120;
+
+const TRANSCRIPT_ERRORS: Record<TranscriptFetchFailure, string> = {
+  "invalid-video": "This card has no valid YouTube video URL.",
+  "fallback-not-configured": "The transcript fallback is not configured. Add APIFY_API_TOKEN and redeploy.",
+  "fallback-auth": "The transcript provider rejected its API token. Update APIFY_API_TOKEN and redeploy.",
+  "fallback-quota": "The transcript provider has reached its usage limit. Check the Apify account and try again.",
+  "fallback-timeout": "The transcript provider took too long. Please try Fetch again.",
+  "fallback-unavailable": "The transcript provider is temporarily unavailable. Please try again.",
+  "no-transcript": "No transcript was found for this video. It may be private, unavailable, or have captions disabled.",
+};
 
 /**
  * GET /api/transcript?itemId=<uuid>
@@ -54,10 +65,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "This card has no YouTube video URL" }, { status: 422 });
   }
 
-  const transcript = await fetchYouTubeTranscript(item.url);
+  const result = await fetchYouTubeTranscriptResult(item.url);
+  const transcript = result.transcript;
   if (!transcript?.text) {
     return NextResponse.json({
-      error: "No transcript available for this video — it may have captions disabled.",
+      error: TRANSCRIPT_ERRORS[result.failure || "fallback-unavailable"],
     }, { status: 422 });
   }
 

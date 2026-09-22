@@ -7,7 +7,13 @@ import { pathToFileURL } from "node:url";
 import ts from "typescript";
 
 const sourcePath = new URL("../lib/youtube.ts", import.meta.url);
-const source = await readFile(sourcePath, "utf8");
+const providerSourcePath = new URL("../lib/youtube-transcript-provider.ts", import.meta.url);
+const providerSource = await readFile(providerSourcePath, "utf8");
+const providerTranspiled = ts.transpileModule(providerSource, {
+  compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 },
+}).outputText;
+const source = (await readFile(sourcePath, "utf8"))
+  .replaceAll('"./youtube-transcript-provider"', '"./youtube-transcript-provider.mjs"');
 const transpiled = ts.transpileModule(source, {
   compilerOptions: {
     module: ts.ModuleKind.ES2022,
@@ -16,8 +22,11 @@ const transpiled = ts.transpileModule(source, {
 }).outputText;
 const tempDir = await mkdtemp(path.join(tmpdir(), "second-brain-youtube-"));
 const tempModule = path.join(tempDir, "youtube.mjs");
+await writeFile(path.join(tempDir, "youtube-transcript-provider.mjs"), providerTranspiled);
 await writeFile(tempModule, transpiled);
 const youtube = await import(pathToFileURL(tempModule).href);
+const originalFetch = globalThis.fetch;
+const originalApifyToken = process.env.APIFY_API_TOKEN;
 
 test("extractYouTubeId handles common YouTube URL forms", () => {
   assert.equal(youtube.extractYouTubeId("https://www.youtube.com/watch?v=abc123XYZ09"), "abc123XYZ09");
@@ -57,6 +66,55 @@ test("extractApifyTranscriptText supports plain text and segment outputs", () =>
     youtube.extractApifyTranscriptText([{ transcript: [{ text: "First part" }, { text: "second part" }] }]),
     "First part second part",
   );
+});
+
+test("transcript fetch falls back when YouTube returns empty timed-text responses", async () => {
+  process.env.APIFY_API_TOKEN = "test-token";
+  const captionUrls = Array.from({ length: 5 }, (_, index) => `https://www.youtube.com/api/timedtext?lang=en&track=${index}`);
+  const calls = [];
+  globalThis.fetch = async (url) => {
+    const value = String(url);
+    calls.push(value);
+    if (value.includes("/watch?")) {
+      return new Response(`<script>var ytInitialPlayerResponse = ${JSON.stringify({
+        captions: { playerCaptionsTracklistRenderer: { captionTracks: captionUrls.map((baseUrl) => ({ baseUrl, languageCode: "en" })) } },
+      })};</script>`);
+    }
+    if (value.includes("/api/timedtext")) return new Response("");
+    if (value.includes("api.apify.com")) {
+      return Response.json([{ success: true, transcript: "Fallback transcript text." }], { status: 201 });
+    }
+    return new Response("", { status: 404 });
+  };
+
+  try {
+    const result = await youtube.fetchYouTubeTranscriptResult("https://youtu.be/abc123XYZ09");
+    assert.equal(result.failure, null);
+    assert.equal(result.transcript?.source, "apify");
+    assert.equal(result.transcript?.text, "Fallback transcript text.");
+    assert.equal(calls.filter((url) => url.includes("/api/timedtext")).length, 5);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalApifyToken === undefined) delete process.env.APIFY_API_TOKEN;
+    else process.env.APIFY_API_TOKEN = originalApifyToken;
+  }
+});
+
+test("transcript fetch reports missing and rejected fallback credentials", async () => {
+  globalThis.fetch = async (url) => String(url).includes("api.apify.com")
+    ? new Response("", { status: 401 })
+    : new Response("");
+
+  try {
+    delete process.env.APIFY_API_TOKEN;
+    assert.equal((await youtube.fetchYouTubeTranscriptResult("abc123XYZ09")).failure, "fallback-not-configured");
+    process.env.APIFY_API_TOKEN = "rejected-token";
+    assert.equal((await youtube.fetchYouTubeTranscriptResult("abc123XYZ09")).failure, "fallback-auth");
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalApifyToken === undefined) delete process.env.APIFY_API_TOKEN;
+    else process.env.APIFY_API_TOKEN = originalApifyToken;
+  }
 });
 
 test("extractYouTubeDescriptionLinksFromHtml reads links from video descriptions", () => {
@@ -136,4 +194,19 @@ test("stored transcripts can be copied directly from the header", () => {
     headerSource,
     /onClick=\{e => \{ stop\(e\); copy\(\); \}\}[\s\S]{0,200}>Copy<\/button>/,
   );
+});
+
+test("transcript failures remain visible below the Fetch control", () => {
+  assert.match(transcriptUiSource, /const \[fetchError, setFetchError\] = useState\(""\)/);
+  assert.match(transcriptUiSource, /role="alert"/);
+  assert.match(transcriptUiSource, /\{fetchError\}/);
+});
+
+const transcriptRouteSource = await readFile(
+  new URL("../app/api/transcript/route.ts", import.meta.url), "utf8");
+
+test("transcript route leaves enough time for caption probes and provider fallback", () => {
+  assert.match(transcriptRouteSource, /export const maxDuration = 120/);
+  assert.match(transcriptRouteSource, /fetchYouTubeTranscriptResult/);
+  assert.match(transcriptRouteSource, /fallback-auth/);
 });

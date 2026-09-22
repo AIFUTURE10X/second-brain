@@ -46,6 +46,7 @@ export function TranscriptSection({ itemId, variant = "panel" }: TranscriptSecti
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
+  const [fetchError, setFetchError] = useState("");
 
   const inline = variant === "inline";
 
@@ -72,6 +73,7 @@ export function TranscriptSection({ itemId, variant = "panel" }: TranscriptSecti
   const fetchTranscript = async () => {
     if (!itemId || busy) return;
     setBusy(true);
+    setFetchError("");
     try {
       const res = await fetch("/api/transcript", {
         method: "POST",
@@ -84,10 +86,14 @@ export function TranscriptSection({ itemId, variant = "panel" }: TranscriptSecti
         setOpen(true);
         showToast("Transcript saved", "success");
       } else {
-        showToast(data.error || "Couldn't fetch the transcript", "error");
+        const message = data.error || "Couldn't fetch the transcript";
+        setFetchError(message);
+        showToast(message, "error");
       }
     } catch {
-      showToast("Couldn't fetch the transcript", "error");
+      const message = "The transcript request was interrupted. Please try again.";
+      setFetchError(message);
+      showToast(message, "error");
     }
     setBusy(false);
   };
@@ -179,6 +185,15 @@ export function TranscriptSection({ itemId, variant = "panel" }: TranscriptSecti
         <div className={inline ? "py-1.5 text-[11px] font-mono text-gray-600" : "px-3 py-2 text-[11px] font-mono text-gray-600"}>
           No transcript stored yet. YouTube captions are free; if none exist it falls back to a
           paid fetch (about $0.01).
+        </div>
+      )}
+
+      {fetchError && (
+        <div role="alert" className={inline
+          ? "pb-1.5 text-[11px] leading-relaxed text-red-400"
+          : "px-3 pb-2 text-[11px] leading-relaxed text-red-400"}
+        >
+          {fetchError}
         </div>
       )}
 

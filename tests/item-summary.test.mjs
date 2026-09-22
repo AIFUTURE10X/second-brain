@@ -19,8 +19,9 @@ before(async () => {
   process.env.API_SECRET = 'test-secret';
   f = await createWorkspaceFixture();
   const aliases = { ...f.aliases };
+  aliases['./youtube-transcript-provider'] = aliases['@/lib/youtube-transcript-provider'] = await f.compile('lib/youtube-transcript-provider.ts', 'youtube-transcript-provider');
   for (const name of ['youtube', 'youtube-owner', 'html-text', 'item-summary', 'summary-provider']) {
-    aliases[`./${name}`] = aliases[`@/lib/${name}`] = await f.compile(`lib/${name}.ts`, name);
+    aliases[`./${name}`] = aliases[`@/lib/${name}`] = await f.compile(`lib/${name}.ts`, name, aliases);
   }
   aliases['./enrich'] = aliases['@/lib/enrich'] = await f.compile('lib/enrich.ts', 'enrich', aliases);
   aliases['@/lib/summary-source'] = await f.compile('lib/summary-source.ts', 'summary-source', aliases);

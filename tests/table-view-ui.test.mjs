@@ -39,3 +39,12 @@ test("TableView uses a compact database layout with clearer interactive cells", 
   assert.match(tableSource, /Updated/);
   assert.match(tableSource, /timeAgo\(item\.updatedAt\)/);
 });
+
+test("TableView shows compact thumbnails beside titles", () => {
+  assert.match(tableSource, /const attachmentThumbnail = \(item\.attachments \|\| \[\]\)\.find/);
+  assert.match(tableSource, /const ogThumbnail = item\.ogImage/);
+  assert.match(tableSource, /data-fallback-src=\{thumbnailFallback\}/);
+  assert.match(tableSource, /h-8 w-12 shrink-0/);
+  assert.match(tableSource, /object-cover/);
+  assert.match(tableSource, /event\.currentTarget\.hidden = true/);
+});

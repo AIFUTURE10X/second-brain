@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { TAG_COLORS, TYPES, WORKFLOW_STATUS_META, type Item } from "@/lib/brain-model";
 import { sourceFromUrl, timeAgo } from "@/lib/brain-format";
 import { localFileViewerHref } from "@/lib/local-file-links";
@@ -58,6 +59,10 @@ export function TableView({
             const isUnreviewed = item.reviewedAt === null;
             const workflowStatus = WORKFLOW_STATUS_META[item.workflowStatus || "active"];
             const relationCount = relationCounts.get(item.id) || 0;
+            const attachmentThumbnail = (item.attachments || []).find(attachment => attachment.contentType?.startsWith("image/"))?.url;
+            const ogThumbnail = item.ogImage && (item.type === "link" || item.type === "clip") ? item.ogImage : undefined;
+            const thumbnailSrc = ogThumbnail || attachmentThumbnail;
+            const thumbnailFallback = ogThumbnail ? attachmentThumbnail : undefined;
             return (
               <tr
                 key={item.id}
@@ -77,11 +82,35 @@ export function TableView({
                   </button>
                 </td>
                 <td className={cellClass}>
-                  <div className="min-w-0">
-                    <div className="truncate font-semibold leading-4 text-gray-100" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-                      {item.title || item.ogTitle || "Untitled"}
+                  <div className="flex min-w-0 items-center gap-2">
+                    {thumbnailSrc && (
+                      <Image
+                        src={thumbnailSrc}
+                        data-fallback-src={thumbnailFallback}
+                        alt=""
+                        width={48}
+                        height={32}
+                        unoptimized
+                        loading="lazy"
+                        decoding="async"
+                        onError={event => {
+                          const fallbackSrc = event.currentTarget.dataset.fallbackSrc;
+                          if (fallbackSrc) {
+                            event.currentTarget.dataset.fallbackSrc = "";
+                            event.currentTarget.src = fallbackSrc;
+                            return;
+                          }
+                          event.currentTarget.hidden = true;
+                        }}
+                        className="h-8 w-12 shrink-0 rounded-md border border-brand-border bg-brand-muted object-cover"
+                      />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate font-semibold leading-4 text-gray-100" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                        {item.title || item.ogTitle || "Untitled"}
+                      </div>
+                      {item.content && <div className="mt-0.5 truncate font-mono text-[10px] leading-4 text-gray-600">{item.content}</div>}
                     </div>
-                    {item.content && <div className="mt-0.5 truncate font-mono text-[10px] leading-4 text-gray-600">{item.content}</div>}
                   </div>
                 </td>
                 <td className={cellClass}>

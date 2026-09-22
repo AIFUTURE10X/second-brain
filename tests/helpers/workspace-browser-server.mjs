@@ -8,6 +8,12 @@ import { createWorkspaceFixture } from './workspace-fixture.mjs';
 process.env.API_SECRET = 'fixture-only';
 process.env.OPENAI_API_KEY = 'fixture-only';
 const f = await createWorkspaceFixture({ origin: 'http://127.0.0.1:3180' });
+const summaryFixture = process.argv.includes('--summary-fixture');
+const { upsertAiSummaryEntry } = await import(await f.compile('lib/item-summary.ts', 'item-summary'));
+const exampleSummary = {
+  shortSummary: 'Shows how to prepare each welcome step before a guest arrives, reducing waiting and making check-in smoother.',
+  detailedSummary: 'The video explains how to reduce delays during guest check-in by preparing the next step in advance. It walks through a welcome workflow that helps staff coordinate arrivals.\n\n- Prepare arrival details before guests reach reception.\n- Organize the handoff so staff know the next step.\n- Review waiting times to identify where the process slows down.',
+};
 const old = new Date(Date.now() - 40 * 86400000);
 const recent = new Date(Date.now() - 86400000);
 await f.db.insert(f.schema.items).values([
@@ -16,6 +22,10 @@ await f.db.insert(f.schema.items).values([
   { id: '33333333-3333-4333-8333-333333333333', title: 'Review onboarding', type: 'task', content: 'Review the activation flow', category: 'Product', tags: ['activation'], actionRequired: true, createdAt: old, updatedAt: old },
 ]);
 await f.db.insert(f.schema.itemTranscripts).values({ itemId: '22222222-2222-4222-8222-222222222222', text: 'Unrelated introduction. '.repeat(100) + '\n[12:34] Prepare each welcome step before the guest arrives. Reduce waiting through workflow planning.' });
+if (summaryFixture) {
+  await f.db.update(f.schema.items).set({ noteEntries: upsertAiSummaryEntry([], exampleSummary) }).where(eq(f.schema.items.id, '22222222-2222-4222-8222-222222222222'));
+  await f.db.insert(f.schema.items).values({ id: '44444444-4444-4444-8444-444444444444', title: 'Booking tool', type: 'link', url: 'https://example.com/booking', category: 'Product', noteEntries: upsertAiSummaryEntry([], { shortSummary: 'A booking tool that lets teams publish appointment pages, sync calendars and send automatic reminders.', detailedSummary: 'The website provides a shared booking workflow for teams. Customers select an available time on a published booking page.\n\n- Calendar syncing keeps availability current.\n- Automatic reminders help customers remember appointments.\n- Shared pages let teams coordinate customer bookings.' }) });
+}
 if (process.argv.includes('--restore-fixture')) {
   const snapshot = JSON.parse(await readFile(new URL('../.tmp/workspace-browser-state.json', import.meta.url), 'utf8'));
   await f.store.restoreWorkspaceRecords(snapshot.records);
@@ -39,7 +49,12 @@ const server = http.createServer(async (req, res) => {
     const raw = Buffer.concat(chunks).toString();
     const body = raw ? JSON.parse(raw) : undefined;
     let response;
-    if (url.pathname === '/api/workspace/records') response = await f.routes.records[req.method](f.request('records', req.method, body, true, url.search));
+    if (url.pathname === '/api/summarize' && summaryFixture && req.method === 'POST') {
+      const [item] = await f.db.select().from(f.schema.items).where(eq(f.schema.items.id, body.id));
+      const [updated] = await f.db.update(f.schema.items).set({ noteEntries: upsertAiSummaryEntry(item.noteEntries || [], exampleSummary), updatedAt: new Date() }).where(eq(f.schema.items.id, body.id)).returning();
+      response = Response.json(updated);
+    }
+    else if (url.pathname === '/api/workspace/records') response = await f.routes.records[req.method](f.request('records', req.method, body, true, url.search));
     else if (url.pathname === '/api/workspace/save') response = await f.routes.save.POST(f.request('save', 'POST', body));
     else if (url.pathname === '/api/ask') response = await f.routes.ask.POST(f.request('ask', 'POST', body));
     else if (url.pathname === '/api/items' && req.method === 'GET') {

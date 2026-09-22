@@ -79,7 +79,7 @@ export const hybridSearchItems = async () => ({ rows: await db.select().from(sch
       ...(data === undefined ? {} : { body: JSON.stringify(data) }),
     });
   }
-  return { ...context, context, store, routes, request, schema: schemaModule, close: async () => {
+  return { ...context, context, store, routes, request, compile, aliases, schema: schemaModule, close: async () => {
     await context.pg.close();
     const relative = path.relative(path.join(root, 'tests', '.tmp'), path.resolve(dir));
     if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) throw new Error('Unsafe fixture cleanup path');

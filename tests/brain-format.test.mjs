@@ -16,7 +16,13 @@ async function loadTsModule(relPath, name) {
   }).outputText;
   const tempDir = await mkdtemp(path.join(tmpdir(), `second-brain-${name}-`));
   const tempModule = path.join(tempDir, `${name}.mjs`);
-  await writeFile(tempModule, transpiled);
+  if (name === "brain-model") {
+    const summarySource = await readFile(new URL("../lib/item-summary.ts", import.meta.url), "utf8");
+    await writeFile(path.join(tempDir, "item-summary.mjs"), ts.transpileModule(summarySource, {
+      compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 },
+    }).outputText);
+  }
+  await writeFile(tempModule, transpiled.replace('from "./item-summary"', 'from "./item-summary.mjs"'));
   return import(pathToFileURL(tempModule).href);
 }
 

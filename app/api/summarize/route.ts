@@ -1,31 +1,19 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { db } from "@/db";
-import { items, type NoteEntry } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { items, itemTranscripts } from "@/db/schema";
+import { and, eq, sql } from "drizzle-orm";
 import { checkApiKey } from "@/lib/api-key";
 import { embeddingsEnabled } from "@/lib/embeddings.mjs";
 import { updateItemEmbedding } from "@/lib/embedding-store";
 import { isPrivateUrl } from "@/lib/enrich";
 import { rateLimit } from "@/lib/rate-limit";
 import { extractYouTubeId, fetchYouTubeTranscript } from "@/lib/youtube";
-import { AI_SUMMARY_HEADER, isAiSummaryEntry as isAiSummary } from "@/lib/brain-model";
+import { isAiSummaryEntry as isAiSummary, stripLegacyAiSummary, upsertAiSummaryEntry } from "@/lib/item-summary";
+import { summarizeWithOpenAI } from "@/lib/summary-provider";
+import { fetchSummaryPageText, sourceExcerpt } from "@/lib/summary-source";
 
-const DEFAULT_OPENAI_SUMMARY_MODEL = "gpt-5.4-mini";
-
-export const maxDuration = 60;
-
-type OpenAIResponse = {
-  output_text?: string;
-  output?: Array<{
-    content?: Array<{
-      type?: string;
-      text?: string;
-    }>;
-  }>;
-  error?: {
-    message?: string;
-  };
-};
+// Transcript fallback and summary generation each have their own timeout.
+export const maxDuration = 120;
 
 /**
  * POST /api/summarize
@@ -49,8 +37,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "OPENAI_API_KEY not configured" }, { status: 500 });
   }
 
-  const { id } = await req.json();
-  if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
+  const body = await req.json().catch(() => null);
+  const id = body?.id;
+  if (typeof id !== "string" || !/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(id)) {
+    return NextResponse.json({ error: "Invalid item id" }, { status: 400 });
+  }
 
   const [item] = await db.select().from(items).where(eq(items.id, id));
   if (!item) return NextResponse.json({ error: "Item not found" }, { status: 404 });
@@ -65,10 +56,14 @@ export async function POST(req: NextRequest) {
     }
 
     if (isYouTube) {
-      const transcript = await fetchYouTubeTranscript(item.url);
-      transcriptText = transcript?.text || "";
+      const [stored] = await db.select().from(itemTranscripts).where(eq(itemTranscripts.itemId, id));
+      transcriptText = stored?.text?.trim() || "";
+      if (!transcriptText) {
+        const transcript = await fetchYouTubeTranscript(item.url);
+        transcriptText = transcript?.text || "";
+      }
     } else {
-      pageContent = await fetchPageText(item.url);
+      pageContent = await fetchSummaryPageText(item.url);
     }
   }
 
@@ -86,20 +81,23 @@ export async function POST(req: NextRequest) {
     .join("\n\n");
 
   const context = [
+    `Source kind: ${isYouTube ? "YouTube video" : item.url ? "Website or article" : "Saved note"}`,
+    `Available evidence: ${transcriptText ? "Video transcript" : pageContent ? "Fetched page text" : "Saved text and metadata only; original source unavailable"}`,
     item.title && `Title: ${item.title}`,
     item.ogTitle && item.ogTitle !== item.title && `Page title: ${item.ogTitle}`,
-    item.ogDescription && `Description: ${item.ogDescription}`,
-    item.content && `User content:\n${item.content}`,
-    legacyNotes && `User notes:\n${legacyNotes}`,
-    userNoteText && `User note entries:\n${userNoteText}`,
+    item.ogDescription && `${isYouTube ? "Channel/author" : "Description"}: ${item.ogDescription}`,
+    item.content && `User content:\n${sourceExcerpt(item.content, 30_000)}`,
+    legacyNotes && `User notes:\n${sourceExcerpt(legacyNotes, 10_000)}`,
+    userNoteText && `User note entries:\n${sourceExcerpt(userNoteText, 10_000)}`,
     item.url && `URL: ${item.url}`,
     item.siteName && `Site: ${item.siteName}`,
-    transcriptText && `YouTube transcript:\n${transcriptText.slice(0, 20_000)}`,
+    transcriptText && `YouTube transcript:\n${sourceExcerpt(transcriptText, 80_000)}`,
     pageContent && `Page text:\n${pageContent}`,
   ].filter(Boolean).join("\n\n");
 
-  if (context.replace(/\s+/g, " ").trim().length < 80) {
-    return NextResponse.json({ error: "Not enough content to summarize" }, { status: 422 });
+  const evidence = [transcriptText, pageContent, item.content, legacyNotes, userNoteText, !isYouTube && item.ogDescription].filter(Boolean).join(" ");
+  if (evidence.replace(/\s+/g, " ").trim().length < 80) {
+    return NextResponse.json({ error: "Not enough source content to summarize. Add a description or transcript and try again." }, { status: 422 });
   }
 
   try {
@@ -113,10 +111,10 @@ export async function POST(req: NextRequest) {
         noteEntries,
         updatedAt: new Date(),
       })
-      .where(eq(items.id, id))
+      .where(and(eq(items.id, id), sql`date_trunc('milliseconds', ${items.updatedAt}) = ${item.updatedAt.toISOString()}::timestamp`))
       .returning();
 
-    if (!updated) return NextResponse.json({ error: "Item not found" }, { status: 404 });
+    if (!updated) return NextResponse.json({ error: "This card changed while summarizing. Please try again." }, { status: 409 });
 
     // The AI summary note entry feeds the embedding input — re-embed so
     // semantic search picks up the summarized content.
@@ -127,111 +125,4 @@ export async function POST(req: NextRequest) {
     const message = error instanceof Error ? error.message : "AI summarization failed";
     return NextResponse.json({ error: message }, { status: 500 });
   }
-}
-
-async function fetchPageText(url: string): Promise<string> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10_000);
-
-  try {
-    const res = await fetch(url, {
-      headers: {
-        "User-Agent": "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)",
-        Accept: "text/html",
-      },
-      signal: controller.signal,
-      redirect: "follow",
-    });
-
-    if (!res.ok) return "";
-    const html = await res.text();
-    return stripHtmlToText(html, 8_000);
-  } catch {
-    return "";
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-function stripHtmlToText(html: string, limit: number): string {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, "")
-    .replace(/<style[\s\S]*?<\/style>/gi, "")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, limit);
-}
-
-function stripLegacyAiSummary(notes: string): string {
-  const index = notes.indexOf(AI_SUMMARY_HEADER);
-  return (index === -1 ? notes : notes.slice(0, index)).trim();
-}
-
-function upsertAiSummaryEntry(entries: NoteEntry[], summary: string): NoteEntry[] {
-  const now = new Date().toISOString();
-  const body = `${AI_SUMMARY_HEADER}\n${summary.trim()}`;
-  const existing = entries.find((entry) => isAiSummary(entry.body));
-
-  if (existing) {
-    return entries.map((entry) => isAiSummary(entry.body)
-      ? { ...entry, body, updatedAt: now }
-      : entry);
-  }
-
-  return [
-    ...entries,
-    {
-      id: crypto.randomUUID(),
-      body,
-      createdAt: now,
-      updatedAt: now,
-    },
-  ];
-}
-
-async function summarizeWithOpenAI(context: string, apiKey: string): Promise<string> {
-  const model = process.env.OPENAI_SUMMARY_MODEL || DEFAULT_OPENAI_SUMMARY_MODEL;
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      instructions:
-        "Create concise, accurate summaries for a personal second brain. Use only the provided source material. Reply with only 3-5 bullet points; no introduction or conclusion.",
-      input: `Summarize the following saved card. If it includes a YouTube transcript, summarize the actual transcript content. If the transcript is unavailable and only metadata is present, summarize only the available metadata without pretending to know the video.\n\n${context}`,
-      max_output_tokens: 600,
-    }),
-  });
-
-  const data = await response.json().catch(() => ({})) as OpenAIResponse;
-  if (!response.ok) {
-    throw new Error(sanitiseOpenAIError(data.error?.message || "OpenAI summarization failed"));
-  }
-
-  const text = extractOpenAIText(data).trim();
-  if (!text) throw new Error("OpenAI returned an empty summary");
-
-  return text;
-}
-
-function sanitiseOpenAIError(message: string): string {
-  if (/incorrect api key|invalid api key|invalid_api_key/i.test(message)) {
-    return "OpenAI API key is invalid. Update OPENAI_API_KEY and try again.";
-  }
-
-  return message;
-}
-
-function extractOpenAIText(data: OpenAIResponse): string {
-  if (typeof data.output_text === "string") return data.output_text;
-
-  return (data.output || [])
-    .flatMap((item) => item.content || [])
-    .map((content) => content.text || "")
-    .join("\n")
-    .trim();
 }

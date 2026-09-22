@@ -6,7 +6,10 @@ import { showToast } from "../Toast";
 import { extractCardLinks, formatCardLinkLabel } from "@/lib/card-links";
 import { copyToClipboard } from "@/lib/clipboard";
 import { openLocalPathInDesktop, openLocalFileLink } from "@/lib/desktop";
-import { TAG_COLORS, TYPES, WORKFLOW_STATUS_META, hasAiSummary, type Item, type RelatedItemSummary, type Reminder } from "@/lib/brain-model";
+import { TAG_COLORS, TYPES, WORKFLOW_STATUS_META, type Item, type RelatedItemSummary, type Reminder } from "@/lib/brain-model";
+import { getItemSummary } from "@/lib/item-summary";
+import { CardSummary } from "./CardSummary";
+import { CardNotes } from "./CardNotes";
 import { checklistProgress, fileIcon, formatReminderDue, formatSize, timeAgo } from "@/lib/brain-format";
 import { readingStatusColor, readingStatusLabel } from "@/lib/reading-status.mjs";
 import type { ViewMode } from "@/lib/view-mode";
@@ -99,18 +102,18 @@ export function ItemCard({
     ? (item.attachments || []).filter(a => a.url !== firstImageAttachment?.url)
     : (item.attachments || []);
   const isYouTube = item.siteName === "YouTube";
-  const cardHasAiSummary = hasAiSummary(item.noteEntries);
+  const cardHasAiSummary = !!getItemSummary(item);
   const isCompact = density === "compact" && !expanded;
   const isList = density === "list" && !expanded;
   const compactCardClass = isCompact ? "min-h-[13rem] flex flex-col" : "";
-  const listCardClass = isList ? "h-[8rem] min-[1500px]:h-[7.5rem] flex flex-col" : "";
+  const listCardClass = isList ? "min-h-[12rem] flex flex-col" : "";
   const expandedCardClass = expanded ? (hasPreview ? "col-span-full lg:grid lg:grid-cols-[minmax(17rem,24rem)_minmax(0,1fr)] min-[1500px]:grid-cols-[minmax(18rem,28rem)_minmax(0,1fr)] max-h-[calc(100vh-12rem)]" : "col-span-full max-h-[calc(100vh-12rem)]") : "";
   const compactPreviewClass = "relative block w-full aspect-video bg-brand-muted overflow-hidden group shrink-0";
   const listPreviewStripClass = "relative block h-9 w-full shrink-0 overflow-hidden bg-brand-muted";
   const previewClass = expanded
     ? "relative block w-full h-56 lg:h-full lg:min-h-[18rem] lg:max-h-[calc(100vh-12rem)] bg-brand-muted overflow-hidden group"
     : "relative block w-full h-32 sm:h-40 bg-brand-muted overflow-hidden group";
-  const listBodyClass = "flex min-h-0 flex-1 flex-col justify-between px-2 py-1.5";
+  const listBodyClass = "flex min-h-0 flex-1 flex-col justify-between gap-2 px-2 py-1.5";
   const expandedBodyClass = "min-h-0 max-h-[calc(100vh-12rem)] overflow-y-auto p-4 lg:p-5";
   const compactBodyClass = isCompact ? "flex min-h-[7rem] flex-1 flex-col justify-between px-2.5 py-2" : "p-4";
   const compactTitleClass = isCompact ? "text-[12px] line-clamp-2" : "text-sm";
@@ -316,6 +319,7 @@ export function ItemCard({
               )}
             </div>
 
+            <CardSummary item={item} small busy={isSummarizing} onSummarize={onSummarize} />
             <div className="flex min-w-0 items-center gap-1 overflow-hidden">
               {item.category && (
                 <span
@@ -510,11 +514,7 @@ export function ItemCard({
               </p>
             )}
 
-            {/* OG description for links (when no user content) — skip for YouTube since
-                ogDescription holds the channel name shown above */}
-            {item.ogDescription && !item.content && !isCompact && !isYouTube && (
-              <p className={`text-xs text-gray-500 mt-1 ${isList ? "line-clamp-1" : "line-clamp-2"}`}>{item.ogDescription}</p>
-            )}
+            <CardSummary item={item} expanded={expanded} small={isCompact} busy={isSummarizing} onSummarize={onSummarize} />
 
             {isFolder && item.url && !isCompact && (
               <button
@@ -549,7 +549,7 @@ export function ItemCard({
               >↗ {formatCardLinkLabel(item.url)}</a>
             )}
 
-            {item.content && !isCompact && (
+            {item.content && expanded && cardHasAiSummary && (
               <LinkifiedText
                 text={item.content}
                 className={`${isList ? "text-[11px] mt-0.5 line-clamp-1" : "text-xs mt-1.5"} text-gray-500 leading-relaxed ${expanded ? "whitespace-pre-wrap" : isList ? "line-clamp-1" : "line-clamp-2"}`}
@@ -627,35 +627,7 @@ export function ItemCard({
               </div>
             )}
 
-            {/* Notes section (separate from content) — entries first, legacy fallback */}
-            {!isCompact && !isList && (() => {
-              const entries = (item.noteEntries || []).filter(e => e.body?.trim().length > 0);
-              if (entries.length > 0) {
-                const visible = expanded ? entries : entries.slice(0, 2);
-                return (
-                  <div className="mt-2 pl-2.5 border-l-2 flex flex-col gap-1" style={{ borderColor: t.color + "40" }}>
-                    {visible.map(e => (
-                      <LinkifiedText
-                        key={e.id}
-                        text={e.body}
-                        className={`text-[11px] text-gray-400 italic leading-relaxed ${expanded ? "whitespace-pre-wrap" : "line-clamp-2"}`}
-                      />
-                    ))}
-                    {!expanded && entries.length > 2 && (
-                      <span className="text-[10px] font-mono text-gray-600">+{entries.length - 2} more entries</span>
-                    )}
-                  </div>
-                );
-              }
-              if (item.notes) {
-                return (
-                  <div className={`mt-2 pl-2.5 border-l-2 ${expanded ? "" : "line-clamp-2"}`} style={{ borderColor: t.color + "40" }}>
-                    <LinkifiedText text={item.notes} className="text-[11px] text-gray-400 italic leading-relaxed" />
-                  </div>
-                );
-              }
-              return null;
-            })()}
+            {!isCompact && !isList && <CardNotes item={item} expanded={expanded} color={t.color} />}
 
             {hasChecklist && !isCompact && (
               <div className="mt-2.5 flex flex-col gap-1.5">

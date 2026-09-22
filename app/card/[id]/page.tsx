@@ -12,6 +12,8 @@ import { showToast, ToastContainer } from "@/components/Toast";
 import { copyToClipboard } from "@/lib/clipboard";
 import { openLocalPathInDesktop, openLocalFileLink } from "@/lib/desktop";
 import { TranscriptSection, isVideoUrl } from "@/components/brain/TranscriptSection";
+import { CardSummary } from "@/components/brain/CardSummary";
+import { isAiSummaryEntry } from "@/lib/item-summary";
 
 type ItemType = "note" | "link" | "clip" | "thought" | "task" | "memory" | "folder";
 
@@ -796,6 +798,8 @@ export default function CardPopoutPage() {
         />
       )}
 
+      <CardSummary item={{ ...item, ...form }} expanded busy={summarizing || saving} onSummarize={handleSummarize} />
+
       <textarea
         value={form.content}
         onChange={e => onField("content", e.target.value)}
@@ -812,7 +816,7 @@ export default function CardPopoutPage() {
         {form.noteEntries.map(entry => (
           <div key={entry.id} className="rounded-lg border border-brand-border bg-brand-muted">
             <div className="flex items-center gap-2 px-3 py-1.5 border-b border-brand-border">
-              <span className="text-[10px] font-mono text-gray-500">{formatStamp(entry.createdAt)}</span>
+              <span className="text-[10px] font-mono text-gray-500">{isAiSummaryEntry(entry.body) ? "Edit summary · " : ""}{formatStamp(entry.createdAt)}</span>
               {entry.updatedAt && entry.updatedAt !== entry.createdAt && (
                 <span className="text-[10px] font-mono text-gray-600">· edited {formatStamp(entry.updatedAt)}</span>
               )}
@@ -849,7 +853,7 @@ export default function CardPopoutPage() {
           type="button"
           disabled={summarizing || saving}
           onClick={handleSummarize}
-          title="Generate an AI summary of this card and save it as a note entry"
+          title="Generate a short card overview and a detailed summary"
           className="px-2.5 py-1 rounded-md text-[11px] font-mono transition hover:brightness-125 active:scale-95 disabled:opacity-50 flex items-center gap-1.5"
           style={{ border: "1px solid #56CCF230", background: "#56CCF210", color: "#56CCF2" }}
         >

@@ -35,11 +35,12 @@ test("list view is the default and uses a responsive compact card grid", () => {
   assert.doesNotMatch(brainSource, /useState<ViewMode>\("comfortable"\)/);
 });
 
-test("list cards render as short scan tiles instead of tall mini cards", () => {
-  assert.match(cardSource, /const listCardClass = isList \? "h-\[8rem\] min-\[1500px\]:h-\[7\.5rem\] flex flex-col" : "";/);
+test("list cards reserve room for readable summaries without a clipping height", () => {
+  assert.match(cardSource, /const listCardClass = isList \? "min-h-\[12rem\] flex flex-col" : "";/);
   assert.match(cardSource, /\$\{listCardClass\}/);
   assert.match(cardSource, /const listPreviewStripClass = "relative block h-9 w-full shrink-0 overflow-hidden bg-brand-muted"/);
-  assert.match(cardSource, /const listBodyClass = "flex min-h-0 flex-1 flex-col justify-between px-2 py-1\.5"/);
+  assert.match(cardSource, /const listBodyClass = "flex min-h-0 flex-1 flex-col justify-between gap-2 px-2 py-1\.5"/);
+  assert.match(cardSource, /<CardSummary item=\{item\} small/);
   assert.match(cardSource, /data-list-card={isList \? "true" : undefined}/);
   assert.match(cardSource, /className="h-full w-full object-cover object-center"/);
   assert.match(cardSource, /slice\(0, 1\)\.map\(\(tag, ti\)/);

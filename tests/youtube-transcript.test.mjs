@@ -100,6 +100,45 @@ test("transcript fetch falls back when YouTube returns empty timed-text response
   }
 });
 
+test("transcript fetch returns the preferred caption without waiting for slower tracks", async () => {
+  let lowerTrackAborted = false;
+  globalThis.fetch = async (url, options = {}) => {
+    const value = String(url);
+    if (value.includes("/watch?")) {
+      return new Response(`<script>var ytInitialPlayerResponse = ${JSON.stringify({
+        captions: { playerCaptionsTracklistRenderer: { captionTracks: [
+          { baseUrl: "https://www.youtube.com/api/timedtext?track=preferred", languageCode: "en" },
+          { baseUrl: "https://www.youtube.com/api/timedtext?track=slow", languageCode: "fr", kind: "asr" },
+        ] } },
+      })};</script>`);
+    }
+    if (value.includes("track=preferred")) {
+      return Response.json({ events: [{ segs: [{ utf8: "Preferred caption." }] }] });
+    }
+    if (value.includes("track=slow")) {
+      return new Promise((_, reject) => {
+        options.signal.addEventListener("abort", () => {
+          lowerTrackAborted = true;
+          reject(new DOMException("Aborted", "AbortError"));
+        }, { once: true });
+      });
+    }
+    throw new Error(`Unexpected request: ${value}`);
+  };
+
+  try {
+    const result = await Promise.race([
+      youtube.fetchYouTubeTranscriptResult("abc123XYZ09"),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("Waited for lower-priority caption")), 500)),
+    ]);
+    assert.equal(result.transcript?.text, "Preferred caption.");
+    assert.equal(result.transcript?.source, "youtube-captions");
+    assert.equal(lowerTrackAborted, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("transcript fetch reports missing and rejected fallback credentials", async () => {
   globalThis.fetch = async (url) => String(url).includes("api.apify.com")
     ? new Response("", { status: 401 })

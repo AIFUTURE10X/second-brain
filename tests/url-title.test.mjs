@@ -34,5 +34,6 @@ test("item and automation save endpoints use URL fallback titles", () => {
   assert.match(itemsRouteSource, /body\.title \|\| og\.ogTitle \|\| fallbackTitle \|\| ""/);
   assert.match(saveRouteSource, /import \{ fallbackTitleFromUrl \} from "@\/lib\/url-title"/);
   assert.match(saveRouteSource, /const fallbackTitle = fallbackTitleFromUrl\(url\);/);
-  assert.match(saveRouteSource, /title \|\| og\.ogTitle \|\| fallbackTitle \|\| ""/);
+  // An attached file's name (extension PDF capture) outranks the URL guess.
+  assert.match(saveRouteSource, /title \|\| og\.ogTitle \|\| attachments\[0\]\?\.name \|\| fallbackTitle \|\| ""/);
 });

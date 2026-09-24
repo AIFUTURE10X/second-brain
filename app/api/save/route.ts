@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { db } from "@/db";
-import { items, categories } from "@/db/schema";
+import { items, categories, type Attachment } from "@/db/schema";
 import { enrichUrl } from "@/lib/enrich";
 import { checkApiKey } from "@/lib/api-key";
 import { embeddingsEnabled } from "@/lib/embeddings.mjs";
@@ -26,8 +26,11 @@ import { fallbackTitleFromUrl } from "@/lib/url-title";
  *   { url: "https://...", notes: "my note" }  — link with personal annotation
  *   { text: "some thought" }                  — saves as "thought"
  *   { title: "...", content: "..." }          — saves as "note"
+ *   { url, attachments: [{ url, name, contentType, size }] }
+ *                                             — files already uploaded via
+ *                                               /api/upload (extension PDF capture)
  *
- * All fields are optional except at least one of url/text/title/content.
+ * All fields are optional except at least one of url/text/title/content/attachments.
  * Optional: type, tags (string[] or comma-string), category, notes
  *
  * AI auto-tagging: If ANTHROPIC_API_KEY is set and no tags/category provided,
@@ -63,6 +66,7 @@ export async function POST(req: NextRequest) {
   const title = ((body.title as string) || "").trim();
   const content = ((body.content as string) || text).trim();
   const notes = ((body.notes as string) || "").trim();
+  const attachments = (body.attachments as Attachment[] | undefined) ?? [];
   let category = ((body.category as string) || "").trim();
 
   // Parse tags: accept string[] or comma-separated string
@@ -89,12 +93,14 @@ export async function POST(req: NextRequest) {
     descriptionLinks = await fetchYouTubeDescriptionLinks(url);
   }
   const fallbackTitle = fallbackTitleFromUrl(url);
+  // A saved file's own name beats a title guessed from its URL path.
+  const resolvedTitle = title || og.ogTitle || attachments[0]?.name || fallbackTitle || "";
 
   // AI auto-tag + auto-categorize when no tags/category provided
   if (tags.length === 0 && !category && process.env.ANTHROPIC_API_KEY) {
     const existingCats = await db.select({ name: categories.name }).from(categories).orderBy(asc(categories.name));
     const ai = await aiTagAndCategorize({
-      title: title || og.ogTitle || fallbackTitle,
+      title: resolvedTitle,
       content,
       url,
       ogTitle: og.ogTitle,
@@ -123,12 +129,13 @@ export async function POST(req: NextRequest) {
     .insert(items)
     .values({
       type,
-      title: title || og.ogTitle || fallbackTitle || "",
+      title: resolvedTitle,
       content: type === "thought" ? content : (body.content as string || ""),
       url,
       notes: appendYouTubeDescriptionLinksToNotes(notes, descriptionLinks),
       tags,
       category,
+      attachments,
       pinned: false,
       readingStatus: initialReadingStatus(type),
       reviewedAt: null,

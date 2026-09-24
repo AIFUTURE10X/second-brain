@@ -3,6 +3,8 @@
 // user configured in the popup; success/failure is flagged on the action
 // badge (no notification permission needed).
 
+importScripts("pdf-capture.js"); // globalThis.SecondBrainPdf
+
 const DEFAULT_HOST = "https://second-brain-bice-two.vercel.app";
 const GENERIC_VERCEL_HOSTS = new Set(["https://vercel.app", "https://www.vercel.app"]);
 
@@ -46,7 +48,9 @@ function flashBadge(text, color) {
   setTimeout(() => chrome.action.setBadgeText({ text: "" }), 3000);
 }
 
-async function saveToBrain(payload) {
+// Stored host + key (repairing a stale host on the way), or null with a
+// "set" badge until the popup has been set up.
+async function loadConfig() {
   let { host, key } = await chrome.storage.local.get(["host", "key"]);
   const resolvedHost = resolveConfiguredHost(host);
   if (resolvedHost !== host) {
@@ -55,20 +59,52 @@ async function saveToBrain(payload) {
   }
   if (!host || !key) {
     flashBadge("set", "#EB5757"); // popup setup needed
-    return;
+    return null;
   }
+  return { host: host.replace(/\/$/, ""), key };
+}
+
+async function saveToBrain(payload, config) {
+  config = config || await loadConfig();
+  if (!config) return;
   try {
-    const res = await fetch(`${host.replace(/\/$/, "")}/api/save`, {
+    const res = await fetch(`${config.host}/api/save`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": key,
+        "x-api-key": config.key,
       },
       body: JSON.stringify(payload),
     });
     flashBadge(res.ok ? "✓" : "!", res.ok ? "#6FCF97" : "#EB5757");
   } catch {
     flashBadge("!", "#EB5757");
+  }
+}
+
+// On a PDF tab the file itself is uploaded too, so the card keeps the
+// document even if the link dies (and local files become shareable).
+async function savePage(tab) {
+  if (!(await SecondBrainPdf.tabIsPdf(tab))) {
+    saveToBrain({ type: "link", url: tab.url, title: tab.title || "" });
+    return;
+  }
+  const config = await loadConfig();
+  if (!config) return;
+  chrome.action.setBadgeBackgroundColor({ color: "#E8A838" });
+  chrome.action.setBadgeText({ text: "…" }); // uploading
+  try {
+    const blob = await SecondBrainPdf.readTabPdf(tab);
+    const attachment = await SecondBrainPdf.uploadPdf(blob, SecondBrainPdf.pdfFileName(tab.url, tab.title), config);
+    const local = SecondBrainPdf.isLocalFileUrl(tab.url);
+    await saveToBrain({
+      type: local ? "note" : "link",
+      url: local ? "" : tab.url,
+      title: tab.title || "",
+      attachments: [attachment],
+    }, config);
+  } catch {
+    flashBadge("pdf", "#EB5757"); // PDF not saved — the popup shows why
   }
 }
 
@@ -80,7 +116,7 @@ chrome.commands.onCommand.addListener(async (command, tab) => {
   if (!tab?.url) return;
 
   if (command === "save-page") {
-    saveToBrain({ type: "link", url: tab.url, title: tab.title || "" });
+    savePage(tab);
     return;
   }
 
@@ -129,10 +165,10 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   }
 
   if (info.menuItemId === "save-page" && pageUrl) {
-    saveToBrain({
-      type: "link",
-      url: pageUrl,
-      title: pageTitle,
-    });
+    if (tab?.id) {
+      savePage({ ...tab, url: pageUrl, title: pageTitle });
+    } else {
+      saveToBrain({ type: "link", url: pageUrl, title: pageTitle });
+    }
   }
 });

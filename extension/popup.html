@@ -127,6 +127,46 @@
       display: none;
     }
     .setup-error.show { display: block; }
+    .pdf-box {
+      display: none;
+      padding: 8px 10px;
+      margin-bottom: 10px;
+      background: #E8A83808;
+      border: 1px solid #E8A83830;
+      border-radius: 6px;
+    }
+    .pdf-box.show { display: block; }
+    .pdf-toggle {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin: 0;
+      font-size: 12px;
+      color: #E8A838;
+      cursor: pointer;
+    }
+    .pdf-toggle input { width: auto; margin: 0; padding: 0; accent-color: #E8A838; }
+    .pdf-hint {
+      display: none;
+      margin-top: 6px;
+      font-size: 11px;
+      color: #999;
+      font-family: monospace;
+      line-height: 1.4;
+    }
+    .pdf-hint.show { display: block; }
+    .link-btn {
+      display: none;
+      margin-top: 4px;
+      padding: 0;
+      background: none;
+      border: none;
+      color: #5B8DEF;
+      font-size: 11px;
+      text-decoration: underline;
+      cursor: pointer;
+    }
+    .link-btn.show { display: inline; }
   </style>
 </head>
 <body>
@@ -148,6 +188,12 @@
   <div class="main" id="main">
     <div class="url-preview" id="urlPreview"></div>
 
+    <div class="pdf-box" id="pdfBox">
+      <label class="pdf-toggle"><input type="checkbox" id="attachPdf" checked /> 📄 Attach this PDF to the card</label>
+      <div class="pdf-hint" id="pdfHint"></div>
+      <button class="link-btn" id="fileAccessBtn">Open extension settings</button>
+    </div>
+
     <div class="types" id="typeButtons">
       <button data-type="link" class="active">◈ Link</button>
       <button data-type="clip">✂ Clip</button>
@@ -168,6 +214,7 @@
     <div class="status" id="status"></div>
   </div>
 
+  <script src="pdf-capture.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

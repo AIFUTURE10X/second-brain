@@ -78,6 +78,17 @@ This guide lists the main features available in Second Brain, what each feature 
 - Add optional tags or category.
 - Click `Save to Brain`.
 
+### Save a PDF from Chrome
+
+**What it does:** When the current tab is showing a PDF, the extension uploads the PDF file itself (up to 50 MB) and attaches it to the new card, so you keep the document even if the link goes away. Web PDFs become link cards with the file attached; local PDFs become note cards.
+
+**How to use it:**
+
+- Open the PDF in Chrome (a web PDF, or a local file dragged into Chrome).
+- Click the Second Brain extension icon. `Attach this PDF to the card` is ticked automatically.
+- Click `Save to Brain`, or press Ctrl/Cmd+Shift+S to save without opening the popup.
+- For local PDFs, first turn on `Allow access to file URLs` for the extension in `chrome://extensions` (the popup links there if it's off).
+
 ### Web share target
 
 **What it does:** Accepts shared text, links, and files from the browser or operating system share sheet.

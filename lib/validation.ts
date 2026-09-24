@@ -96,11 +96,19 @@ export const saveSchema = z
     tags: z.union([z.array(z.string()), z.string()]).optional(),
     // Extension highlight → annotate the existing card for this URL (3.1).
     annotate: z.boolean().optional(),
+    // Files the client already put in Blob storage via /api/upload (the
+    // extension's PDF capture). https-only: these render as card links.
+    attachments: z
+      .array(attachmentSchema.extend({ url: z.string().regex(/^https:\/\//i, "Attachment URL must be https") }))
+      .max(10)
+      .optional(),
   })
   .passthrough()
   .refine(
-    body => Boolean(body.url?.trim() || body.text?.trim() || body.title?.trim() || body.content?.trim()),
-    "Provide at least url, text, title, or content"
+    body => Boolean(
+      body.url?.trim() || body.text?.trim() || body.title?.trim() || body.content?.trim() || body.attachments?.length
+    ),
+    "Provide at least url, text, title, content, or attachments"
   );
 
 export const categoryCreateSchema = z

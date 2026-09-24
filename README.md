@@ -99,7 +99,7 @@ All routes accept `x-api-key: $API_SECRET` (or same-origin browser requests).
 | Route | Purpose |
 |---|---|
 | `GET/POST/PUT/DELETE /api/items` | CRUD; `?q=` hybrid search — indexed FTS merged with pgvector semantic ranking (`x-search-semantic: 1` header when active; `?semantic=0` FTS-only, `?semantic=1` semantic-only) + `x-search-fuzzy` header on typo fallback; `?tag=/?category=/?type=` filters; `?since=<ISO8601>` polling-sync delta → `{ items, deletedIds, serverTime }`; `?archived=1` archive view (default excludes archived); PUT supports optional `expectedUpdatedAt` → `409` + current row on conflict, and `archivedAt` (ISO / null) to archive/restore |
-| `POST /api/save` | Automation endpoint (extension/Telegram/scripts): `{url}` or `{text}` or `{title, content}` |
+| `POST /api/save` | Automation endpoint (extension/Telegram/scripts): `{url}` or `{text}` or `{title, content}`; optional `attachments` (https URLs of files already uploaded via `/api/upload`) |
 | `GET/POST/PUT/PATCH/DELETE /api/categories` | Category CRUD, hierarchy, reorder |
 | `GET/POST/PUT/DELETE /api/reminders` | Telegram reminders |
 | `GET/POST/DELETE /api/item-relations` | Related-card links |
@@ -122,7 +122,11 @@ Request bodies are validated with zod; invalid payloads return
   + `API_SECRET` in the popup. Right-click anywhere for "Save page / link /
   selection to Brain" (result flashes on the toolbar badge). Shortcuts:
   Ctrl/Cmd+Shift+S saves the page, Ctrl/Cmd+Shift+L annotates the page's
-  existing card with the highlighted text.
+  existing card with the highlighted text. On a tab showing a PDF (web or
+  local), the popup and Ctrl/Cmd+Shift+S also upload the PDF itself as a card
+  attachment. It goes straight to Vercel Blob via a `/api/upload` client
+  token, up to 50 MB. Local `file://` PDFs need "Allow access to file URLs"
+  switched on for the extension in `chrome://extensions`.
 - **Telegram bot**: set `TELEGRAM_BOT_TOKEN` + `TELEGRAM_ALLOWED_USER_ID`, then
   register the webhook against `/api/telegram` (include
   `&secret_token=$TELEGRAM_WEBHOOK_SECRET` if set). Commands: send a URL/text

@@ -2,10 +2,13 @@ const DEFAULT_HOST = "https://second-brain-bice-two.vercel.app";
 const GENERIC_VERCEL_HOSTS = new Set(["https://vercel.app", "https://www.vercel.app"]);
 
 let config = { host: "", key: "" };
+let currentTab = null;
 let currentUrl = "";
 let currentTitle = "";
+let pageContentType = "";
 let selectedText = "";
 let selectedType = "link";
+let pdfMode = false;
 
 function normalizeHost(rawHost) {
   try {
@@ -45,6 +48,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab) {
+      currentTab = tab;
       currentUrl = tab.url || "";
       currentTitle = tab.title || "";
       const display = currentUrl.replace(/^https?:\/\/(www\.)?/, "").slice(0, 80);
@@ -52,13 +56,14 @@ document.addEventListener("DOMContentLoaded", async () => {
       document.getElementById("titleInput").placeholder = currentTitle || "Title";
     }
 
-    // Try to get selected text
+    // Try to get selected text (and the document type, to spot PDFs)
     if (tab?.id) {
       const [result] = await chrome.scripting.executeScript({
         target: { tabId: tab.id },
-        func: () => window.getSelection()?.toString() || "",
+        func: () => ({ selection: window.getSelection()?.toString() || "", contentType: document.contentType }),
       });
-      selectedText = result?.result || "";
+      selectedText = result?.result?.selection || "";
+      pageContentType = result?.result?.contentType || "";
       if (selectedText) {
         document.getElementById("notesInput").value = selectedText;
       }
@@ -69,16 +74,45 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("connectBtn").addEventListener("click", saveConfig);
   document.getElementById("saveBtn").addEventListener("click", saveItem);
   document.getElementById("settingsBtn").addEventListener("click", showSetup);
+  document.getElementById("fileAccessBtn").addEventListener("click", () => {
+    chrome.tabs.create({ url: `chrome://extensions/?id=${chrome.runtime.id}` });
+  });
 
   // Type buttons
   document.querySelectorAll("#typeButtons button").forEach(btn => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll("#typeButtons button").forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
-      selectedType = btn.dataset.type;
-    });
+    btn.addEventListener("click", () => selectType(btn.dataset.type));
   });
+
+  if (currentTab && SecondBrainPdf.isPdfTab(currentUrl, pageContentType)) {
+    await showPdfBox();
+  }
 });
+
+function selectType(type) {
+  selectedType = type;
+  document.querySelectorAll("#typeButtons button").forEach(b => {
+    b.classList.toggle("active", b.dataset.type === type);
+  });
+}
+
+// PDF tab: offer to upload the file itself so the card keeps the document,
+// not just a URL (a local file:// URL is useless anywhere else).
+async function showPdfBox() {
+  pdfMode = true;
+  document.getElementById("pdfBox").classList.add("show");
+  if (!SecondBrainPdf.isLocalFileUrl(currentUrl)) return;
+  selectType("note");
+  if (!(await chrome.extension.isAllowedFileSchemeAccess())) {
+    showFileAccessHint("Chrome keeps local files from extensions by default. Turn on \"Allow access to file URLs\" for Second Brain, then reopen this popup.");
+  }
+}
+
+function showFileAccessHint(message) {
+  const hint = document.getElementById("pdfHint");
+  hint.textContent = message;
+  hint.classList.add("show");
+  document.getElementById("fileAccessBtn").classList.add("show");
+}
 
 function showSetup() {
   document.getElementById("setup").classList.add("show");
@@ -182,15 +216,41 @@ async function saveItem() {
   const tags = document.getElementById("tagsInput").value.trim();
   const category = document.getElementById("categoryInput").value.trim();
 
+  const attachPdf = pdfMode && document.getElementById("attachPdf").checked;
+  // The uploaded copy replaces a local file:// URL, which only opens on this machine.
+  const dropLocalUrl = attachPdf && SecondBrainPdf.isLocalFileUrl(currentUrl);
+  const url = (selectedType === "link" || selectedType === "clip") && !dropLocalUrl ? currentUrl : "";
+
   const payload = {
-    type: selectedType,
-    url: (selectedType === "link" || selectedType === "clip") ? currentUrl : "",
-    title: title || undefined,
+    type: dropLocalUrl && selectedType === "link" ? "note" : selectedType,
+    url,
+    // The server can't pull a title out of PDF bytes; the tab title is the
+    // PDF's metadata title or its file name.
+    title: title || (pdfMode ? currentTitle : "") || undefined,
     notes: notes || undefined,
     tags: tags || undefined,
     category: category || undefined,
     content: (selectedType === "note" || selectedType === "thought") ? notes : undefined,
   };
+
+  if (attachPdf) {
+    try {
+      btn.textContent = "Reading PDF...";
+      const blob = await SecondBrainPdf.readTabPdf(currentTab);
+      btn.textContent = `Uploading PDF (${SecondBrainPdf.formatSize(blob.size)})...`;
+      const fileName = SecondBrainPdf.pdfFileName(currentUrl, currentTitle);
+      payload.attachments = [await SecondBrainPdf.uploadPdf(blob, fileName, config)];
+      btn.textContent = "Saving...";
+    } catch (err) {
+      if (err?.code === "file-access") {
+        showFileAccessHint(err.message); // detail + settings link live in the PDF box
+        showSaveError("PDF not saved — see the note above.");
+      } else {
+        showSaveError(err?.message || "Couldn't upload the PDF.");
+      }
+      return;
+    }
+  }
 
   try {
     const res = await fetch(`${config.host}/api/save`, {
@@ -220,15 +280,18 @@ async function saveItem() {
       if (res.status === 405) {
         errMsg = "Wrong Second Brain URL. Open Settings and reconnect.";
       }
-      status.textContent = `✗ ${errMsg}`;
-      status.className = "status err";
-      btn.disabled = false;
-      btn.textContent = "Save to Brain";
+      showSaveError(errMsg);
     }
   } catch {
-    status.textContent = "✗ Can't reach Second Brain. Check Settings.";
-    status.className = "status err";
-    btn.disabled = false;
-    btn.textContent = "Save to Brain";
+    showSaveError("Can't reach Second Brain. Check Settings.");
   }
+}
+
+function showSaveError(message) {
+  const status = document.getElementById("status");
+  const btn = document.getElementById("saveBtn");
+  status.textContent = `✗ ${message}`;
+  status.className = "status err";
+  btn.disabled = false;
+  btn.textContent = "Save to Brain";
 }

@@ -73,6 +73,15 @@ test("saveSchema is permissive for automation but still validates", () => {
   assert.equal(v.saveSchema.safeParse({ url: "https://x", type: "bookmark" }).success, false);
 });
 
+test("saveSchema accepts uploaded attachments, https only", () => {
+  const pdf = { url: "https://s1.public.blob.vercel-storage.com/a-x1.pdf", name: "a.pdf", contentType: "application/pdf", size: 10 };
+  assert.equal(v.saveSchema.safeParse({ url: "https://example.com/a.pdf", attachments: [pdf] }).success, true);
+  assert.equal(v.saveSchema.safeParse({ attachments: [pdf] }).success, true); // local PDF: file is the content
+  assert.equal(v.saveSchema.safeParse({ title: "x", attachments: [{ ...pdf, url: "javascript:alert(1)" }] }).success, false);
+  assert.equal(v.saveSchema.safeParse({ title: "x", attachments: [{ url: pdf.url }] }).success, false);
+  assert.equal(v.saveSchema.safeParse({ attachments: [] }).success, false);
+});
+
 test("category schemas require names and reject junk keys", () => {
   assert.equal(v.categoryCreateSchema.safeParse({}).success, false);
   assert.equal(v.categoryCreateSchema.safeParse({ name: "   " }).success, false);

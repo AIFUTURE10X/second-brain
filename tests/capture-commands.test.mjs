@@ -20,6 +20,7 @@ import {
 const telegramSource = await readFile(new URL("../app/api/telegram/route.ts", import.meta.url), "utf8");
 const manifestSource = await readFile(new URL("../extension/manifest.json", import.meta.url), "utf8");
 const backgroundSource = await readFile(new URL("../extension/background.js", import.meta.url), "utf8");
+const popupSource = await readFile(new URL("../extension/popup.js", import.meta.url), "utf8");
 const itemsRouteSource = await readFile(new URL("../app/api/items/route.ts", import.meta.url), "utf8");
 const searchLibSource = await readFile(new URL("../lib/search-items.ts", import.meta.url), "utf8");
 
@@ -84,6 +85,29 @@ test("extension registers context menus in a background worker", () => {
   assert.match(backgroundSource, /save-page/);
   assert.match(backgroundSource, /\/api\/save/);
   assert.match(backgroundSource, /x-api-key/);
+});
+
+test("extension repairs a generic Vercel host and verifies the Second Brain API", () => {
+  assert.match(backgroundSource, /https:\/\/second-brain-bice-two\.vercel\.app/);
+  assert.match(backgroundSource, /GENERIC_VERCEL_HOSTS/);
+  assert.match(backgroundSource, /migrateStoredHost/);
+  assert.match(popupSource, /Array\.isArray\(categories\)/);
+  assert.match(popupSource, /Wrong Second Brain URL/);
+});
+
+test("extension declares the colored brain icon at every Chrome size", async () => {
+  const manifest = JSON.parse(manifestSource);
+  const expectedIcons = {
+    16: "icons/brain-16.png",
+    32: "icons/brain-32.png",
+    48: "icons/brain-48.png",
+    128: "icons/brain-128.png",
+  };
+  assert.deepEqual(manifest.icons, expectedIcons);
+  assert.deepEqual(manifest.action.default_icon, expectedIcons);
+  await Promise.all(Object.values(expectedIcons).map(path =>
+    readFile(new URL(`../extension/${path}`, import.meta.url))
+  ));
 });
 
 // ── Read-later (2.9) ─────────────────────────────────────────────────────────

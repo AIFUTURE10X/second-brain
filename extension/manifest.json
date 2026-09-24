@@ -1,8 +1,14 @@
 {
   "manifest_version": 3,
   "name": "Second Brain — Save to Brain",
-  "version": "1.1.0",
+  "version": "1.1.2",
   "description": "One-click save any page or selected text to your Second Brain",
+  "icons": {
+    "16": "icons/brain-16.png",
+    "32": "icons/brain-32.png",
+    "48": "icons/brain-48.png",
+    "128": "icons/brain-128.png"
+  },
   "permissions": ["activeTab", "storage", "scripting", "contextMenus"],
   "host_permissions": ["https://*.vercel.app/*"],
   "background": {
@@ -19,6 +25,12 @@
     }
   },
   "action": {
+    "default_icon": {
+      "16": "icons/brain-16.png",
+      "32": "icons/brain-32.png",
+      "48": "icons/brain-48.png",
+      "128": "icons/brain-128.png"
+    },
     "default_popup": "popup.html"
   }
 }

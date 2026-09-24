@@ -1,15 +1,39 @@
+const DEFAULT_HOST = "https://second-brain-bice-two.vercel.app";
+const GENERIC_VERCEL_HOSTS = new Set(["https://vercel.app", "https://www.vercel.app"]);
+
 let config = { host: "", key: "" };
 let currentUrl = "";
 let currentTitle = "";
 let selectedText = "";
 let selectedType = "link";
 
+function normalizeHost(rawHost) {
+  try {
+    const url = new URL(String(rawHost || "").trim());
+    if (url.protocol !== "https:" && url.protocol !== "http:") return "";
+    return url.origin;
+  } catch {
+    return "";
+  }
+}
+
+function resolveConfiguredHost(rawHost) {
+  const normalized = normalizeHost(rawHost);
+  return !normalized || GENERIC_VERCEL_HOSTS.has(normalized) ? DEFAULT_HOST : normalized;
+}
+
 // Init
 document.addEventListener("DOMContentLoaded", async () => {
   // Load config
   const stored = await chrome.storage.local.get(["host", "key"]);
-  config.host = stored.host || "";
+  config.host = resolveConfiguredHost(stored.host);
   config.key = stored.key || "";
+
+  // Older setup instructions could leave the generic Vercel website saved as
+  // the API host. Migrate that value to this app's canonical deployment.
+  if (config.host !== stored.host) {
+    await chrome.storage.local.set({ host: config.host });
+  }
 
   if (!config.host || !config.key) {
     showSetup();
@@ -76,22 +100,21 @@ function showSetupError(msg) {
 }
 
 async function saveConfig() {
-  const host = document.getElementById("hostInput").value.trim().replace(/\/+$/, "");
+  const rawHost = document.getElementById("hostInput").value;
+  const host = normalizeHost(rawHost);
   const key = document.getElementById("keyInput").value.trim();
 
   // Validate URL format
-  if (!host) {
+  if (!rawHost.trim()) {
     showSetupError("Please enter your Second Brain URL");
     return;
   }
-  try {
-    const u = new URL(host);
-    if (u.protocol !== "https:" && u.protocol !== "http:") {
-      showSetupError("URL must start with https:// or http://");
-      return;
-    }
-  } catch {
+  if (!host) {
     showSetupError("Invalid URL format. Example: https://your-app.vercel.app");
+    return;
+  }
+  if (GENERIC_VERCEL_HOSTS.has(host)) {
+    showSetupError(`Use your Second Brain URL: ${DEFAULT_HOST}`);
     return;
   }
   if (!key) {
@@ -110,6 +133,14 @@ async function saveConfig() {
       headers: { "x-api-key": key },
     });
     if (res.ok) {
+      let categories;
+      try { categories = await res.json(); } catch {}
+      if (!Array.isArray(categories)) {
+        showSetupError("This URL is not a Second Brain deployment.");
+        btn.disabled = false;
+        btn.textContent = "Connect";
+        return;
+      }
       config = { host, key };
       await chrome.storage.local.set({ host, key });
       btn.textContent = "Connected!";
@@ -120,6 +151,10 @@ async function saveConfig() {
       }, 800);
     } else if (res.status === 401) {
       showSetupError("Invalid API key. Check your API_SECRET value.");
+      btn.disabled = false;
+      btn.textContent = "Connect";
+    } else if (res.status === 405) {
+      showSetupError("Wrong Second Brain URL. Use your deployment URL.");
       btn.disabled = false;
       btn.textContent = "Connect";
     } else {
@@ -182,6 +217,9 @@ async function saveItem() {
       const text = await res.text();
       let errMsg = `${res.status} ${res.statusText}`;
       try { errMsg = JSON.parse(text).error || errMsg; } catch {}
+      if (res.status === 405) {
+        errMsg = "Wrong Second Brain URL. Open Settings and reconnect.";
+      }
       status.textContent = `✗ ${errMsg}`;
       status.className = "status err";
       btn.disabled = false;

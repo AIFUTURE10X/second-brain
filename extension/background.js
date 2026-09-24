@@ -3,6 +3,26 @@
 // user configured in the popup; success/failure is flagged on the action
 // badge (no notification permission needed).
 
+const DEFAULT_HOST = "https://second-brain-bice-two.vercel.app";
+const GENERIC_VERCEL_HOSTS = new Set(["https://vercel.app", "https://www.vercel.app"]);
+
+function resolveConfiguredHost(rawHost) {
+  try {
+    const url = new URL(String(rawHost || "").trim());
+    const origin = url.origin;
+    if ((url.protocol === "https:" || url.protocol === "http:") && !GENERIC_VERCEL_HOSTS.has(origin)) {
+      return origin;
+    }
+  } catch {}
+  return DEFAULT_HOST;
+}
+
+async function migrateStoredHost() {
+  const { host } = await chrome.storage.local.get(["host"]);
+  const resolvedHost = resolveConfiguredHost(host);
+  if (resolvedHost !== host) await chrome.storage.local.set({ host: resolvedHost });
+}
+
 const MENU_ITEMS = [
   { id: "save-page", title: "Save page to Brain", contexts: ["page"] },
   { id: "save-link", title: "Save link to Brain", contexts: ["link"] },
@@ -10,6 +30,7 @@ const MENU_ITEMS = [
 ];
 
 chrome.runtime.onInstalled.addListener(() => {
+  migrateStoredHost();
   // removeAll first: onInstalled also fires on extension reload/update, and
   // re-creating an existing menu id would error.
   chrome.contextMenus.removeAll(() => {
@@ -26,7 +47,12 @@ function flashBadge(text, color) {
 }
 
 async function saveToBrain(payload) {
-  const { host, key } = await chrome.storage.local.get(["host", "key"]);
+  let { host, key } = await chrome.storage.local.get(["host", "key"]);
+  const resolvedHost = resolveConfiguredHost(host);
+  if (resolvedHost !== host) {
+    host = resolvedHost;
+    await chrome.storage.local.set({ host });
+  }
   if (!host || !key) {
     flashBadge("set", "#EB5757"); // popup setup needed
     return;

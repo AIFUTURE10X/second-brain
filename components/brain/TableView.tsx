@@ -1,6 +1,6 @@
 import Image from "next/image";
 import { TAG_COLORS, TYPES, WORKFLOW_STATUS_META, type Item } from "@/lib/brain-model";
-import { sourceFromUrl, timeAgo } from "@/lib/brain-format";
+import { formatCreatedDate, sourceFromUrl, timeAgo } from "@/lib/brain-format";
 import { localFileViewerHref } from "@/lib/local-file-links";
 import { showToast } from "../Toast";
 import { copyToClipboard } from "@/lib/clipboard";
@@ -246,7 +246,7 @@ export function TableView({
                   )}
                 </td>
                 <td className={`${cellClass} font-mono text-[10px] text-gray-600`}>
-                  {timeAgo(item.createdAt)}
+                  {formatCreatedDate(item.createdAt)}
                 </td>
                 <td className={`${cellClass} border-r-0 text-right font-mono text-[10px] text-gray-700`}>
                   {timeAgo(item.updatedAt)}

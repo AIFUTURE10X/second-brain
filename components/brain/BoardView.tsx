@@ -1,5 +1,5 @@
 import { TAG_COLORS, TYPES, WORKFLOW_STATUS_META, type Item } from "@/lib/brain-model";
-import { timeAgo } from "@/lib/brain-format";
+import { formatCreatedDate } from "@/lib/brain-format";
 
 interface BoardViewProps {
   items: Item[];
@@ -94,7 +94,7 @@ export function BoardView({
                             >
                               {workflowStatus.label}
                             </span>
-                            <span className="ml-auto text-[9px] font-mono text-gray-700">{timeAgo(item.createdAt)}</span>
+                            <span className="ml-auto text-[9px] font-mono text-gray-700">{formatCreatedDate(item.createdAt)}</span>
                           </div>
                           {relationCount > 0 && (
                             <div className="mt-1">

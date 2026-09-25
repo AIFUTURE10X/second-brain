@@ -10,7 +10,7 @@ import { TAG_COLORS, TYPES, WORKFLOW_STATUS_META, type Item, type RelatedItemSum
 import { getItemSummary } from "@/lib/item-summary";
 import { CardSummary } from "./CardSummary";
 import { CardNotes } from "./CardNotes";
-import { checklistProgress, fileIcon, formatReminderDue, formatSize, timeAgo } from "@/lib/brain-format";
+import { checklistProgress, fileIcon, formatCreatedDate, formatReminderDue, formatSize } from "@/lib/brain-format";
 import { readingStatusColor, readingStatusLabel } from "@/lib/reading-status.mjs";
 import type { ViewMode } from "@/lib/view-mode";
 import { ShareMenu } from "./ShareMenu";
@@ -372,7 +372,7 @@ export function ItemCard({
                     ? <span className="inline-block w-2 h-2 align-middle border border-current border-t-transparent rounded-full" style={{ animation: "spin 0.6s linear infinite" }} />
                     : "✦"}
                 </button>
-                <span className="text-[9px] font-mono text-gray-700">{timeAgo(item.createdAt)}</span>
+                <span className="text-[9px] font-mono text-gray-700">{formatCreatedDate(item.createdAt)}</span>
               </div>
             </div>
           </div>
@@ -794,7 +794,7 @@ export function ItemCard({
                       : "✦"}
                   </button>
                 )}
-                <span className="text-[10px] text-gray-700 font-mono ml-1">{timeAgo(item.createdAt)}</span>
+                <span className="text-[10px] text-gray-700 font-mono ml-1">{formatCreatedDate(item.createdAt)}</span>
               </div>
             </div>
 

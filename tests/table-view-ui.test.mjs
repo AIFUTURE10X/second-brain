@@ -40,6 +40,17 @@ test("TableView uses a compact database layout with clearer interactive cells", 
   assert.match(tableSource, /timeAgo\(item\.updatedAt\)/);
 });
 
+test("every card view shows the creation date as day/month/year", async () => {
+  const sources = await Promise.all(
+    ["components/brain/ItemCard.tsx", "components/brain/BoardView.tsx", "components/brain/TableView.tsx", "app/shared/[id]/page.tsx"]
+      .map(file => readFile(new URL(`../${file}`, import.meta.url), "utf8"))
+  );
+  for (const source of sources) {
+    assert.match(source, /formatCreatedDate\((item|row)\.createdAt\)/);
+    assert.doesNotMatch(source, /timeAgo\(item\.createdAt\)/);
+  }
+});
+
 test("TableView shows compact thumbnails beside titles", () => {
   assert.match(tableSource, /const attachmentThumbnail = \(item\.attachments \|\| \[\]\)\.find/);
   assert.match(tableSource, /const ogThumbnail = item\.ogImage/);

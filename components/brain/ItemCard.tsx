@@ -10,7 +10,8 @@ import { TAG_COLORS, TYPES, WORKFLOW_STATUS_META, type Item, type RelatedItemSum
 import { getItemSummary } from "@/lib/item-summary";
 import { CardSummary } from "./CardSummary";
 import { CardNotes } from "./CardNotes";
-import { checklistProgress, fileIcon, formatCardDate, formatReminderDue, formatSize } from "@/lib/brain-format";
+import { checklistProgress, fileIcon, formatReminderDue, formatSize } from "@/lib/brain-format";
+import { CardDate } from "./CardDate";
 import { readingStatusColor, readingStatusLabel } from "@/lib/reading-status.mjs";
 import type { ViewMode } from "@/lib/view-mode";
 import { ShareMenu } from "./ShareMenu";
@@ -372,7 +373,7 @@ export function ItemCard({
                     ? <span className="inline-block w-2 h-2 align-middle border border-current border-t-transparent rounded-full" style={{ animation: "spin 0.6s linear infinite" }} />
                     : "✦"}
                 </button>
-                <span className="text-[9px] font-mono text-gray-700">{formatCardDate(item.createdAt)}</span>
+                <CardDate value={item.createdAt} className="text-[9px]" />
               </div>
             </div>
           </div>
@@ -794,7 +795,7 @@ export function ItemCard({
                       : "✦"}
                   </button>
                 )}
-                <span className="text-[10px] text-gray-700 font-mono ml-1">{formatCardDate(item.createdAt)}</span>
+                <CardDate value={item.createdAt} className="ml-1 text-[10px]" />
               </div>
             </div>
 

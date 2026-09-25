@@ -1,5 +1,5 @@
 import { TAG_COLORS, TYPES, WORKFLOW_STATUS_META, type Item } from "@/lib/brain-model";
-import { formatCardDate } from "@/lib/brain-format";
+import { CardDate } from "./CardDate";
 
 interface BoardViewProps {
   items: Item[];
@@ -94,7 +94,7 @@ export function BoardView({
                             >
                               {workflowStatus.label}
                             </span>
-                            <span className="ml-auto text-[9px] font-mono text-gray-700">{formatCardDate(item.createdAt)}</span>
+                            <CardDate value={item.createdAt} className="ml-auto text-[9px]" />
                           </div>
                           {relationCount > 0 && (
                             <div className="mt-1">

@@ -37,16 +37,19 @@ test("TableView uses a compact database layout with clearer interactive cells", 
   assert.match(tableSource, /href=\{localFileViewerHref\(item\.url\)\}/);
   assert.match(tableSource, /target="_blank"/);
   assert.match(tableSource, /Updated/);
-  assert.match(tableSource, /formatCardDate\(item\.updatedAt\)/);
+  assert.match(tableSource, /<CardDate value=\{item\.updatedAt\}/);
 });
 
-test("every card view shows the creation date as day month year", async () => {
+test("every card view shows the creation date as a highlighted day month year chip", async () => {
+  const cardDateSource = await readFile(new URL("../components/brain/CardDate.tsx", import.meta.url), "utf8");
+  assert.match(cardDateSource, /\{formatCardDate\(value\)\}/);
+  assert.match(cardDateSource, /text-gray-200/);
   const sources = await Promise.all(
     ["components/brain/ItemCard.tsx", "components/brain/BoardView.tsx", "components/brain/TableView.tsx", "app/shared/[id]/page.tsx"]
       .map(file => readFile(new URL(`../${file}`, import.meta.url), "utf8"))
   );
   for (const source of sources) {
-    assert.match(source, /formatCardDate\((item|row)\.createdAt\)/);
+    assert.match(source, /<CardDate value=\{(item|row)\.createdAt\}/);
   }
 });
 

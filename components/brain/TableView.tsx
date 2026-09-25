@@ -1,6 +1,7 @@
 import Image from "next/image";
 import { TAG_COLORS, TYPES, WORKFLOW_STATUS_META, type Item } from "@/lib/brain-model";
-import { formatCardDate, sourceFromUrl } from "@/lib/brain-format";
+import { sourceFromUrl } from "@/lib/brain-format";
+import { CardDate } from "./CardDate";
 import { localFileViewerHref } from "@/lib/local-file-links";
 import { showToast } from "../Toast";
 import { copyToClipboard } from "@/lib/clipboard";
@@ -245,11 +246,11 @@ export function TableView({
                     <span className="font-mono text-[10px] text-gray-700">Manual</span>
                   )}
                 </td>
-                <td className={`${cellClass} font-mono text-[10px] text-gray-600`}>
-                  {formatCardDate(item.createdAt)}
+                <td className={cellClass}>
+                  <CardDate value={item.createdAt} className="text-[10px]" />
                 </td>
-                <td className={`${cellClass} border-r-0 text-right font-mono text-[10px] text-gray-700`}>
-                  {formatCardDate(item.updatedAt)}
+                <td className={`${cellClass} border-r-0 text-right`}>
+                  <CardDate value={item.updatedAt} className="text-[10px]" />
                 </td>
               </tr>
             );

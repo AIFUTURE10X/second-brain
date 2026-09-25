@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { items } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { verifyShareToken } from "@/lib/share-links";
-import { formatCardDate } from "@/lib/brain-format";
+import { CardDate } from "@/components/brain/CardDate";
 import { LinkifiedText } from "@/components/LinkifiedText";
 import type { Metadata } from "next";
 
@@ -37,7 +37,6 @@ export default async function SharedCardPage({
   const noteEntries = (row.noteEntries || []).filter(entry => entry.body?.trim());
   const websiteLinks = (row.websiteLinks || []).filter(link => link.url);
   const checklist = row.checklistItems || [];
-  const created = formatCardDate(row.createdAt);
 
   return (
     <div className="min-h-screen px-4 py-10" style={{ background: "#0D0F12" }}>
@@ -49,7 +48,7 @@ export default async function SharedCardPage({
           <div className="mb-2 flex items-center gap-2 text-[11px] font-mono text-gray-500">
             <span className="rounded-full border border-brand-border px-2 py-0.5">{row.type}</span>
             {row.category && <span className="rounded-full border border-brand-border px-2 py-0.5">{row.category}</span>}
-            <span>{created}</span>
+            <CardDate value={row.createdAt} />
           </div>
           <h1 className="text-xl font-bold text-gray-100" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
             {row.title || row.ogTitle || "Untitled"}

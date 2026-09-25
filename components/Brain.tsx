@@ -56,6 +56,7 @@ import {
   type WorkflowStatus,
 } from "@/lib/brain-model";
 import {
+  formatCardDate,
   resolveContentType,
   sourceFromUrl,
   toDateTimeLocal,
@@ -1910,11 +1911,7 @@ export default function Brain() {
   // Timeline view (roadmap 2.3): when a date filter is active, group the
   // visible cards into day buckets with col-span headers.
   const timelineGroups = datePreset !== "all" ? groupItemsByDay(visibleItems) : null;
-  const timelineHeaderLabel = (key: string) => {
-    const date = new Date(`${key}T12:00:00`);
-    if (Number.isNaN(date.getTime())) return key;
-    return date.toLocaleDateString(undefined, { weekday: "short", year: "numeric", month: "short", day: "numeric" });
-  };
+  const timelineHeaderLabel = (key: string) => formatCardDate(`${key}T12:00:00`) || key;
 
   const allTags = [...new Set(items.flatMap(i => i.tags || []))];
   const withNotesCount = items.filter(i => {
@@ -2572,8 +2569,8 @@ export default function Brain() {
         ) : (timelineGroups ?? [{ key: "", items: visibleItems }]).map(group => (
           <div key={group.key || "all"} className="contents">
             {group.key && (
-              <div className={`mb-1 mt-2 first:mt-0 text-[11px] font-mono uppercase tracking-[0.15em] text-gray-500 ${gridFullSpanClass}`}>
-                {timelineHeaderLabel(group.key)} <span className="opacity-50">· {group.items.length}</span>
+              <div className={`mb-1 mt-2 first:mt-0 text-[11px] font-mono uppercase tracking-[0.15em] text-gray-200 ${gridFullSpanClass}`}>
+                {timelineHeaderLabel(group.key)} <span className="text-gray-500">· {group.items.length}</span>
               </div>
             )}
             {group.items.map(renderItemCard)}

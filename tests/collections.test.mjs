@@ -86,6 +86,11 @@ test("timeline groups follow list order keyed by local day", () => {
   assert.equal(timelineDayKey("not a date"), "unknown");
 });
 
+test("timeline day headings use the card date format", async () => {
+  const brainSource = await readFile(new URL("../components/Brain.tsx", import.meta.url), "utf8");
+  assert.match(brainSource, /timelineHeaderLabel = \(key: string\) => formatCardDate\(`\$\{key\}T12:00:00`\) \|\| key/);
+});
+
 // ── Archive (2.4) ────────────────────────────────────────────────────────────
 
 test("schema and API gained the archive column and filters", () => {

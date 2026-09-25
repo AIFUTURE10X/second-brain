@@ -42,21 +42,11 @@ test("formatStamp renders local date-time and rejects garbage", () => {
   assert.equal(fmt.formatStamp("garbage"), "");
 });
 
-test("formatCreatedDate renders day month year and rejects garbage", () => {
-  assert.equal(fmt.formatCreatedDate("2026-09-25T08:30:00"), "25 Sep 2026");
-  assert.equal(fmt.formatCreatedDate("2026-12-31T23:59:00"), "31 Dec 2026");
-  assert.equal(fmt.formatCreatedDate(new Date(2025, 0, 2, 12)), "2 Jan 2025");
-  assert.equal(fmt.formatCreatedDate("garbage"), "");
-});
-
-test("timeAgo buckets minutes, hours, days, then falls back to a date", () => {
-  const now = Date.now();
-  assert.equal(fmt.timeAgo(new Date(now).toISOString()), "just now");
-  assert.equal(fmt.timeAgo(new Date(now - 5 * 60000).toISOString()), "5m ago");
-  assert.equal(fmt.timeAgo(new Date(now - 3 * 3600000).toISOString()), "3h ago");
-  assert.equal(fmt.timeAgo(new Date(now - 5 * 86400000).toISOString()), "5d ago");
-  const old = new Date(now - 60 * 86400000).toISOString();
-  assert.equal(fmt.timeAgo(old), new Date(old).toLocaleDateString());
+test("formatCardDate renders day month year and rejects garbage", () => {
+  assert.equal(fmt.formatCardDate("2026-09-25T08:30:00"), "25 Sep 2026");
+  assert.equal(fmt.formatCardDate("2026-12-31T23:59:00"), "31 Dec 2026");
+  assert.equal(fmt.formatCardDate(new Date(2025, 0, 2, 12)), "2 Jan 2025");
+  assert.equal(fmt.formatCardDate("garbage"), "");
 });
 
 test("toDateTimeLocal produces a datetime-local value preserving the instant", () => {

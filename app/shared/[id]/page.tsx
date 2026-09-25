@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { items } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { verifyShareToken } from "@/lib/share-links";
-import { formatCreatedDate } from "@/lib/brain-format";
+import { formatCardDate } from "@/lib/brain-format";
 import { LinkifiedText } from "@/components/LinkifiedText";
 import type { Metadata } from "next";
 
@@ -37,7 +37,7 @@ export default async function SharedCardPage({
   const noteEntries = (row.noteEntries || []).filter(entry => entry.body?.trim());
   const websiteLinks = (row.websiteLinks || []).filter(link => link.url);
   const checklist = row.checklistItems || [];
-  const created = formatCreatedDate(row.createdAt);
+  const created = formatCardDate(row.createdAt);
 
   return (
     <div className="min-h-screen px-4 py-10" style={{ background: "#0D0F12" }}>

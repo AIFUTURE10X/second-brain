@@ -88,9 +88,10 @@ async function saveToBrain(payload, config) {
 
 // On a PDF tab the file itself is uploaded too, so the card keeps the
 // document even if the link dies (and local files become shareable).
-async function savePage(tab) {
+// `extra` carries optional fields such as the business-idea tag.
+async function savePage(tab, extra = {}) {
   if (!(await SecondBrainPdf.tabIsPdf(tab))) {
-    saveToBrain({ type: "link", url: tab.url, title: tab.title || "" });
+    saveToBrain({ type: "link", url: tab.url, title: tab.title || "", ...extra });
     return;
   }
   const config = await loadConfig();
@@ -106,6 +107,7 @@ async function savePage(tab) {
       url: local ? "" : tab.url,
       title: tab.title || "",
       attachments: [attachment],
+      ...extra,
     }, config);
   } catch {
     flashBadge("pdf", "#EB5757"); // PDF not saved — the popup shows why
@@ -164,7 +166,11 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   }
 
   if (info.menuItemId === "save-page-idea" && pageUrl) {
-    saveToBrain({ type: "link", url: pageUrl, title: pageTitle, tags: [BUSINESS_IDEA_TAG] });
+    // Same path as "Save page", so a PDF tab (even a local file) keeps its document,
+    // which the AI OS then reads.
+    const idea = { tags: [BUSINESS_IDEA_TAG] };
+    if (tab?.id) savePage({ ...tab, url: pageUrl, title: pageTitle }, idea);
+    else saveToBrain({ type: "link", url: pageUrl, title: pageTitle, ...idea });
     return;
   }
 

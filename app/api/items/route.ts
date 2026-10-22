@@ -190,13 +190,16 @@ export async function POST(req: NextRequest) {
   let itemCategory: string = body.category || "";
 
   // AI auto-tag + auto-categorize when no tags/category provided. The business-idea tag
-  // alone doesn't count, so a quick-capture "/idea" card still gets its usual tags.
+  // alone doesn't count, so a quick-capture "/idea" card still gets its usual tags. It is
+  // stored lowercase whatever was typed: the AI OS finds cards with an exact ?tag= match.
   const sendsIdea = itemTags.some(isIdeaTag);
+  if (sendsIdea) itemTags = withIdeaTag(itemTags);
   if (withoutIdeaTag(itemTags).length === 0 && !itemCategory && process.env.ANTHROPIC_API_KEY) {
     const existingCats = await db.select({ name: categories.name }).from(categories).orderBy(asc(categories.name));
     const ai = await aiTagAndCategorize({
       title: body.title || og.ogTitle || fallbackTitle || "",
-      content: body.content || "",
+      // A link's own words ride in notes ("/idea <link> why"), so the tagger reads them too.
+      content: body.content || body.notes || "",
       url,
       ogTitle: og.ogTitle,
       ogDescription: og.ogDescription,

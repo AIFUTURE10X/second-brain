@@ -100,7 +100,9 @@ export async function POST(req: NextRequest) {
 
   // AI auto-tag + auto-categorize when no tags/category provided. The business-idea tag
   // alone doesn't count: a card the extension sends as an idea still gets its usual tags.
+  // It is stored lowercase whatever was sent: the AI OS finds cards with an exact ?tag=.
   const sendsIdea = tags.some(isIdeaTag);
+  if (sendsIdea) tags = withIdeaTag(tags);
   if (withoutIdeaTag(tags).length === 0 && !category && process.env.ANTHROPIC_API_KEY) {
     const existingCats = await db.select({ name: categories.name }).from(categories).orderBy(asc(categories.name));
     const ai = await aiTagAndCategorize({

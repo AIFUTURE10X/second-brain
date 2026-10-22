@@ -21,7 +21,7 @@ import {
   parseDoneCommand,
   parseFindCommand,
 } from "@/lib/telegram-commands.mjs";
-import { parseIdeaCommand, withIdeaTag } from "@/lib/business-idea.mjs";
+import { parseIdeaCommand, trimUrlPunctuation, withIdeaTag } from "@/lib/business-idea.mjs";
 import { normalizeChecklistItems } from "@/lib/task-checklists";
 import { syncWikiRelations } from "@/lib/wiki-link-store";
 import { spawnNextTaskOccurrence } from "@/lib/recurring-tasks";
@@ -155,9 +155,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
-  // Extract URLs from the message
+  // Extract URLs from the message ("…/article, could I sell this?" keeps no comma)
   const urlMatch = text.match(/https?:\/\/[^\s]+/);
-  const url = urlMatch?.[0] || "";
+  const url = trimUrlPunctuation(urlMatch?.[0] || "");
   const remainingText = text.replace(/https?:\/\/[^\s]+/g, "").trim();
 
   if (!url && !remainingText) {

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Second Brain — Save to Brain",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "One-click save any page, PDF, or selected text to your Second Brain",
   "icons": {
     "16": "icons/brain-16.png",

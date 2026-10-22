@@ -20,7 +20,13 @@ other users.
 
 - **Capture fast** — quick-capture bar mirroring the Telegram grammar: paste a
   URL → link (auto-enriched + AI-tagged), plain text → thought, `/t` → task,
-  `/m` → memory. Voice input included.
+  `/m` → memory, `/idea` → business idea. Voice input included.
+- **Business ideas → AI OS** — `/idea <link or idea> [why]` (Telegram or quick
+  capture), the extension's "Save page/link as business idea", or adding the tag
+  `business-idea` to any card. Phil's AI OS reads tagged cards every 5 minutes
+  (`GET /api/items?since=` with the API key, read-only), pulls the transcript or
+  page, and breaks it into scored ideas under Tasks → Business Ideas. The AI
+  taggers never set this tag (`lib/business-idea.mjs`).
 - **Find things later** — hybrid search: Postgres full-text search over a
   weighted, indexed `tsvector` column (title > tags/category > body/notes >
   link metadata) merged with pgvector semantic search (OpenAI
@@ -120,7 +126,8 @@ Request bodies are validated with zod; invalid payloads return
 
 - **Extension** (`extension/`): load unpacked in Chrome, set the deployment URL
   + `API_SECRET` in the popup. Right-click anywhere for "Save page / link /
-  selection to Brain" (result flashes on the toolbar badge). Shortcuts:
+  selection to Brain" or "Save page / link as business idea" (result flashes
+  on the toolbar badge). Shortcuts:
   Ctrl/Cmd+Shift+S saves the page, Ctrl/Cmd+Shift+L annotates the page's
   existing card with the highlighted text. On a tab showing a PDF (web or
   local), the popup and Ctrl/Cmd+Shift+S also upload the PDF itself as a card
@@ -130,8 +137,9 @@ Request bodies are validated with zod; invalid payloads return
 - **Telegram bot**: set `TELEGRAM_BOT_TOKEN` + `TELEGRAM_ALLOWED_USER_ID`, then
   register the webhook against `/api/telegram` (include
   `&secret_token=$TELEGRAM_WEBHOOK_SECRET` if set). Commands: send a URL/text
-  to capture, `/t` task, `/m` memory, `/find <query>` (same hybrid search as
-  the app), `/done <task title or id>`.
+  to capture, `/t` task, `/m` memory, `/idea <link or idea>` business idea for
+  the AI OS, `/find <query>` (same hybrid search as the app),
+  `/done <task title or id>`.
 - **Desktop** (`desktop/`): Tauri WebView wrapper pointed at the production
   URL; installer built by `.github/workflows/build-desktop.yml`. Includes the
   notification plugin — the in-app bell toggle fires native reminder

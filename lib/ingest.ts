@@ -143,14 +143,19 @@ export function parseAutoTagFlag(raw: string | null | undefined): boolean {
   return value === "1" || value === "true";
 }
 
-/** Model output is untrusted: lowercase, trim, drop blanks/dupes, cap at 5. */
+// BUSINESS_IDEA_TAG from lib/business-idea.mjs, spelled out because the tests transpile
+// this file on its own (tests/business-idea.test.mjs keeps the two equal). It sends a card
+// to the AI OS, so a model must never set it.
+export const AI_RESERVED_TAG = "business-idea";
+
+/** Model output is untrusted: lowercase, trim, drop blanks/dupes/the reserved tag, cap at 5. */
 export function normalizeAiTags(raw: unknown): string[] {
   if (!Array.isArray(raw)) return [];
   const seen = new Set<string>();
   for (const entry of raw) {
     if (typeof entry !== "string" && typeof entry !== "number") continue;
     const tag = String(entry).trim().toLowerCase().slice(0, 40);
-    if (tag) seen.add(tag);
+    if (tag && tag !== AI_RESERVED_TAG) seen.add(tag);
     if (seen.size >= 5) break;
   }
   return [...seen];

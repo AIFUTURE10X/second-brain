@@ -21,6 +21,7 @@ import {
   parseDoneCommand,
   parseFindCommand,
 } from "@/lib/telegram-commands.mjs";
+import { parseIdeaCommand, trimUrlPunctuation, withIdeaTag } from "@/lib/business-idea.mjs";
 import { normalizeChecklistItems } from "@/lib/task-checklists";
 import { syncWikiRelations } from "@/lib/wiki-link-store";
 import { spawnNextTaskOccurrence } from "@/lib/recurring-tasks";
@@ -72,15 +73,21 @@ export async function POST(req: NextRequest) {
   // Detect slash prefixes:
   //   /t or /task <text>     → task
   //   /m, /r, /remember <text> → memory
+  //   /idea or /bi <link or idea> → a normal link/thought capture tagged business-idea,
+  //     which the AI OS picks up and analyses (lib/business-idea.mjs)
+  const ideaText = parseIdeaCommand(rawText);
+  const isIdeaCommand = ideaText !== null;
   const taskMatch = rawText.match(/^\/(task|t)\s+([\s\S]+)/i);
   const memoryMatch = rawText.match(/^\/(remember|memory|mem|m|r)\s+([\s\S]+)/i);
-  const isTaskCommand = !!taskMatch;
-  const isMemoryCommand = !isTaskCommand && !!memoryMatch;
-  const text = isTaskCommand
-    ? taskMatch![2].trim()
-    : isMemoryCommand
-      ? memoryMatch![2].trim()
-      : rawText;
+  const isTaskCommand = !isIdeaCommand && !!taskMatch;
+  const isMemoryCommand = !isIdeaCommand && !isTaskCommand && !!memoryMatch;
+  const text = isIdeaCommand
+    ? ideaText
+    : isTaskCommand
+      ? taskMatch![2].trim()
+      : isMemoryCommand
+        ? memoryMatch![2].trim()
+        : rawText;
 
   // Lock the bot to a single user ID (allowlist) — prevents strangers who find the bot
   // username from spamming the owner's Brain. Accepts a single ID or a comma-separated list.
@@ -148,16 +155,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
-  // Extract URLs from the message
+  // Extract URLs from the message ("…/article, could I sell this?" keeps no comma)
   const urlMatch = text.match(/https?:\/\/[^\s]+/);
-  const url = urlMatch?.[0] || "";
+  const url = trimUrlPunctuation(urlMatch?.[0] || "");
   const remainingText = text.replace(/https?:\/\/[^\s]+/g, "").trim();
 
   if (!url && !remainingText) {
     await sendTelegram(
       botToken,
       chatId,
-      "Send me:\n• a URL → saved as a Link\n• plain text → saved as a Thought\n• '/t buy milk' → saved as a Task\n• '/m wifi password is abc123' → saved as a Memory\n• '/find <query>' → search your Brain\n• '/done <task title or id>' → complete a task"
+      isIdeaCommand
+        ? "Send /idea with a link or the idea itself, e.g.\n/idea https://youtu.be/… could I sell this to villa managers?\n/idea AI receptionist for dental clinics"
+        : "Send me:\n• a URL → saved as a Link\n• plain text → saved as a Thought\n• '/t buy milk' → saved as a Task\n• '/m wifi password is abc123' → saved as a Memory\n• '/idea <link or idea>' → a Business Idea for the AI OS\n• '/find <query>' → search your Brain\n• '/done <task title or id>' → complete a task"
     );
     return NextResponse.json({ ok: true });
   }
@@ -198,6 +207,7 @@ export async function POST(req: NextRequest) {
       tags = ai.tags;
       if (ai.category) category = ai.category.trim();
     }
+    if (isIdeaCommand) tags = withIdeaTag(tags);
 
     // Auto-create category if it doesn't exist
     if (category) {
@@ -239,8 +249,10 @@ export async function POST(req: NextRequest) {
     after(() => syncWikiRelations(row.id));
 
     // Reply with confirmation
-    const emoji = type === "task" ? "☐" : type === "memory" ? "💡" : type === "link" ? "◈" : "◉";
-    const label = type === "task" ? "Task added!" : type === "memory" ? "Memory saved!" : "Saved to Brain!";
+    const emoji = isIdeaCommand ? "💼" : type === "task" ? "☐" : type === "memory" ? "💡" : type === "link" ? "◈" : "◉";
+    const label = isIdeaCommand
+      ? "Business idea saved! The AI OS analyses it within 5 minutes (Tasks → Business Ideas)."
+      : type === "task" ? "Task added!" : type === "memory" ? "Memory saved!" : "Saved to Brain!";
     const tagStr = tags.length > 0 ? `\nTags: ${tags.map(t => `#${t}`).join(" ")}` : "";
     const catStr = category ? `\nCategory: ${category}` : "";
     await sendTelegram(botToken, chatId, `${emoji} ${label}\n\n${row.title || "Untitled"}${tagStr}${catStr}`);

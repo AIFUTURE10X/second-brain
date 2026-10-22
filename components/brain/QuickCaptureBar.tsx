@@ -10,7 +10,8 @@ interface QuickCaptureBarProps {
 }
 
 // Persistent capture input mirroring the Telegram bot grammar:
-// paste a URL → link, plain text → thought, "/t text" → task, "/m text" → memory.
+// paste a URL → link, plain text → thought, "/t text" → task, "/m text" → memory,
+// "/idea link or idea" → a business idea for the AI OS.
 export function QuickCaptureBar({ saving, onCapture }: QuickCaptureBarProps) {
   const [text, setText] = useState("");
 
@@ -28,7 +29,7 @@ export function QuickCaptureBar({ saving, onCapture }: QuickCaptureBarProps) {
           value={text}
           onChange={e => setText(e.target.value)}
           onKeyDown={e => { if (e.key === "Enter") submit(); }}
-          placeholder="Capture: paste a link, jot a thought, /t task, /m memory…"
+          placeholder="Capture: paste a link, jot a thought, /t task, /m memory, /idea business idea…"
           aria-label="Quick capture"
           className="w-full py-2.5 min-[1800px]:py-1.5 min-h-[44px] sm:min-h-0 min-[1800px]:min-h-[36px] pl-9 min-[1800px]:pl-8 pr-3 bg-brand-muted border border-brand-border rounded-lg text-sm min-[1800px]:text-xs text-gray-300 outline-none placeholder:text-gray-500 focus:border-[#E8A83860]"
         />

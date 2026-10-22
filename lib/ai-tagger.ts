@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { resolveAiCategory } from "./ingest";
+import { withoutIdeaTag } from "./business-idea.mjs";
 
 interface TagResult {
   tags: string[];
@@ -62,7 +63,8 @@ Reply ONLY with JSON, no explanation:
 
     const parsed = JSON.parse(match[0]);
     return {
-      tags: Array.isArray(parsed.tags) ? parsed.tags.map(String).slice(0, 5) : [],
+      // The business-idea tag sends a card to the AI OS; only a person may set it.
+      tags: Array.isArray(parsed.tags) ? withoutIdeaTag(parsed.tags.map(String)).slice(0, 5) : [],
       category: resolveAiCategory(parsed.category, input.existingCategories),
     };
   } catch {

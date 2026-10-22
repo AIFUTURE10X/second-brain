@@ -29,7 +29,11 @@ const MENU_ITEMS = [
   { id: "save-page", title: "Save page to Brain", contexts: ["page"] },
   { id: "save-link", title: "Save link to Brain", contexts: ["link"] },
   { id: "save-selection", title: "Save selection to Brain", contexts: ["selection"] },
+  // The business-idea tag sends the card on to the AI OS (lib/business-idea.mjs).
+  { id: "save-page-idea", title: "Save page as business idea", contexts: ["page"] },
+  { id: "save-link-idea", title: "Save link as business idea", contexts: ["link"] },
 ];
+const BUSINESS_IDEA_TAG = "business-idea";
 
 chrome.runtime.onInstalled.addListener(() => {
   migrateStoredHost();
@@ -151,6 +155,16 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
       // some cases; fall back to letting the server enrich the title.
       title: info.selectionText || "",
     });
+    return;
+  }
+
+  if (info.menuItemId === "save-link-idea" && info.linkUrl) {
+    saveToBrain({ type: "link", url: info.linkUrl, title: info.selectionText || "", tags: [BUSINESS_IDEA_TAG] });
+    return;
+  }
+
+  if (info.menuItemId === "save-page-idea" && pageUrl) {
+    saveToBrain({ type: "link", url: pageUrl, title: pageTitle, tags: [BUSINESS_IDEA_TAG] });
     return;
   }
 

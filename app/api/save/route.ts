@@ -14,6 +14,7 @@ import { findUrlDuplicates } from "@/lib/duplicate-detection.mjs";
 import { parseBody, readJsonBody, serverError } from "@/lib/api-errors";
 import { saveSchema } from "@/lib/validation";
 import { fallbackTitleFromUrl } from "@/lib/url-title";
+import { isIdeaTag, withIdeaTag, withoutIdeaTag } from "@/lib/business-idea.mjs";
 
 /**
  * POST /api/save?key=API_SECRET
@@ -32,6 +33,7 @@ import { fallbackTitleFromUrl } from "@/lib/url-title";
  *
  * All fields are optional except at least one of url/text/title/content/attachments.
  * Optional: type, tags (string[] or comma-string), category, notes
+ *   tags: ["business-idea"] sends the card to the AI OS Business Ideas lane
  *
  * AI auto-tagging: If ANTHROPIC_API_KEY is set and no tags/category provided,
  * Claude suggests tags + category automatically.
@@ -96,8 +98,10 @@ export async function POST(req: NextRequest) {
   // A saved file's own name beats a title guessed from its URL path.
   const resolvedTitle = title || og.ogTitle || attachments[0]?.name || fallbackTitle || "";
 
-  // AI auto-tag + auto-categorize when no tags/category provided
-  if (tags.length === 0 && !category && process.env.ANTHROPIC_API_KEY) {
+  // AI auto-tag + auto-categorize when no tags/category provided. The business-idea tag
+  // alone doesn't count: a card the extension sends as an idea still gets its usual tags.
+  const sendsIdea = tags.some(isIdeaTag);
+  if (withoutIdeaTag(tags).length === 0 && !category && process.env.ANTHROPIC_API_KEY) {
     const existingCats = await db.select({ name: categories.name }).from(categories).orderBy(asc(categories.name));
     const ai = await aiTagAndCategorize({
       title: resolvedTitle,
@@ -108,7 +112,7 @@ export async function POST(req: NextRequest) {
       siteName: og.siteName,
       existingCategories: existingCats.map(c => c.name),
     });
-    if (ai.tags.length > 0) tags = ai.tags;
+    if (ai.tags.length > 0) tags = sendsIdea ? withIdeaTag(ai.tags) : ai.tags;
     if (ai.category) category = ai.category.trim();
   }
 

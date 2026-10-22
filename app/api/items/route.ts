@@ -19,6 +19,7 @@ import { deriveTaskCompletion, normalizeChecklistItems } from "@/lib/task-checkl
 import { appendYouTubeDescriptionLinksToNotes, fetchYouTubeDescriptionLinks, type YouTubeDescriptionLink } from "@/lib/youtube";
 import { fallbackTitleFromUrl } from "@/lib/url-title";
 import { formatLocalPathLabel } from "@/lib/local-path";
+import { isIdeaTag, withIdeaTag, withoutIdeaTag } from "@/lib/business-idea.mjs";
 
 function prepareTaskFields(
   type: unknown,
@@ -188,8 +189,10 @@ export async function POST(req: NextRequest) {
   let itemTags: string[] = body.tags || [];
   let itemCategory: string = body.category || "";
 
-  // AI auto-tag + auto-categorize when no tags/category provided
-  if (itemTags.length === 0 && !itemCategory && process.env.ANTHROPIC_API_KEY) {
+  // AI auto-tag + auto-categorize when no tags/category provided. The business-idea tag
+  // alone doesn't count, so a quick-capture "/idea" card still gets its usual tags.
+  const sendsIdea = itemTags.some(isIdeaTag);
+  if (withoutIdeaTag(itemTags).length === 0 && !itemCategory && process.env.ANTHROPIC_API_KEY) {
     const existingCats = await db.select({ name: categories.name }).from(categories).orderBy(asc(categories.name));
     const ai = await aiTagAndCategorize({
       title: body.title || og.ogTitle || fallbackTitle || "",
@@ -200,7 +203,7 @@ export async function POST(req: NextRequest) {
       siteName: og.siteName,
       existingCategories: existingCats.map(c => c.name),
     });
-    if (ai.tags.length > 0) itemTags = ai.tags;
+    if (ai.tags.length > 0) itemTags = sendsIdea ? withIdeaTag(ai.tags) : ai.tags;
     if (ai.category) {
       itemCategory = ai.category.trim();
     }

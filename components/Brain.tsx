@@ -96,6 +96,7 @@ import {
 import { BulkActionsBar } from "./brain/BulkActionsBar";
 import { AskBrainPanel } from "./brain/AskBrainPanel";
 import { notifyDesktop } from "@/lib/desktop-notifications";
+import { quickCapturePayload } from "@/lib/quick-capture.mjs";
 import {
   NOTIFIED_STORAGE_KEY,
   NOTIFY_TOGGLE_STORAGE_KEY,
@@ -1267,28 +1268,17 @@ export default function Brain() {
     );
   };
 
-  // Quick capture — mirrors the Telegram bot grammar: URL → link,
-  // "/t text" → task, "/m text" → memory, anything else → thought.
+  // Quick capture — mirrors the Telegram bot grammar (lib/quick-capture.mjs).
   const captureQuick = async (raw: string): Promise<boolean> => {
     const text = raw.trim();
     if (!text || quickCapturing) return false;
-    let payload: { type: ItemType; title?: string; url?: string };
-    let label: string;
-    const taskMatch = text.match(/^\/t\s+(.+)$/i);
-    const memoryMatch = text.match(/^\/m\s+(.+)$/i);
-    if (taskMatch) {
-      payload = { type: "task", title: taskMatch[1] };
-      label = "Task";
-    } else if (memoryMatch) {
-      payload = { type: "memory", title: memoryMatch[1] };
-      label = "Memory";
-    } else if (/^https?:\/\/\S+$/i.test(text)) {
-      payload = { type: "link", url: text };
-      label = "Link";
-    } else {
-      payload = { type: "thought", title: text };
-      label = "Thought";
+    const parsed = quickCapturePayload(text);
+    if (parsed.error) {
+      showToast(parsed.error, "error");
+      return false;
     }
+    const payload = parsed.payload as { type: ItemType; title?: string; url?: string; notes?: string; content?: string; tags?: string[] };
+    const label = parsed.label ?? "Capture";
     setQuickCapturing(true);
     const fullPayload = { tags: [], category: "", ...payload };
     try {

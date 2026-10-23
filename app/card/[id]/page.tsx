@@ -14,6 +14,8 @@ import { openLocalPathInDesktop, openLocalFileLink } from "@/lib/desktop";
 import { TranscriptSection, isVideoUrl } from "@/components/brain/TranscriptSection";
 import { CardSummary } from "@/components/brain/CardSummary";
 import { isAiSummaryEntry } from "@/lib/item-summary";
+import { IdeaToggleButton } from "@/components/brain/IdeaToggle";
+import { hasIdeaTag, ideaToggleNotice, setIdeaTagText } from "@/lib/business-idea.mjs";
 
 type ItemType = "note" | "link" | "clip" | "thought" | "task" | "memory" | "folder";
 
@@ -486,6 +488,29 @@ export default function CardPopoutPage() {
     return false;
   };
 
+  // 💼 sends the card to the AI OS in one tap. Only the business-idea tag changes on the
+  // server (POST /api/items/idea): unsaved edits stay in the form for Save, and the
+  // card's reminder is not re-sent.
+  const toggleIdea = async () => {
+    if (!id) return;
+    const send = !hasIdeaTag(form.tags.split(","));
+    try {
+      const res = await fetch("/api/items/idea", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, send }),
+      });
+      if (!res.ok) throw new Error();
+      const saved: Item = await res.json();
+      if (dirtyRef.current) setForm(f => ({ ...f, tags: setIdeaTagText(f.tags, send) }));
+      else applyItem(saved);
+      broadcast({ type: "item-updated", item: saved });
+      showToast(ideaToggleNotice(send), "success");
+    } catch {
+      showToast("Couldn't update the card", "error");
+    }
+  };
+
   // Writes an "AI Summary" note entry server-side. Unsaved edits are flushed
   // first — the route rebuilds noteEntries from the DB row, so summarizing over
   // a dirty form would drop whatever hadn't been saved yet.
@@ -658,6 +683,12 @@ export default function CardPopoutPage() {
             color: "#EB5757",
           }}
         >{form.actionRequired ? "⚡ Action needed" : "⚡ Flag for action"}</button>
+        <IdeaToggleButton
+          variant="pill"
+          className="px-3 py-1.5 rounded-md text-[11px] font-mono transition active:scale-95"
+          sent={hasIdeaTag(form.tags.split(","))}
+          onToggle={toggleIdea}
+        />
       </div>
 
       <div className="mb-4 rounded-lg border border-brand-border bg-brand-muted/40 p-3">

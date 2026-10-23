@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { Category } from "@/lib/brain-model";
+import { BUSINESS_IDEA_TAG } from "@/lib/business-idea.mjs";
 
 interface BulkActionsBarProps {
   count: number;
@@ -62,6 +63,11 @@ export function BulkActionsBar(props: BulkActionsBarProps) {
             # Add tag
           </button>
         )}
+
+        {/* Tags every selected card for the AI OS Business Ideas lane (lib/business-idea.mjs). */}
+        <button onClick={() => onAddTag(BUSINESS_IDEA_TAG)} disabled={busy} className={`${actionClass} border-[#BB6BD940] text-[#BB6BD9]`}>
+          💼 Send to AI OS
+        </button>
 
         {mode === "category" ? (
           <select

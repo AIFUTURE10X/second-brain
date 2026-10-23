@@ -42,7 +42,11 @@ export function IdeaToggleButton({ sent, onToggle, variant, className }: {
   );
 }
 
-/** Grid cards: same save path as Brain's ★/⚡ flags (PUT, cross-tab sync, offline queue). */
+/**
+ * Grid cards. POST /api/items/idea flips only the tag on the server, so a tag added
+ * elsewhere meanwhile survives; the reply's updatedAt is kept so the next edit of this
+ * card isn't refused as a conflict. Offline, it queues a PUT like Brain's ★/⚡ flags.
+ */
 export async function toggleCardIdea(item: Item, deps: {
   setItems: Dispatch<SetStateAction<Item[]>>;
   broadcastSync: (msg: SyncPayload) => void;
@@ -51,26 +55,28 @@ export async function toggleCardIdea(item: Item, deps: {
   if (isOfflineTempId(item.id)) return;
   const send = !hasIdeaTag(item.tags);
   const tags: string[] = setIdeaTag(item.tags, send);
-  const applyLocally = () => deps.setItems(prev => prev.map(i => i.id === item.id ? { ...i, tags } : i));
+  const applyLocally = (patch: Partial<Item>) => deps.setItems(prev => prev.map(i => i.id === item.id ? { ...i, ...patch } : i));
   try {
-    const res = await fetch("/api/items", {
-      method: "PUT",
+    const res = await fetch("/api/items/idea", {
+      method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: item.id, tags }),
+      body: JSON.stringify({ id: item.id, send }),
     });
     if (!res.ok) {
       showToast("Failed to update", "error");
       return;
     }
-    try {
-      const saved = await res.clone().json();
-      if (saved && saved.id) deps.broadcastSync({ type: "item-updated", item: saved });
-    } catch {}
-    applyLocally();
+    const saved = await res.json().catch(() => null) as Item | null;
+    if (saved?.id) {
+      deps.broadcastSync({ type: "item-updated", item: saved });
+      applyLocally({ tags: saved.tags, updatedAt: saved.updatedAt });
+    } else {
+      applyLocally({ tags });
+    }
     showToast(ideaToggleNotice(send), "success");
   } catch {
     if (await deps.queueWriteOffline({ kind: "update", payload: { id: item.id, tags } })) {
-      applyLocally();
+      applyLocally({ tags });
       showToast("Offline — change queued for sync", "success");
     } else {
       showToast("Failed to update", "error");

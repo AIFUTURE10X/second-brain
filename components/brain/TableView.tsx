@@ -2,6 +2,8 @@ import Image from "next/image";
 import { TAG_COLORS, TYPES, WORKFLOW_STATUS_META, type Item } from "@/lib/brain-model";
 import { sourceFromUrl } from "@/lib/brain-format";
 import { CardDate } from "./CardDate";
+import { IdeaToggleButton } from "./IdeaToggle";
+import { hasIdeaTag } from "@/lib/business-idea.mjs";
 import { localFileViewerHref } from "@/lib/local-file-links";
 import { showToast } from "../Toast";
 import { copyToClipboard } from "@/lib/clipboard";
@@ -15,6 +17,7 @@ interface TableViewProps {
   onToggleSelected: (id: string) => void;
   onOpenCard: (id: string) => void;
   onToggleFlag: (id: string, flag: "favourite" | "actionRequired") => void;
+  onToggleIdea: (item: Item) => void;
   onMarkReviewed: (id: string) => void;
 }
 
@@ -26,6 +29,7 @@ export function TableView({
   onToggleSelected,
   onOpenCard,
   onToggleFlag,
+  onToggleIdea,
   onMarkReviewed,
 }: TableViewProps) {
   const headCellClass = "sticky top-0 z-10 border-b border-r border-brand-border bg-[#0F1218]/95 px-2.5 py-2 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-gray-500";
@@ -192,6 +196,7 @@ export function TableView({
                     >
                       ⚡
                     </button>
+                    <IdeaToggleButton variant="icon" className="rounded px-1 py-0.5 text-[12px] leading-none transition hover:bg-white/5" sent={hasIdeaTag(item.tags)} onToggle={() => onToggleIdea(item)} />
                   </div>
                 </td>
                 <td className={cellClass}>

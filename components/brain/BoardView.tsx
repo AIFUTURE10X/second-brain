@@ -1,5 +1,7 @@
 import { TAG_COLORS, TYPES, WORKFLOW_STATUS_META, type Item } from "@/lib/brain-model";
 import { CardDate } from "./CardDate";
+import { IdeaToggleButton } from "./IdeaToggle";
+import { hasIdeaTag } from "@/lib/business-idea.mjs";
 
 interface BoardViewProps {
   items: Item[];
@@ -10,6 +12,7 @@ interface BoardViewProps {
   onToggleSelected: (id: string) => void;
   onOpenCard: (id: string) => void;
   onToggleFlag: (id: string, flag: "favourite" | "actionRequired") => void;
+  onToggleIdea: (item: Item) => void;
   onMarkReviewed: (id: string) => void;
 }
 
@@ -22,6 +25,7 @@ export function BoardView({
   onToggleSelected,
   onOpenCard,
   onToggleFlag,
+  onToggleIdea,
   onMarkReviewed,
 }: BoardViewProps) {
   const usedCategoryNames = items.map(item => item.category).filter((value): value is string => Boolean(value));
@@ -136,6 +140,7 @@ export function BoardView({
                         >
                           ⚡
                         </button>
+                        <IdeaToggleButton variant="icon" className="rounded px-1 py-0.5 text-[12px] transition hover:bg-white/5" sent={hasIdeaTag(item.tags)} onToggle={() => onToggleIdea(item)} />
                         {isUnreviewed && (
                           <button
                             type="button"

@@ -28,11 +28,11 @@ import {
   ideaToggleNotice,
   parseIdeaCallback,
   parseIdeaCommand,
-  setIdeaTag,
   trimUrlPunctuation,
   withIdeaButtonState,
   withIdeaTag,
 } from "@/lib/business-idea.mjs";
+import { setCardIdea } from "@/lib/business-idea-store";
 import { normalizeChecklistItems } from "@/lib/task-checklists";
 import { syncWikiRelations } from "@/lib/wiki-link-store";
 import { spawnNextTaskOccurrence } from "@/lib/recurring-tasks";
@@ -288,7 +288,7 @@ type CallbackQuery = {
 
 // Inline-button taps:
 //   "idea:on|off:<card id>[:n]" (💼 under a save or /find reply) → add or remove the
-//     business-idea tag; the bump to updated_at is what the AI OS ?since= pull sees.
+//     business-idea tag (lib/business-idea-store.ts).
 //   "snooze:<id>:<1h|3h|1d>" (reminder snooze, roadmap 2.8) → back to pending with
 //     snoozed_until = now + duration; the cron re-fires it once the snooze passes.
 async function handleCallbackQuery(botToken: string, callbackQuery: CallbackQuery) {
@@ -309,15 +309,10 @@ async function handleCallbackQuery(botToken: string, callbackQuery: CallbackQuer
   const idea = parseIdeaCallback(callbackQuery.data);
   if (idea) {
     try {
-      const [card] = await db.select({ tags: items.tags }).from(items).where(eq(items.id, idea.itemId));
-      if (!card) {
+      if (!(await setCardIdea(idea.itemId, idea.send))) {
         await answer("That card is gone from your Brain.");
         return NextResponse.json({ ok: true });
       }
-      await db
-        .update(items)
-        .set({ tags: setIdeaTag(card.tags, idea.send), updatedAt: new Date() })
-        .where(eq(items.id, idea.itemId));
       await answer(ideaToggleNotice(idea.send));
       const chatId = callbackQuery.message?.chat?.id;
       const messageId = callbackQuery.message?.message_id;

@@ -1438,6 +1438,8 @@ export default function Brain() {
     }
   };
 
+  const toggleIdea = (item: Item) => toggleCardIdea(item, { setItems, broadcastSync, queueWriteOffline });
+
   const handleCycleReadingStatus = async (id: string) => {
     const item = items.find(i => i.id === id);
     if (!item || isOfflineTempId(id)) return;
@@ -2113,7 +2115,7 @@ export default function Brain() {
       onToggleChecklistRow={rowId => toggleChecklistItemOnCard(item, rowId)}
       onOpenCard={openCardInCurrentTab}
       onToggleFlag={flag => handleToggleFlag(item.id, flag)}
-      onToggleIdea={() => toggleCardIdea(item, { setItems, broadcastSync, queueWriteOffline })}
+      onToggleIdea={() => toggleIdea(item)}
       onMarkReviewed={() => handleMarkReviewed(item.id)}
       onPin={() => handlePin(item.id)}
       onSummarize={() => handleSummarize(item.id)}
@@ -2544,6 +2546,7 @@ export default function Brain() {
             onToggleSelected={toggleSelectedId}
             onOpenCard={openCardInCurrentTab}
             onToggleFlag={handleToggleFlag}
+            onToggleIdea={toggleIdea}
             onMarkReviewed={handleMarkReviewed}
           />
         ) : density === "board" && visibleItems.length > 0 ? (
@@ -2556,6 +2559,7 @@ export default function Brain() {
             onToggleSelected={toggleSelectedId}
             onOpenCard={openCardInCurrentTab}
             onToggleFlag={handleToggleFlag}
+            onToggleIdea={toggleIdea}
             onMarkReviewed={handleMarkReviewed}
           />
         ) : (timelineGroups ?? [{ key: "", items: visibleItems }]).map(group => (

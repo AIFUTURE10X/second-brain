@@ -15,7 +15,7 @@ import { TranscriptSection, isVideoUrl } from "@/components/brain/TranscriptSect
 import { CardSummary } from "@/components/brain/CardSummary";
 import { isAiSummaryEntry } from "@/lib/item-summary";
 import { IdeaToggleButton } from "@/components/brain/IdeaToggle";
-import { hasIdeaTag, ideaToggleNotice, toggleIdeaTagText } from "@/lib/business-idea.mjs";
+import { hasIdeaTag, ideaToggleNotice, setIdeaTagText } from "@/lib/business-idea.mjs";
 
 type ItemType = "note" | "link" | "clip" | "thought" | "task" | "memory" | "folder";
 
@@ -454,16 +454,14 @@ export default function CardPopoutPage() {
 
   // Returns true when the card reached the server, so callers that need the
   // saved state (e.g. summarize) can bail out instead of clobbering edits.
-  // `overrides` saves a field changed in the same click (state is not yet updated).
-  const save = async (overrides: Partial<typeof form> = {}): Promise<boolean> => {
+  const save = async (): Promise<boolean> => {
     if (!id || saving) return false;
     setSaving(true);
-    const current = { ...form, ...overrides };
-    const tags = current.tags.split(",").map(t => t.trim()).filter(Boolean);
-    const { reminderId, reminderDueAt, reminderMessage, websiteLinks: rawWebsiteLinks, ...itemForm } = current;
+    const tags = form.tags.split(",").map(t => t.trim()).filter(Boolean);
+    const { reminderId, reminderDueAt, reminderMessage, websiteLinks: rawWebsiteLinks, ...itemForm } = form;
     // Drop entries whose body is entirely empty so we don't persist accidental blanks.
-    const entries = current.noteEntries.filter(e => e.body.trim().length > 0);
-    const checklistItems = normalizeChecklistItems(current.checklistItems);
+    const entries = form.noteEntries.filter(e => e.body.trim().length > 0);
+    const checklistItems = normalizeChecklistItems(form.checklistItems);
     // Drop blank rows and normalize bare hosts to https:// before saving.
     const websiteLinks = rawWebsiteLinks
       .map(link => ({ url: ensureWebsiteLinkUrl(link.url), label: link.label.trim() }))
@@ -490,12 +488,27 @@ export default function CardPopoutPage() {
     return false;
   };
 
-  // 💼 sends the card to the AI OS (business-idea tag) in one tap: it saves at once,
-  // flushing any other unsaved edits with it, like summarize does.
+  // 💼 sends the card to the AI OS in one tap. Only the business-idea tag changes on the
+  // server (POST /api/items/idea): unsaved edits stay in the form for Save, and the
+  // card's reminder is not re-sent.
   const toggleIdea = async () => {
-    const tags = toggleIdeaTagText(form.tags);
-    if (await save({ tags })) showToast(ideaToggleNotice(hasIdeaTag(tags.split(","))), "success");
-    else showToast("Couldn't update the card", "error");
+    if (!id) return;
+    const send = !hasIdeaTag(form.tags.split(","));
+    try {
+      const res = await fetch("/api/items/idea", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, send }),
+      });
+      if (!res.ok) throw new Error();
+      const saved: Item = await res.json();
+      if (dirtyRef.current) setForm(f => ({ ...f, tags: setIdeaTagText(f.tags, send) }));
+      else applyItem(saved);
+      broadcast({ type: "item-updated", item: saved });
+      showToast(ideaToggleNotice(send), "success");
+    } catch {
+      showToast("Couldn't update the card", "error");
+    }
   };
 
   // Writes an "AI Summary" note entry server-side. Unsaved edits are flushed
@@ -1044,7 +1057,7 @@ export default function CardPopoutPage() {
           className="py-3 px-4 rounded-xl bg-brand-muted border border-brand-border text-gray-500 text-sm font-medium active:scale-95 transition"
         >Close</button>
         <button
-          onClick={() => save()}
+          onClick={save}
           disabled={saving || !dirty}
           className="flex-1 py-3 rounded-xl text-white text-sm font-semibold transition-transform hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50"
           style={{ background: "linear-gradient(135deg, #F2C94C, #E8A838)", boxShadow: "0 4px 16px rgba(232,168,56,0.25)" }}

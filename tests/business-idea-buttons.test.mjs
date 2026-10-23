@@ -1,17 +1,19 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { PGlite } from "@electric-sql/pglite";
 
 import {
   BUSINESS_IDEA_TAG,
   findIdeaKeyboard,
   hasIdeaTag,
   ideaButton,
+  ideaTagsSql,
   ideaKeyboard,
   ideaToggleNotice,
   parseIdeaCallback,
   setIdeaTag,
-  toggleIdeaTagText,
+  setIdeaTagText,
   withIdeaButtonState,
 } from "../lib/business-idea.mjs";
 import { buildSnoozeKeyboard, parseSnoozeCallback } from "../lib/reminder-snooze.mjs";
@@ -23,6 +25,10 @@ const ideaToggleSource = await read("components/brain/IdeaToggle.tsx");
 const brainSource = await read("components/Brain.tsx");
 const bulkSource = await read("components/brain/BulkActionsBar.tsx");
 const cardPageSource = await read("app/card/[id]/page.tsx");
+const storeSource = await read("lib/business-idea-store.ts");
+const ideaRouteSource = await read("app/api/items/idea/route.ts");
+const tableSource = await read("components/brain/TableView.tsx");
+const boardSource = await read("components/brain/BoardView.tsx");
 
 const ID = "0b6f3c1e-5a7d-4c2b-9e8f-1a2b3c4d5e6f";
 const OTHER = "9f8e7d6c-5b4a-4321-8fed-cba987654321";
@@ -34,9 +40,9 @@ test("the 💼 toggle adds or removes the tag and leaves the others alone", () =
   assert.deepEqual(setIdeaTag(["ai"], true), ["ai", BUSINESS_IDEA_TAG]);
   assert.deepEqual(setIdeaTag(["ai", BUSINESS_IDEA_TAG], false), ["ai"]);
   assert.deepEqual(setIdeaTag(null, true), [BUSINESS_IDEA_TAG]);
-  assert.equal(toggleIdeaTagText("ai, startup"), `ai, startup, ${BUSINESS_IDEA_TAG}`);
-  assert.equal(toggleIdeaTagText(`ai,  Business-Idea ,startup`), "ai, startup");
-  assert.equal(toggleIdeaTagText(""), BUSINESS_IDEA_TAG);
+  assert.equal(setIdeaTagText("ai, startup", true), `ai, startup, ${BUSINESS_IDEA_TAG}`);
+  assert.equal(setIdeaTagText(`ai,  Business-Idea ,startup`, false), "ai, startup");
+  assert.equal(setIdeaTagText("", true), BUSINESS_IDEA_TAG);
   for (const sent of [true, false]) assert.ok(ideaToggleNotice(sent).length <= 200, "fits a callback toast");
 });
 
@@ -90,22 +96,61 @@ test("a tap flips only that card's button and keeps its number", () => {
   assert.deepEqual(withIdeaButtonState(undefined, ID, true), { inline_keyboard: [] });
 });
 
-test("Telegram: saves and /find carry 💼; a tap is allowlisted, then flips the tag", () => {
-  assert.match(telegramSource, /type === "link" \|\| type === "thought" \? ideaKeyboard\(row\.id, hasIdeaTag\(tags\)\)/);
-  assert.match(telegramSource, /findIdeaKeyboard\(result\.rows\)/);
-  const handler = telegramSource.slice(telegramSource.indexOf("async function handleCallbackQuery"));
-  assert.ok(handler.indexOf("allowedIds.includes(senderId)") < handler.indexOf("parseIdeaCallback("), "strangers are refused first");
-  assert.match(handler, /set\(\{ tags: setIdeaTag\(card\.tags, idea\.send\), updatedAt: new Date\(\) \}\)/);
-  assert.match(handler, /withIdeaButtonState\(callbackQuery\.message\?\.reply_markup, idea\.itemId, idea\.send\)/);
+test("the server flips the tag in one statement, keeping every other tag in order", async () => {
+  const pg = await PGlite.create();
+  await pg.exec(`CREATE TABLE items (id int PRIMARY KEY, tags jsonb)`);
+  const rows = [
+    [1, ["ai", "startup"]],
+    [2, ["ai", " Business-Idea ", "startup", BUSINESS_IDEA_TAG]],
+    [3, null],
+    [4, []],
+    [5, { not: "an array" }],
+  ];
+  for (const [id, tags] of rows) await pg.query(`INSERT INTO items VALUES ($1, $2)`, [id, tags === null ? null : JSON.stringify(tags)]);
+  const flip = async (id, send) =>
+    (await pg.query(`UPDATE items SET tags = ${ideaTagsSql(`"tags"`, send)} WHERE id = $1 RETURNING tags`, [id])).rows[0].tags;
+
+  assert.deepEqual(await flip(1, true), ["ai", "startup", BUSINESS_IDEA_TAG]);
+  assert.deepEqual(await flip(1, true), ["ai", "startup", BUSINESS_IDEA_TAG], "sending twice keeps one marker");
+  assert.deepEqual(await flip(2, false), ["ai", "startup"], "every spelling of the marker goes");
+  assert.deepEqual(await flip(2, true), ["ai", "startup", BUSINESS_IDEA_TAG]);
+  assert.deepEqual(await flip(3, true), [BUSINESS_IDEA_TAG]);
+  assert.deepEqual(await flip(4, false), []);
+  assert.deepEqual(await flip(5, true), [BUSINESS_IDEA_TAG]);
+  // A tag added between the client reading the card and the tap still survives.
+  await pg.query(`UPDATE items SET tags = tags || '["added-meanwhile"]'::jsonb WHERE id = 1`);
+  assert.deepEqual(await flip(1, false), ["ai", "startup", "added-meanwhile"]);
+  await pg.close();
 });
 
-test("web: 💼 on every card layout, the card page and the bulk bar", () => {
-  assert.equal(itemCardSource.match(/<IdeaToggleButton variant="(row|icon|pill)" sent=\{hasIdeaTag\(item\.tags\)\} onToggle=\{onToggleIdea\} \/>/g)?.length, 3);
-  assert.match(brainSource, /onToggleIdea=\{\(\) => toggleCardIdea\(item, \{ setItems, broadcastSync, queueWriteOffline \}\)\}/);
-  assert.match(ideaToggleSource, /body: JSON\.stringify\(\{ id: item\.id, tags \}\)/);
-  assert.match(ideaToggleSource, /queueWriteOffline\(\{ kind: "update", payload: \{ id: item\.id, tags \} \}\)/);
-  assert.match(bulkSource, /onAddTag\(BUSINESS_IDEA_TAG\)/);
-  assert.match(cardPageSource, /save\(\{ tags \}\)/);
-  // save() now takes overrides, so the Save button must not hand it the click event.
-  assert.doesNotMatch(cardPageSource, /onClick=\{save\}/);
+const has = (source, text, message) => assert.ok(source.includes(text), message ?? `missing: ${text}`);
+const count = (source, text) => source.split(text).length - 1;
+
+test("Telegram: saves and /find carry 💼; a tap is allowlisted, then flips only the tag", () => {
+  has(telegramSource, `type === "link" || type === "thought" ? ideaKeyboard(row.id, hasIdeaTag(tags))`);
+  has(telegramSource, "findIdeaKeyboard(result.rows)");
+  const handler = telegramSource.slice(telegramSource.indexOf("async function handleCallbackQuery"));
+  assert.ok(handler.indexOf("allowedIds.includes(senderId)") < handler.indexOf("parseIdeaCallback("), "strangers are refused first");
+  has(handler, "setCardIdea(idea.itemId, idea.send)");
+  has(handler, "withIdeaButtonState(callbackQuery.message?.reply_markup, idea.itemId, idea.send)");
+  has(storeSource, "sql.raw(ideaTagsSql(`\"tags\"`, send))");
+  has(storeSource, "after(() => updateItemEmbedding(row.id))", "tags feed the embedding");
+});
+
+test("web: 💼 on every card layout, table, board, card page and bulk bar; tag-only writes", () => {
+  for (const variant of ["row", "icon", "pill"]) {
+    has(itemCardSource, `<IdeaToggleButton variant="${variant}" sent={hasIdeaTag(item.tags)} onToggle={onToggleIdea} />`);
+  }
+  for (const source of [tableSource, boardSource]) has(source, "sent={hasIdeaTag(item.tags)} onToggle={() => onToggleIdea(item)}");
+  assert.equal(count(brainSource, "onToggleIdea={toggleIdea}"), 2, "table and board");
+  has(brainSource, "onToggleIdea={() => toggleIdea(item)}");
+  has(bulkSource, "onAddTag(BUSINESS_IDEA_TAG)");
+  // Grid and card page send only { id, send }; the grid keeps the server updatedAt (no false 409).
+  has(ideaToggleSource, `fetch("/api/items/idea"`);
+  has(ideaToggleSource, "applyLocally({ tags: saved.tags, updatedAt: saved.updatedAt })");
+  has(cardPageSource, `fetch("/api/items/idea"`);
+  const cardToggle = cardPageSource.slice(cardPageSource.indexOf("const toggleIdea"), cardPageSource.indexOf("const handleSummarize"));
+  assert.ok(!cardToggle.includes("save(") && !cardToggle.includes("syncReminder"), "a 💼 tap never re-saves the form or its reminder");
+  has(ideaRouteSource, "checkApiKey(req)");
+  has(ideaRouteSource, `typeof body?.send !== "boolean"`);
 });

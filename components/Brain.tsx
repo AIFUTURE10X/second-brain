@@ -62,6 +62,7 @@ import {
   toDateTimeLocal,
 } from "@/lib/brain-format";
 import { ItemCard } from "./brain/ItemCard";
+import { toggleCardIdea } from "./brain/IdeaToggle";
 import { QuickCaptureBar } from "./brain/QuickCaptureBar";
 import { FilterBar } from "./brain/FilterBar";
 import { EmptyState } from "./brain/EmptyState";
@@ -2112,6 +2113,7 @@ export default function Brain() {
       onToggleChecklistRow={rowId => toggleChecklistItemOnCard(item, rowId)}
       onOpenCard={openCardInCurrentTab}
       onToggleFlag={flag => handleToggleFlag(item.id, flag)}
+      onToggleIdea={() => toggleCardIdea(item, { setItems, broadcastSync, queueWriteOffline })}
       onMarkReviewed={() => handleMarkReviewed(item.id)}
       onPin={() => handlePin(item.id)}
       onSummarize={() => handleSummarize(item.id)}

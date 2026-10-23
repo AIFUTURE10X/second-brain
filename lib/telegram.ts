@@ -28,6 +28,20 @@ export async function sendTelegram(
   return { sent: true };
 }
 
+/** Swap the inline buttons on a message the bot already sent (e.g. 💼 → ✓ Undo). */
+export async function editTelegramReplyMarkup(
+  token: string,
+  chatId: number | string,
+  messageId: number,
+  replyMarkup: unknown,
+) {
+  await fetch(`https://api.telegram.org/bot${token}/editMessageReplyMarkup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chat_id: chatId, message_id: messageId, reply_markup: replyMarkup }),
+  }).catch(() => {});
+}
+
 export function allowedTelegramIds(): string[] {
   return (process.env.TELEGRAM_ALLOWED_USER_ID || "")
     .split(",")

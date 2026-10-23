@@ -14,6 +14,8 @@ import { openLocalPathInDesktop, openLocalFileLink } from "@/lib/desktop";
 import { TranscriptSection, isVideoUrl } from "@/components/brain/TranscriptSection";
 import { CardSummary } from "@/components/brain/CardSummary";
 import { isAiSummaryEntry } from "@/lib/item-summary";
+import { IdeaToggleButton } from "@/components/brain/IdeaToggle";
+import { hasIdeaTag, ideaToggleNotice, toggleIdeaTagText } from "@/lib/business-idea.mjs";
 
 type ItemType = "note" | "link" | "clip" | "thought" | "task" | "memory" | "folder";
 
@@ -452,14 +454,16 @@ export default function CardPopoutPage() {
 
   // Returns true when the card reached the server, so callers that need the
   // saved state (e.g. summarize) can bail out instead of clobbering edits.
-  const save = async (): Promise<boolean> => {
+  // `overrides` saves a field changed in the same click (state is not yet updated).
+  const save = async (overrides: Partial<typeof form> = {}): Promise<boolean> => {
     if (!id || saving) return false;
     setSaving(true);
-    const tags = form.tags.split(",").map(t => t.trim()).filter(Boolean);
-    const { reminderId, reminderDueAt, reminderMessage, websiteLinks: rawWebsiteLinks, ...itemForm } = form;
+    const current = { ...form, ...overrides };
+    const tags = current.tags.split(",").map(t => t.trim()).filter(Boolean);
+    const { reminderId, reminderDueAt, reminderMessage, websiteLinks: rawWebsiteLinks, ...itemForm } = current;
     // Drop entries whose body is entirely empty so we don't persist accidental blanks.
-    const entries = form.noteEntries.filter(e => e.body.trim().length > 0);
-    const checklistItems = normalizeChecklistItems(form.checklistItems);
+    const entries = current.noteEntries.filter(e => e.body.trim().length > 0);
+    const checklistItems = normalizeChecklistItems(current.checklistItems);
     // Drop blank rows and normalize bare hosts to https:// before saving.
     const websiteLinks = rawWebsiteLinks
       .map(link => ({ url: ensureWebsiteLinkUrl(link.url), label: link.label.trim() }))
@@ -484,6 +488,14 @@ export default function CardPopoutPage() {
     } catch {}
     setSaving(false);
     return false;
+  };
+
+  // 💼 sends the card to the AI OS (business-idea tag) in one tap: it saves at once,
+  // flushing any other unsaved edits with it, like summarize does.
+  const toggleIdea = async () => {
+    const tags = toggleIdeaTagText(form.tags);
+    if (await save({ tags })) showToast(ideaToggleNotice(hasIdeaTag(tags.split(","))), "success");
+    else showToast("Couldn't update the card", "error");
   };
 
   // Writes an "AI Summary" note entry server-side. Unsaved edits are flushed
@@ -658,6 +670,12 @@ export default function CardPopoutPage() {
             color: "#EB5757",
           }}
         >{form.actionRequired ? "⚡ Action needed" : "⚡ Flag for action"}</button>
+        <IdeaToggleButton
+          variant="pill"
+          className="px-3 py-1.5 rounded-md text-[11px] font-mono transition active:scale-95"
+          sent={hasIdeaTag(form.tags.split(","))}
+          onToggle={toggleIdea}
+        />
       </div>
 
       <div className="mb-4 rounded-lg border border-brand-border bg-brand-muted/40 p-3">
@@ -1026,7 +1044,7 @@ export default function CardPopoutPage() {
           className="py-3 px-4 rounded-xl bg-brand-muted border border-brand-border text-gray-500 text-sm font-medium active:scale-95 transition"
         >Close</button>
         <button
-          onClick={save}
+          onClick={() => save()}
           disabled={saving || !dirty}
           className="flex-1 py-3 rounded-xl text-white text-sm font-semibold transition-transform hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50"
           style={{ background: "linear-gradient(135deg, #F2C94C, #E8A838)", boxShadow: "0 4px 16px rgba(232,168,56,0.25)" }}

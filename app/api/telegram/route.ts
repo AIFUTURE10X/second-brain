@@ -5,7 +5,7 @@ import { enrichUrl } from "@/lib/enrich";
 import { aiTagAndCategorize } from "@/lib/ai-tagger";
 import { embeddingsEnabled } from "@/lib/embeddings.mjs";
 import { updateItemEmbedding } from "@/lib/embedding-store";
-import { sendTelegram, allowedTelegramIds } from "@/lib/telegram";
+import { sendTelegram, allowedTelegramIds, editTelegramReplyMarkup } from "@/lib/telegram";
 import {
   isMemoryOfWeekEnabled,
   MEMORY_OF_WEEK_ENABLED_KEY,
@@ -21,7 +21,18 @@ import {
   parseDoneCommand,
   parseFindCommand,
 } from "@/lib/telegram-commands.mjs";
-import { parseIdeaCommand, trimUrlPunctuation, withIdeaTag } from "@/lib/business-idea.mjs";
+import {
+  findIdeaKeyboard,
+  hasIdeaTag,
+  ideaKeyboard,
+  ideaToggleNotice,
+  parseIdeaCallback,
+  parseIdeaCommand,
+  setIdeaTag,
+  trimUrlPunctuation,
+  withIdeaButtonState,
+  withIdeaTag,
+} from "@/lib/business-idea.mjs";
 import { normalizeChecklistItems } from "@/lib/task-checklists";
 import { syncWikiRelations } from "@/lib/wiki-link-store";
 import { spawnNextTaskOccurrence } from "@/lib/recurring-tasks";
@@ -110,7 +121,9 @@ export async function POST(req: NextRequest) {
     try {
       const result = await hybridSearchItems(findQuery);
       const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "";
-      await sendTelegram(botToken, chatId, formatFindResults(result.rows, { baseUrl, query: findQuery }));
+      // "💼 n" under the results sends card n to the AI OS (handleCallbackQuery).
+      const replyMarkup = findIdeaKeyboard(result.rows) ?? undefined;
+      await sendTelegram(botToken, chatId, formatFindResults(result.rows, { baseUrl, query: findQuery }), { replyMarkup });
     } catch {
       await sendTelegram(botToken, chatId, "✗ Search failed. Try again.");
     }
@@ -166,7 +179,7 @@ export async function POST(req: NextRequest) {
       chatId,
       isIdeaCommand
         ? "Send /idea with a link or the idea itself, e.g.\n/idea https://youtu.be/… could I sell this to villa managers?\n/idea AI receptionist for dental clinics"
-        : "Send me:\n• a URL → saved as a Link\n• plain text → saved as a Thought\n• '/t buy milk' → saved as a Task\n• '/m wifi password is abc123' → saved as a Memory\n• '/idea <link or idea>' → a Business Idea for the AI OS\n• '/find <query>' → search your Brain\n• '/done <task title or id>' → complete a task"
+        : "Send me:\n• a URL → saved as a Link (tap 💼 to send it to the AI OS)\n• plain text → saved as a Thought\n• '/t buy milk' → saved as a Task\n• '/m wifi password is abc123' → saved as a Memory\n• '/idea <link or idea>' → a Business Idea for the AI OS\n• '/find <query>' → search your Brain (tap 💼 n to send a result)\n• '/done <task title or id>' → complete a task"
     );
     return NextResponse.json({ ok: true });
   }
@@ -251,11 +264,13 @@ export async function POST(req: NextRequest) {
     // Reply with confirmation
     const emoji = isIdeaCommand ? "💼" : type === "task" ? "☐" : type === "memory" ? "💡" : type === "link" ? "◈" : "◉";
     const label = isIdeaCommand
-      ? "Business idea saved! The AI OS analyses it within 5 minutes (Tasks → Business Ideas)."
+      ? "Business idea saved! The AI OS analyses it within a few minutes (Tasks → Business Ideas)."
       : type === "task" ? "Task added!" : type === "memory" ? "Memory saved!" : "Saved to Brain!";
     const tagStr = tags.length > 0 ? `\nTags: ${tags.map(t => `#${t}`).join(" ")}` : "";
     const catStr = category ? `\nCategory: ${category}` : "";
-    await sendTelegram(botToken, chatId, `${emoji} ${label}\n\n${row.title || "Untitled"}${tagStr}${catStr}`);
+    // Links and thoughts get one-tap 💼 Send to AI OS (or ✓ Undo after /idea).
+    const replyMarkup = type === "link" || type === "thought" ? ideaKeyboard(row.id, hasIdeaTag(tags)) : undefined;
+    await sendTelegram(botToken, chatId, `${emoji} ${label}\n\n${row.title || "Untitled"}${tagStr}${catStr}`, { replyMarkup });
 
     return NextResponse.json({ ok: true });
   } catch (e) {
@@ -264,18 +279,19 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// Reminder snooze buttons (roadmap 2.8): callback_data "snooze:<id>:<1h|3h|1d>".
-// Sets the reminder back to pending with snoozed_until = now + duration; the
-// cron re-fires it once the snooze passes.
-async function handleCallbackQuery(
-  botToken: string,
-  callbackQuery: {
-    id: string;
-    data?: string;
-    from?: { id?: number };
-    message?: { chat?: { id?: number } };
-  },
-) {
+type CallbackQuery = {
+  id: string;
+  data?: string;
+  from?: { id?: number };
+  message?: { message_id?: number; chat?: { id?: number }; reply_markup?: unknown };
+};
+
+// Inline-button taps:
+//   "idea:on|off:<card id>[:n]" (💼 under a save or /find reply) → add or remove the
+//     business-idea tag; the bump to updated_at is what the AI OS ?since= pull sees.
+//   "snooze:<id>:<1h|3h|1d>" (reminder snooze, roadmap 2.8) → back to pending with
+//     snoozed_until = now + duration; the cron re-fires it once the snooze passes.
+async function handleCallbackQuery(botToken: string, callbackQuery: CallbackQuery) {
   const answer = (text: string) =>
     fetch(`https://api.telegram.org/bot${botToken}/answerCallbackQuery`, {
       method: "POST",
@@ -287,6 +303,33 @@ async function handleCallbackQuery(
   const senderId = callbackQuery.from?.id?.toString();
   if (allowedIds.length > 0 && (!senderId || !allowedIds.includes(senderId))) {
     await answer("This bot is private.");
+    return NextResponse.json({ ok: true });
+  }
+
+  const idea = parseIdeaCallback(callbackQuery.data);
+  if (idea) {
+    try {
+      const [card] = await db.select({ tags: items.tags }).from(items).where(eq(items.id, idea.itemId));
+      if (!card) {
+        await answer("That card is gone from your Brain.");
+        return NextResponse.json({ ok: true });
+      }
+      await db
+        .update(items)
+        .set({ tags: setIdeaTag(card.tags, idea.send), updatedAt: new Date() })
+        .where(eq(items.id, idea.itemId));
+      await answer(ideaToggleNotice(idea.send));
+      const chatId = callbackQuery.message?.chat?.id;
+      const messageId = callbackQuery.message?.message_id;
+      if (chatId && messageId) {
+        await editTelegramReplyMarkup(
+          botToken, chatId, messageId,
+          withIdeaButtonState(callbackQuery.message?.reply_markup, idea.itemId, idea.send),
+        );
+      }
+    } catch {
+      await answer("Couldn't update the card. Try again.");
+    }
     return NextResponse.json({ ok: true });
   }
 

@@ -15,6 +15,8 @@ import { CardDate } from "./CardDate";
 import { readingStatusColor, readingStatusLabel } from "@/lib/reading-status.mjs";
 import type { ViewMode } from "@/lib/view-mode";
 import { ShareMenu } from "./ShareMenu";
+import { IdeaToggleButton } from "./IdeaToggle";
+import { hasIdeaTag } from "@/lib/business-idea.mjs";
 import { localFileViewerHref, isLocalFileUrl } from "@/lib/local-file-links";
 import { TranscriptSection, isVideoUrl } from "./TranscriptSection";
 
@@ -46,6 +48,7 @@ interface ItemCardProps {
   onToggleChecklistRow: (rowId: string) => void;
   onOpenCard: (id: string) => void;
   onToggleFlag: (flag: "favourite" | "actionRequired") => void;
+  onToggleIdea: () => void;
   onMarkReviewed: () => void;
   onPin: () => void;
   onSummarize: () => void;
@@ -80,6 +83,7 @@ export function ItemCard({
   onToggleChecklistRow,
   onOpenCard,
   onToggleFlag,
+  onToggleIdea,
   onMarkReviewed,
   onPin,
   onSummarize,
@@ -358,6 +362,7 @@ export function ItemCard({
                 >
                   ⚡
                 </button>
+                <IdeaToggleButton variant="row" sent={hasIdeaTag(item.tags)} onToggle={onToggleIdea} />
                 {/* List rows hide the action bar too — same footer slot as compact. */}
                 <button
                   disabled={isSummarizing}
@@ -775,6 +780,7 @@ export function ItemCard({
                   title={item.actionRequired ? "Clear action flag" : "Mark as needing action"}
                   aria-label={item.actionRequired ? "Clear action flag" : "Mark as needing action"}
                 >⚡</button>
+                <IdeaToggleButton variant="icon" sent={hasIdeaTag(item.tags)} onToggle={onToggleIdea} />
                 {/* Compact cards hide the action bar, so summarize gets a footer
                     slot of its own. Cyan once the card has a summary; otherwise a
                     muted grey that still reads against the card (the ☆/⚡ "off"
@@ -848,6 +854,7 @@ export function ItemCard({
                 }}
                 title={item.actionRequired ? "Clear action flag" : "Mark as needing action"}
               >{item.actionRequired ? "⚡ Action needed" : "⚡ Flag action"}</button>
+              <IdeaToggleButton variant="pill" sent={hasIdeaTag(item.tags)} onToggle={onToggleIdea} />
               {item.type === "link" && (
                 <button
                   onClick={e => { e.stopPropagation(); onCycleReadingStatus(); }}

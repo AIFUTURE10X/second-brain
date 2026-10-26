@@ -154,3 +154,11 @@ test("web: 💼 on every card layout, table, board, card page and bulk bar; tag-
   has(ideaRouteSource, "checkApiKey(req)");
   has(ideaRouteSource, `typeof body?.send !== "boolean"`);
 });
+
+test("web: a sent 💼 is unmistakable — ringed purple chip, filled ✓ pill; unsent stays faded", () => {
+  has(ideaToggleSource, "sent ? SENT_CHIP : UNSENT_ICON", "icon and row variants share the sent chip");
+  has(ideaToggleSource, "boxShadow: `inset 0 0 0 1px ${PILL_COLOR}", "an inset ring never spills out of a clipped row");
+  has(ideaToggleSource, `sent ? "✓ Sent to AI OS" : "💼 Send to AI OS"`);
+  // Board and table pass their own className; the state lives in style, so it still applies.
+  assert.ok(!/className=\{[^}]*sent/.test(ideaToggleSource), "sent state never depends on the class");
+});

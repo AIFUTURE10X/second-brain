@@ -13,6 +13,12 @@ import type { QueuedWriteInput } from "@/lib/offline-queue";
 
 const PILL_COLOR = "#BB6BD9";
 
+// Sent has to read at a glance, not as a slightly brighter emoji: the icon sits on a
+// purple chip with a ring (inset, so it never spills into a clipped footer row), and the
+// pill fills in and says ✓, like the Telegram button.
+const SENT_CHIP: CSSProperties = { background: `${PILL_COLOR}38`, boxShadow: `inset 0 0 0 1px ${PILL_COLOR}C0` };
+const UNSENT_ICON: CSSProperties = { opacity: 0.45, filter: "grayscale(1)" };
+
 const VARIANT_CLASS = {
   row: "rounded px-0.5 text-[10px] leading-none hover:bg-white/5",
   icon: "text-[12px] leading-none px-1 py-0.5 rounded hover:bg-white/5 transition",
@@ -27,8 +33,10 @@ export function IdeaToggleButton({ sent, onToggle, variant, className }: {
 }) {
   const label = sent ? "Sent to the AI OS as a business idea. Tap to undo" : "Send to the AI OS as a business idea";
   const style: CSSProperties = variant === "pill"
-    ? { border: `1px solid ${PILL_COLOR}${sent ? "90" : "30"}`, background: `${PILL_COLOR}${sent ? "25" : "10"}`, color: PILL_COLOR }
-    : { opacity: sent ? 1 : 0.45, filter: sent ? undefined : "grayscale(1)" };
+    ? sent
+      ? { border: `1px solid ${PILL_COLOR}`, background: `${PILL_COLOR}45`, color: "#F5E6FB" }
+      : { border: `1px solid ${PILL_COLOR}30`, background: `${PILL_COLOR}10`, color: PILL_COLOR }
+    : sent ? SENT_CHIP : UNSENT_ICON;
   return (
     <button
       type="button"
@@ -38,7 +46,7 @@ export function IdeaToggleButton({ sent, onToggle, variant, className }: {
       title={label}
       aria-label={label}
       aria-pressed={sent}
-    >{variant === "pill" ? (sent ? "💼 Sent to AI OS" : "💼 Send to AI OS") : "💼"}</button>
+    >{variant === "pill" ? (sent ? "✓ Sent to AI OS" : "💼 Send to AI OS") : "💼"}</button>
   );
 }
 

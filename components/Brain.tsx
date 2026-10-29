@@ -187,6 +187,7 @@ export default function Brain() {
   // Cursor for the ?since= polling sync — the server time of the last full
   // fetch or delta poll. Null until the first full item list has loaded.
   const syncCursorRef = useRef<string | null>(null);
+  const fetchSeqRef = useRef(0);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [failedPreviewUrls, setFailedPreviewUrls] = useState<Set<string>>(new Set());
   const [sortBy, setSortBy] = useState<"newest" | "oldest" | "updated">("newest");
@@ -375,6 +376,9 @@ export default function Brain() {
   }, []);
 
   const fetchItems = useCallback(async (query?: string) => {
+    // Requests overlap while typing ("Dr Br" → "Dr Brewer"). Only the newest may
+    // touch the grid, or a slow stale reply replaces the fresh results.
+    const seq = ++fetchSeqRef.current;
     if (query) setSearching(true);
     try {
       const params = new URLSearchParams();
@@ -383,13 +387,16 @@ export default function Brain() {
       const qs = params.toString();
       const url = qs ? `/api/items?${qs}` : "/api/items";
       const res = await fetch(url, { cache: "no-store" });
+      if (seq !== fetchSeqRef.current) return;
       if (res.status >= 500 && await trySelfMigrate()) {
         showToast("Database updated — reloading…", "success");
         window.location.reload();
         return;
       }
       if (res.ok) {
-        setItems(await res.json());
+        const rows = await res.json();
+        if (seq !== fetchSeqRef.current) return;
+        setItems(rows);
         setSearchFuzzy(res.headers.get("x-search-fuzzy") === "1");
         setItemsError(false);
         if (!query) {
@@ -403,6 +410,7 @@ export default function Brain() {
         setItemsError(true);
       }
     } catch {
+      if (seq !== fetchSeqRef.current) return;
       showToast("Failed to load items", "error");
       setItemsError(true);
     }
@@ -658,11 +666,13 @@ export default function Brain() {
       const cursor = syncCursorRef.current;
       if (!cursor) return;
       inFlight = true;
+      const seq = fetchSeqRef.current;
       try {
         const res = await fetch(`/api/items?since=${encodeURIComponent(cursor)}`, { cache: "no-store" });
         if (!res.ok) return;
         const delta = parseSyncDelta(await res.json());
-        if (!delta) return;
+        // A search (or full reload) started meanwhile owns the grid now.
+        if (!delta || seq !== fetchSeqRef.current) return;
         if (delta.serverTime) syncCursorRef.current = delta.serverTime;
         if (delta.items.length === 0 && delta.deletedIds.length === 0) return;
         setItems(prev => mergeSyncedItems(prev, delta.items, delta.deletedIds) as Item[]);
@@ -2517,7 +2527,7 @@ export default function Brain() {
         )}
         {filtered.length === 0 && (
           <EmptyState
-            variant={items.length === 0 ? (itemsError ? "error" : "new") : "no-matches"}
+            variant={itemsError ? "error" : items.length === 0 && !search.trim() ? "new" : "no-matches"}
             className={gridFullSpanClass}
             onAddFirst={() => { closeForm(); setShowAdd(true); }}
             onClearFilters={clearAllFilters}

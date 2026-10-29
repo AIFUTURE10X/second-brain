@@ -2481,7 +2481,7 @@ export default function Brain() {
         </div>
       )}
 
-      {parentCats.length > 0 && <CategoryStrip parentCats={parentCats} categories={categories} catFilter={catFilter}
+      {(parentCats.length > 0 || catFilter !== "all") && <CategoryStrip parentCats={parentCats} categories={categories} catFilter={catFilter}
         onCatFilterChange={setCatFilter} getCatNamesUnderParent={getCatNamesUnderParent}
         categoryItemCounts={itemCountsByCategory(items)} itemCount={items.length} />}
 

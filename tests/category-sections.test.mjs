@@ -36,6 +36,11 @@ test("the category strip offers All plus each category and toggles the shared fi
   assert.match(stripSource, /disabled=\{limitReached && !active\}/);
 });
 
+test("the strip stays visible while a category filter is on, even if results have no categories", () => {
+  assert.match(brainSource, /\(parentCats\.length > 0 \|\| catFilter !== "all"\) && <CategoryStrip/);
+  assert.match(stripSource, /selected\.filter\(name => !parentCats\.some\(cat => cat\.name === name\)\)/);
+});
+
 test("Clear all in the Filtered row also clears the category filter", () => {
   assert.match(brainSource, /setView\("all"\); setCatFilter\("all"\); setSourceFilter\(null\); setTagFilter\(null\);/);
 });

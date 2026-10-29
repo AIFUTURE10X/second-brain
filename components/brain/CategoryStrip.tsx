@@ -21,8 +21,9 @@ export function CategoryStrip({
 }: CategoryStripProps) {
   const selected = categoryFilterNames(catFilter);
   const limitReached = selected.length >= MAX_CATEGORY_FILTERS;
-  // One chip per top-level category (it covers its subcategories). Subcategories picked
-  // in the Categories menu get their own chip so the filter is never hidden.
+  // One chip per top-level category (it covers its subcategories). Any selected name not in
+  // parentCats (a subcategory, or a category a search emptied) still gets a chip so the
+  // filter is never hidden.
   const chips = [
     ...parentCats.map(cat => ({ name: cat.name, color: cat.color })),
     ...selected.filter(name => !parentCats.some(cat => cat.name === name))

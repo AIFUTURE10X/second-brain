@@ -33,7 +33,7 @@ import {
   itemNeedsCleanupReview,
   normalizeCustomSavedViews,
   savedViewFiltersEqual,
-  categoryFilterNames, normalizeCategoryFilter, matchesCategoryFilter, toggleCategoryFilter, type CategoryFilter,
+  normalizeCategoryFilter, matchesCategoryFilter, type CategoryFilter,
   type CustomSavedViewDefinition,
   type SavedViewFilters,
   type SavedViewKey,
@@ -72,6 +72,8 @@ import { ConflictDialog } from "./brain/ConflictDialog";
 import { BulkTriageBar } from "./brain/BulkTriageBar";
 import { TableView } from "./brain/TableView";
 import { BoardView } from "./brain/BoardView";
+import { CategorySections } from "./brain/CategorySections";
+import { CategoryStrip } from "./brain/CategoryStrip";
 import { TaskKanbanBoard, type TaskKanbanColumnKey } from "./brain/TaskKanbanBoard";
 import { TaskLayoutPicker, type TaskLayout } from "./brain/TaskLayoutPicker";
 import { taskMoveUpdates } from "@/lib/task-workflow.mjs";
@@ -2386,8 +2388,8 @@ export default function Brain() {
         onClear={clearSelection}
       />
 
-      {/* Active structured-filter chips */}
-      {(view !== "all" || catFilter !== "all" || sourceFilter || tagFilter) && (
+      {/* Active structured-filter chips (categories show in the strip above the cards) */}
+      {(view !== "all" || sourceFilter || tagFilter) && (
         <div className="px-5 pt-2 pb-1 flex gap-1.5 items-center flex-wrap">
           <span className="text-[10px] font-mono text-gray-600">Filtered:</span>
           {view !== "all" && (
@@ -2398,15 +2400,6 @@ export default function Brain() {
               title="Clear type filter"
             >{TYPES[view].icon} {TYPES[view].label} ×</button>
           )}
-          {categoryFilterNames(catFilter).map(category => (
-            <button
-              key={category}
-              onClick={() => setCatFilter(current => toggleCategoryFilter(current, category))}
-              className="inline-flex max-w-[11rem] items-center truncate px-2.5 py-1 rounded-lg text-[11px] font-mono transition"
-              style={{ border: `1px solid ${getCatColor(category)}50`, background: `${getCatColor(category)}15`, color: getCatColor(category) }}
-              title={`Remove ${category} filter`}
-            >⊞ {category} ×</button>
-          ))}
           {sourceFilter && (
             <button
               onClick={() => setSourceFilter(null)}
@@ -2423,7 +2416,7 @@ export default function Brain() {
             >#{tagFilter} ×</button>
           )}
           <button
-            onClick={() => { setView("all"); setCatFilter("all"); setSourceFilter(null); setTagFilter(null); }}
+            onClick={() => { setView("all"); setSourceFilter(null); setTagFilter(null); }}
             className="text-[10px] font-mono text-gray-600 hover:text-gray-300 transition ml-1"
           >Clear all</button>
         </div>
@@ -2488,7 +2481,11 @@ export default function Brain() {
         </div>
       )}
 
-      {/* Items */}
+      {parentCats.length > 0 && <CategoryStrip parentCats={parentCats} categories={categories} catFilter={catFilter}
+        onCatFilterChange={setCatFilter} getCatNamesUnderParent={getCatNamesUnderParent}
+        categoryItemCounts={itemCountsByCategory(items)} itemCount={items.length} />}
+
+      {/* Items — grid views are split into category sections unless a date filter makes it a timeline */}
       <div
         className={view === "task" || density === "table" || density === "board" ? "px-4 min-[1800px]:px-3" : density === "list" ? "grid items-start grid-cols-[repeat(auto-fill,minmax(min(100%,12rem),1fr))] min-[1500px]:grid-cols-[repeat(auto-fill,minmax(min(100%,9rem),1fr))] min-[1800px]:grid-cols-[repeat(auto-fill,minmax(min(100%,8.5rem),1fr))] gap-2 min-[1800px]:gap-1.5 px-4 min-[1800px]:px-3" : "grid grid-cols-[repeat(auto-fill,minmax(min(100%,13rem),1fr))] min-[1800px]:grid-cols-[repeat(auto-fill,minmax(min(100%,11rem),1fr))] gap-2 min-[1800px]:gap-1.5 px-4 min-[1800px]:px-3"}
       >
@@ -2562,16 +2559,17 @@ export default function Brain() {
             onToggleIdea={toggleIdea}
             onMarkReviewed={handleMarkReviewed}
           />
-        ) : (timelineGroups ?? [{ key: "", items: visibleItems }]).map(group => (
-          <div key={group.key || "all"} className="contents">
-            {group.key && (
-              <div className={`mb-1 mt-2 first:mt-0 text-[11px] font-mono uppercase tracking-[0.15em] text-gray-200 ${gridFullSpanClass}`}>
-                {timelineHeaderLabel(group.key)} <span className="text-gray-500">· {group.items.length}</span>
-              </div>
-            )}
+        ) : timelineGroups ? timelineGroups.map(group => (
+          <div key={group.key} className="contents">
+            <div className={`mb-1 mt-2 first:mt-0 text-[11px] font-mono uppercase tracking-[0.15em] text-gray-200 ${gridFullSpanClass}`}>
+              {timelineHeaderLabel(group.key)} <span className="text-gray-500">· {group.items.length}</span>
+            </div>
             {group.items.map(renderItemCard)}
           </div>
-        ))}
+        )) : (
+          <CategorySections items={visibleItems} allItems={filtered} categories={categories}
+            order={allParentCats.flatMap(p => [p.name, ...getChildren(p.id).map(c => c.name)])} renderItemCard={renderItemCard} />
+        )}
 
         {hasMore && (
           <button

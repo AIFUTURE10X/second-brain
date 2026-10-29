@@ -2,6 +2,7 @@ import type { Category } from "@/lib/brain-model";
 import { categoryFilterNames, toggleCategoryFilter, MAX_CATEGORY_FILTERS, type CategoryFilter } from "@/lib/saved-views";
 
 const ALL_COLOR = "#E8A838";
+const GROUPING_COLOR = "#9AA1AD";
 const chipClass = "inline-flex min-h-[36px] sm:min-h-[30px] max-w-[12rem] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 font-mono text-xs font-medium leading-none transition-all disabled:cursor-not-allowed disabled:opacity-40";
 
 interface CategoryStripProps {
@@ -12,12 +13,16 @@ interface CategoryStripProps {
   getCatNamesUnderParent: (name: string) => string[];
   categoryItemCounts: Map<string, number>;
   itemCount: number;
+  grouped: boolean;
+  /** Only passed where the cards can be split into category sections (List and Compact grids). */
+  onGroupedChange?: (grouped: boolean) => void;
 }
 
 // Always-visible category chips above the cards: "All" shows every card,
 // each category chip toggles it in or out of the filter (up to four).
+// "Group by category" turns the section headings on or off.
 export function CategoryStrip({
-  parentCats, categories, catFilter, onCatFilterChange, getCatNamesUnderParent, categoryItemCounts, itemCount,
+  parentCats, categories, catFilter, onCatFilterChange, getCatNamesUnderParent, categoryItemCounts, itemCount, grouped, onGroupedChange,
 }: CategoryStripProps) {
   const selected = categoryFilterNames(catFilter);
   const limitReached = selected.length >= MAX_CATEGORY_FILTERS;
@@ -37,9 +42,28 @@ export function CategoryStrip({
     <div
       data-category-strip
       role="toolbar"
-      aria-label="Filter by category"
+      aria-label="Categories"
       className="flex items-center gap-1.5 overflow-x-auto no-scrollbar px-4 min-[1800px]:px-3 pt-2 pb-2 sm:flex-wrap sm:overflow-visible"
     >
+      {onGroupedChange && (
+        <>
+          <button
+            type="button"
+            onClick={() => onGroupedChange(!grouped)}
+            aria-pressed={grouped}
+            className={chipClass}
+            style={{
+              borderColor: `${GROUPING_COLOR}${grouped ? "70" : "30"}`,
+              background: grouped ? `${GROUPING_COLOR}18` : "transparent",
+              color: grouped ? "#E5E7EB" : GROUPING_COLOR,
+            }}
+            title={grouped ? "Show all cards in one grid, without category headings" : "Split the cards into category sections"}
+          >
+            {grouped ? "✓ " : ""}Group by category
+          </button>
+          <span aria-hidden="true" className="mx-0.5 h-5 w-px shrink-0 bg-white/10" />
+        </>
+      )}
       <button
         type="button"
         onClick={() => onCatFilterChange("all")}

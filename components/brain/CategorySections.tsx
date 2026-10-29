@@ -1,8 +1,25 @@
-import { Fragment, type ReactNode } from "react";
+import { Fragment, useCallback, useState, useSyncExternalStore, type ReactNode } from "react";
 import { itemCountsByCategory, type Category, type Item } from "@/lib/brain-model";
 import { groupItemsByCategory } from "@/lib/category-sections.mjs";
 
 const UNCATEGORIZED_COLOR = "#6B7280";
+const GROUPING_STORAGE_KEY = "sb_group_by_category";
+const noSubscribe = () => () => {};
+const readStoredGrouping = () => {
+  try { return window.localStorage.getItem(GROUPING_STORAGE_KEY); } catch { return null; }
+};
+
+// Whether List and Compact split the cards into category sections. Remembered per
+// browser; this tab keeps the choice even when storage is blocked.
+export function useCategoryGrouping() {
+  const stored = useSyncExternalStore(noSubscribe, readStoredGrouping, () => null);
+  const [choice, setChoice] = useState<boolean | null>(null);
+  const setGrouped = useCallback((next: boolean) => {
+    setChoice(next);
+    try { window.localStorage.setItem(GROUPING_STORAGE_KEY, next ? "on" : "off"); } catch {}
+  }, []);
+  return [choice ?? stored !== "off", setGrouped] as const;
+}
 
 interface CategorySectionsProps {
   items: Item[];
@@ -10,11 +27,14 @@ interface CategorySectionsProps {
   allItems: Item[];
   order: string[];
   categories: Category[];
+  /** False shows every card in one grid, in list order, with no headings. */
+  grouped: boolean;
   renderItemCard: (item: Item, idx: number) => ReactNode;
 }
 
 // Grid views (list / compact): one heading per category, its cards below.
-export function CategorySections({ items, allItems, order, categories, renderItemCard }: CategorySectionsProps) {
+export function CategorySections({ items, allItems, order, categories, grouped, renderItemCard }: CategorySectionsProps) {
+  if (!grouped) return items.map(renderItemCard);
   const totals = itemCountsByCategory(allItems);
   const uncategorizedTotal = allItems.filter(item => !item.category?.trim()).length;
 

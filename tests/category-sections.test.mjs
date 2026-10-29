@@ -51,3 +51,19 @@ test("a category named \"uncategorized\" can't share a React key with the uncate
   const sections = groupItemsByCategory([{ category: "uncategorized" }, { category: "" }], []);
   assert.deepEqual(sections.map(s => s.key), ["uncategorized", ""]);
 });
+
+test("Group by category can be turned off to show every card in one grid, and the choice is remembered", async () => {
+  const sectionsSource = await readFile(new URL("../components/brain/CategorySections.tsx", import.meta.url), "utf8");
+  assert.match(sectionsSource, /if \(!grouped\) return items\.map\(renderItemCard\);/);
+  assert.match(sectionsSource, /"sb_group_by_category"/);
+  // On by default, and on until the browser's stored choice has been read.
+  assert.match(sectionsSource, /useSyncExternalStore\(noSubscribe, readStoredGrouping, \(\) => null\)/);
+  assert.match(sectionsSource, /return \[choice \?\? stored !== "off", setGrouped\] as const;/);
+  assert.match(brainSource, /<CategorySections items=\{visibleItems\} allItems=\{filtered\} categories=\{categories\} grouped=\{groupByCategory\}/);
+  assert.match(stripSource, /onClick=\{\(\) => onGroupedChange\(!grouped\)\}\s+aria-pressed=\{grouped\}/);
+});
+
+test("the Group by category chip only shows where sections apply: List and Compact, no date timeline", () => {
+  assert.match(brainSource, /onGroupedChange=\{view !== "task" && \(density === "list" \|\| density === "compact"\) && !timelineGroups \? setGroupByCategory : undefined\}/);
+  assert.match(stripSource, /\{onGroupedChange && \(/);
+});

@@ -44,3 +44,10 @@ test("the strip stays visible while a category filter is on, even if results hav
 test("Clear all in the Filtered row also clears the category filter", () => {
   assert.match(brainSource, /setView\("all"\); setCatFilter\("all"\); setSourceFilter\(null\); setTagFilter\(null\);/);
 });
+
+test("a category named \"uncategorized\" can't share a React key with the uncategorized section", async () => {
+  const sectionsSource = await readFile(new URL("../components/brain/CategorySections.tsx", import.meta.url), "utf8");
+  assert.match(sectionsSource, /key=\{section\.key \? `category:\$\{section\.key\}` : "uncategorized"\}/);
+  const sections = groupItemsByCategory([{ category: "uncategorized" }, { category: "" }], []);
+  assert.deepEqual(sections.map(s => s.key), ["uncategorized", ""]);
+});

@@ -24,7 +24,7 @@ export function CategorySections({ items, allItems, order, categories, renderIte
     const color = section.key ? category?.color || "#666" : UNCATEGORIZED_COLOR;
     const total = section.key ? totals.get(section.key) ?? section.items.length : uncategorizedTotal;
     return (
-      <Fragment key={section.key || "uncategorized"}>
+      <Fragment key={section.key ? `category:${section.key}` : "uncategorized"}>
         <h2
           data-category-section={section.key || "uncategorized"}
           className={`col-span-full flex min-w-0 items-center gap-2 pb-0.5 font-mono text-[11px] uppercase tracking-[0.15em] ${sectionIdx > 0 ? "mt-4" : ""}`}

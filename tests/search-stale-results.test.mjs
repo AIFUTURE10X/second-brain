@@ -20,3 +20,7 @@ test("a polling delta that started before a newer search or reload is dropped", 
   assert.match(brainSource, /const seq = fetchSeqRef\.current;\s+try \{\s+const res = await fetch\(`\/api\/items\?since=/);
   assert.match(brainSource, /if \(!delta \|\| seq !== fetchSeqRef\.current\) return;/);
 });
+
+test("a search with no hits says no matches instead of 'your second brain is empty'", () => {
+  assert.match(brainSource, /variant=\{itemsError \? "error" : items\.length === 0 && !search\.trim\(\) \? "new" : "no-matches"\}/);
+});

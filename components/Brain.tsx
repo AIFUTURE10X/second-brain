@@ -2527,7 +2527,7 @@ export default function Brain() {
         )}
         {filtered.length === 0 && (
           <EmptyState
-            variant={items.length === 0 ? (itemsError ? "error" : "new") : "no-matches"}
+            variant={itemsError ? "error" : items.length === 0 && !search.trim() ? "new" : "no-matches"}
             className={gridFullSpanClass}
             onAddFirst={() => { closeForm(); setShowAdd(true); }}
             onClearFilters={clearAllFilters}

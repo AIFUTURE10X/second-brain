@@ -6,15 +6,29 @@ const brainSource = await readFile(new URL("../components/Brain.tsx", import.met
 // Card markup moved to ItemCard.tsx in the PLAN.md 1.4 extraction.
 const cardSource = await readFile(new URL("../components/brain/ItemCard.tsx", import.meta.url), "utf8");
 const quickCaptureSource = await readFile(new URL("../components/brain/QuickCaptureBar.tsx", import.meta.url), "utf8");
+const previewImageSource = await readFile(new URL("../components/brain/CardPreviewImage.tsx", import.meta.url), "utf8");
 
 test("compact cards use a denser shell with wide thumbnails", () => {
   assert.match(cardSource, /min-h-\[13rem\]/);
   assert.match(cardSource, /aspect-video/);
-  assert.match(cardSource, /object-cover object-center/);
+  assert.match(previewImageSource, /object-cover object-center/);
   assert.doesNotMatch(cardSource, /aspect-square/);
   assert.doesNotMatch(cardSource, /min-h-\[17rem\]/);
   assert.doesNotMatch(cardSource, /aspect-\[5\/4\]/);
   assert.doesNotMatch(cardSource, /className="relative block w-full h-20 bg-brand-muted overflow-hidden group"/);
+});
+
+test("compact titles get their own line under the status badges", () => {
+  assert.match(cardSource, /const compactTitleClass = isCompact \? "basis-full text-\[12px\] line-clamp-2"/);
+  assert.match(cardSource, /flex items-center gap-1\.5 \$\{isCompact \? "flex-wrap" : ""\}/);
+});
+
+test("card previews crop near-fit images and show odd-shaped screenshots whole", () => {
+  assert.match(cardSource, /<CardPreviewImage src=\{previewImageSrc \|\| ""\} alwaysCrop=\{isYouTube\}/);
+  assert.match(previewImageSource, /const MAX_CROP_SHAPE_RATIO = 1\.25;/);
+  assert.match(previewImageSource, /new ResizeObserver\(update\)/);
+  assert.match(previewImageSource, /fit === "contain" \? "object-contain"/);
+  assert.match(previewImageSource, /blur-xl/);
 });
 
 test("compact local-file cards expose their saved source link", () => {
@@ -23,8 +37,8 @@ test("compact local-file cards expose their saved source link", () => {
 });
 
 test("compact grid uses auto-fit fixed-width columns instead of a hard four-column ceiling", () => {
-  assert.match(brainSource, /repeat\(auto-fill,minmax\(min\(100%,13rem\),1fr\)\)/);
-  assert.match(brainSource, /min-\[1800px\]:grid-cols-\[repeat\(auto-fill,minmax\(min\(100%,11rem\),1fr\)\)\]/);
+  assert.match(brainSource, /repeat\(auto-fill,minmax\(min\(100%,17rem\),1fr\)\)/);
+  assert.match(brainSource, /min-\[1800px\]:grid-cols-\[repeat\(auto-fill,minmax\(min\(100%,16rem\),1fr\)\)\]/);
   assert.doesNotMatch(brainSource, /grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2/);
 });
 

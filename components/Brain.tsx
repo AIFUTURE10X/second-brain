@@ -2487,7 +2487,7 @@ export default function Brain() {
 
       {/* Items — grid views are split into category sections unless a date filter makes it a timeline */}
       <div
-        className={view === "task" || density === "table" || density === "board" ? "px-4 min-[1800px]:px-3" : density === "list" ? "grid items-start grid-cols-[repeat(auto-fill,minmax(min(100%,12rem),1fr))] min-[1500px]:grid-cols-[repeat(auto-fill,minmax(min(100%,9rem),1fr))] min-[1800px]:grid-cols-[repeat(auto-fill,minmax(min(100%,8.5rem),1fr))] gap-2 min-[1800px]:gap-1.5 px-4 min-[1800px]:px-3" : "grid grid-cols-[repeat(auto-fill,minmax(min(100%,13rem),1fr))] min-[1800px]:grid-cols-[repeat(auto-fill,minmax(min(100%,11rem),1fr))] gap-2 min-[1800px]:gap-1.5 px-4 min-[1800px]:px-3"}
+        className={view === "task" || density === "table" || density === "board" ? "px-4 min-[1800px]:px-3" : density === "list" ? "grid items-start grid-cols-[repeat(auto-fill,minmax(min(100%,12rem),1fr))] min-[1500px]:grid-cols-[repeat(auto-fill,minmax(min(100%,9rem),1fr))] min-[1800px]:grid-cols-[repeat(auto-fill,minmax(min(100%,8.5rem),1fr))] gap-2 min-[1800px]:gap-1.5 px-4 min-[1800px]:px-3" : "grid grid-cols-[repeat(auto-fill,minmax(min(100%,17rem),1fr))] min-[1800px]:grid-cols-[repeat(auto-fill,minmax(min(100%,16rem),1fr))] gap-2 min-[1800px]:gap-1.5 px-4 min-[1800px]:px-3"}
       >
         {searchFuzzy && search.trim() && filtered.length > 0 && (
           <div className={`mb-2 rounded-lg border border-[#E8A83840] bg-[#E8A83810] px-3 py-2 text-[11px] font-mono text-[#E8A838] ${gridFullSpanClass}`}>

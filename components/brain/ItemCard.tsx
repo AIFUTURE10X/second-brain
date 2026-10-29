@@ -19,6 +19,7 @@ import { IdeaToggleButton } from "./IdeaToggle";
 import { hasIdeaTag } from "@/lib/business-idea.mjs";
 import { localFileViewerHref, isLocalFileUrl } from "@/lib/local-file-links";
 import { TranscriptSection, isVideoUrl } from "./TranscriptSection";
+import { CardPreviewImage } from "./CardPreviewImage";
 
 interface ItemCardProps {
   item: Item;
@@ -121,7 +122,8 @@ export function ItemCard({
   const listBodyClass = "flex min-h-0 flex-1 flex-col justify-between gap-2 px-2 py-1.5";
   const expandedBodyClass = "min-h-0 max-h-[calc(100vh-12rem)] overflow-y-auto p-4 lg:p-5";
   const compactBodyClass = isCompact ? "flex min-h-[7rem] flex-1 flex-col justify-between px-2.5 py-2" : "p-4";
-  const compactTitleClass = isCompact ? "text-[12px] line-clamp-2" : "text-sm";
+  // Compact cards put the title on its own line under the status badges, so it isn't squeezed beside them.
+  const compactTitleClass = isCompact ? "basis-full text-[12px] line-clamp-2" : "text-sm";
   const cardLinks = extractCardLinks(item);
   const websiteLinks = (item.websiteLinks || []).filter(link => link.url);
   const listTitle = item.title || item.ogTitle || "Untitled";
@@ -395,13 +397,7 @@ export function ItemCard({
           className={compactPreviewClass}
           title={isYouTube ? "Open on YouTube" : hasOgPreview ? "Open link" : "Open image"}
         >
-          <img
-            src={previewImageSrc}
-            alt=""
-            loading="lazy"
-            onError={() => onPreviewImageFailed(previewImageSrc)}
-            className="w-full h-full object-cover object-center"
-          />
+          <CardPreviewImage src={previewImageSrc || ""} alwaysCrop={isYouTube} onError={() => onPreviewImageFailed(previewImageSrc)} />
           {isYouTube && (
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="w-8 h-8 rounded-full bg-red-600 flex items-center justify-center shadow-lg group-hover:scale-110 transition">
@@ -422,13 +418,7 @@ export function ItemCard({
           className={previewClass}
           title={isYouTube ? "Open on YouTube" : hasOgPreview ? "Open link" : "Open image"}
         >
-          <img
-            src={previewImageSrc}
-            alt=""
-            className="w-full h-full object-cover"
-            loading="lazy"
-            onError={() => onPreviewImageFailed(previewImageSrc)}
-          />
+          <CardPreviewImage src={previewImageSrc || ""} alwaysCrop={isYouTube} onError={() => onPreviewImageFailed(previewImageSrc)} />
           {isYouTube && (
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="w-12 h-12 rounded-full bg-red-600 flex items-center justify-center shadow-lg group-hover:scale-110 transition">
@@ -461,7 +451,7 @@ export function ItemCard({
           )}
 
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1.5">
+            <div className={`flex items-center gap-1.5 ${isCompact ? "flex-wrap" : ""}`}>
               {item.pinned && <span className="text-[10px]" title="Pinned">📌</span>}
               <span
                 className="rounded border px-1.5 py-0.5 text-[9px] font-mono uppercase"

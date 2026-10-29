@@ -2416,7 +2416,7 @@ export default function Brain() {
             >#{tagFilter} ×</button>
           )}
           <button
-            onClick={() => { setView("all"); setSourceFilter(null); setTagFilter(null); }}
+            onClick={() => { setView("all"); setCatFilter("all"); setSourceFilter(null); setTagFilter(null); }}
             className="text-[10px] font-mono text-gray-600 hover:text-gray-300 transition ml-1"
           >Clear all</button>
         </div>

@@ -35,3 +35,7 @@ test("the category strip offers All plus each category and toggles the shared fi
   assert.match(stripSource, /toggleCategoryFilter\(catFilter, chip\.name\)/);
   assert.match(stripSource, /disabled=\{limitReached && !active\}/);
 });
+
+test("Clear all in the Filtered row also clears the category filter", () => {
+  assert.match(brainSource, /setView\("all"\); setCatFilter\("all"\); setSourceFilter\(null\); setTagFilter\(null\);/);
+});

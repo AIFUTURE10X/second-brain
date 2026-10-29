@@ -72,7 +72,7 @@ import { ConflictDialog } from "./brain/ConflictDialog";
 import { BulkTriageBar } from "./brain/BulkTriageBar";
 import { TableView } from "./brain/TableView";
 import { BoardView } from "./brain/BoardView";
-import { CategorySections } from "./brain/CategorySections";
+import { CategorySections, useCategoryGrouping } from "./brain/CategorySections";
 import { CategoryStrip } from "./brain/CategoryStrip";
 import { TaskKanbanBoard, type TaskKanbanColumnKey } from "./brain/TaskKanbanBoard";
 import { TaskLayoutPicker, type TaskLayout } from "./brain/TaskLayoutPicker";
@@ -197,6 +197,7 @@ export default function Brain() {
   const [movingTaskId, setMovingTaskId] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState(50);
   const [density, setDensity] = useState<ViewMode>("list");
+  const [groupByCategory, setGroupByCategory] = useCategoryGrouping();
   const [taskLayout, setTaskLayout] = useState<TaskLayout>("board");
   const [bulkUpdating, setBulkUpdating] = useState(false);
   const [bulkCategory, setBulkCategory] = useState("");
@@ -2493,7 +2494,7 @@ export default function Brain() {
 
       {(parentCats.length > 0 || catFilter !== "all") && <CategoryStrip parentCats={parentCats} categories={categories} catFilter={catFilter}
         onCatFilterChange={setCatFilter} getCatNamesUnderParent={getCatNamesUnderParent}
-        categoryItemCounts={itemCountsByCategory(items)} itemCount={items.length} />}
+        categoryItemCounts={itemCountsByCategory(items)} itemCount={items.length} grouped={groupByCategory} onGroupedChange={view !== "task" && (density === "list" || density === "compact") && !timelineGroups ? setGroupByCategory : undefined} />}
 
       {/* Items — grid views are split into category sections unless a date filter makes it a timeline */}
       <div
@@ -2577,7 +2578,7 @@ export default function Brain() {
             {group.items.map(renderItemCard)}
           </div>
         )) : (
-          <CategorySections items={visibleItems} allItems={filtered} categories={categories}
+          <CategorySections items={visibleItems} allItems={filtered} categories={categories} grouped={groupByCategory}
             order={allParentCats.flatMap(p => [p.name, ...getChildren(p.id).map(c => c.name)])} renderItemCard={renderItemCard} />
         )}
 

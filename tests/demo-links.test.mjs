@@ -26,6 +26,8 @@ test("the store host comes from the read-write token", () => {
 
 test("the viewer serves only .html from the app's own store", () => {
   assert.equal(demoBlobUrl(["demos", "Tallowmere site.html"], HOST), `https://${HOST}/demos/Tallowmere%20site.html`);
+  assert.equal(demoBlobUrl(["demos", "Tallowmere%20site.html"], HOST), `https://${HOST}/demos/Tallowmere%20site.html`);
+  assert.equal(demoBlobUrl(["..%2Fa.html"], HOST), null);
   assert.equal(demoBlobUrl(["a.html"], null), null);
   assert.equal(demoBlobUrl([], HOST), null);
   assert.equal(demoBlobUrl(["secret.pdf"], HOST), null);

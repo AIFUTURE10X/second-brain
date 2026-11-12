@@ -81,7 +81,7 @@ test("only a person files an asset: both AI tag paths drop the tag", async () =>
 
 test("web: 🗂 sits beside 💼 on every card layout, the table, board and card page", async () => {
   const card = await read("components/brain/ItemCard.tsx");
-  for (const variant of ["row", "icon", "pill"]) has(card, `<AssetSendButton variant="${variant}" tags={item.tags} onPick={onToggleIdea} />`);
+  for (const variant of ["row", "icon", "pill"]) has(card, `<AssetSendButton variant="${variant}" tags={item.tags} card={item} onPick={onToggleIdea} />`);
   for (const path of ["components/brain/TableView.tsx", "components/brain/BoardView.tsx"]) {
     has(await read(path), "onPick={asset => onToggleIdea(item, asset)}");
   }

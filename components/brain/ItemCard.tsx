@@ -366,7 +366,7 @@ export function ItemCard({
                   ⚡
                 </button>
                 <IdeaToggleButton variant="row" sent={hasIdeaTag(item.tags)} onToggle={onToggleIdea} />
-                <AssetSendButton variant="row" tags={item.tags} onPick={onToggleIdea} />
+                <AssetSendButton variant="row" tags={item.tags} card={item} onPick={onToggleIdea} />
                 {/* List rows hide the action bar too — same footer slot as compact. */}
                 <button
                   disabled={isSummarizing}
@@ -773,7 +773,7 @@ export function ItemCard({
                   aria-label={item.actionRequired ? "Clear action flag" : "Mark as needing action"}
                 >⚡</button>
                 <IdeaToggleButton variant="icon" sent={hasIdeaTag(item.tags)} onToggle={onToggleIdea} />
-                <AssetSendButton variant="icon" tags={item.tags} onPick={onToggleIdea} />
+                <AssetSendButton variant="icon" tags={item.tags} card={item} onPick={onToggleIdea} />
                 {/* Compact cards hide the action bar, so summarize gets a footer
                     slot of its own. Cyan once the card has a summary; otherwise a
                     muted grey that still reads against the card (the ☆/⚡ "off"
@@ -848,7 +848,7 @@ export function ItemCard({
                 title={item.actionRequired ? "Clear action flag" : "Mark as needing action"}
               >{item.actionRequired ? "⚡ Action needed" : "⚡ Flag action"}</button>
               <IdeaToggleButton variant="pill" sent={hasIdeaTag(item.tags)} onToggle={onToggleIdea} />
-              <AssetSendButton variant="pill" tags={item.tags} onPick={onToggleIdea} />
+              <AssetSendButton variant="pill" tags={item.tags} card={item} onPick={onToggleIdea} />
               {item.type === "link" && (
                 <button
                   onClick={e => { e.stopPropagation(); onCycleReadingStatus(); }}

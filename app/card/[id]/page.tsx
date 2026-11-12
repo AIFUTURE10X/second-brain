@@ -720,6 +720,7 @@ export default function CardPopoutPage() {
           variant="pill"
           className="px-3 py-1.5 rounded-md text-[11px] font-mono transition active:scale-95"
           tags={form.tags.split(",").map(tag => tag.trim())}
+          card={{ ...item, title: form.title, content: form.content, url: form.url, category: form.category, tags: form.tags.split(",") }}
           onPick={pickAsset}
         />
       </div>

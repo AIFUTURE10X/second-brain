@@ -12,7 +12,8 @@ import type { QueuedWriteInput } from "@/lib/offline-queue";
 // the business-idea tag, a second tap takes it back (lib/business-idea.mjs).
 
 // Brain routes both buttons through one handler: no asset → 💼, a 🗂 pick → its category.
-export { sendCardAsset, type AssetChoice } from "./AssetSendButton";
+export { sendCardAsset } from "./sendCardAsset";
+export type { AssetChoice } from "./AssetSendButton";
 
 const PILL_COLOR = "#BB6BD9";
 

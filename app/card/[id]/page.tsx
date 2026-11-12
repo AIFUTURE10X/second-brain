@@ -513,24 +513,24 @@ export default function CardPopoutPage() {
     }
   };
 
-  // 🗂 files the card in the AI OS Asset Library under one category (null takes it back).
+  // 🗂 files the card in the AI OS Asset Library under its picked categories ([] takes it back).
   // Same shape as 💼: only the asset tag changes on the server (POST /api/items/asset).
   const pickingRef = useRef(false); // one pick at a time, so answers can't land out of order
-  const pickAsset = async (category: AssetChoice) => {
+  const pickAsset = async (categories: AssetChoice) => {
     if (!id || pickingRef.current) return;
     pickingRef.current = true;
     try {
       const res = await fetch("/api/items/asset", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, category }),
+        body: JSON.stringify({ id, categories }),
       });
       if (!res.ok) throw new Error();
       const saved: Item = await res.json();
-      if (dirtyRef.current) setForm(f => ({ ...f, tags: setAssetTagText(f.tags, category) }));
+      if (dirtyRef.current) setForm(f => ({ ...f, tags: setAssetTagText(f.tags, categories) }));
       else applyItem(saved);
       broadcast({ type: "item-updated", item: saved });
-      showToast(assetNotice(category), "success");
+      showToast(assetNotice(categories), "success");
     } catch {
       showToast("Couldn't update the card", "error");
     } finally {

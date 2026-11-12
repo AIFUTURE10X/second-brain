@@ -51,7 +51,7 @@ interface ItemCardProps {
   onToggleChecklistRow: (rowId: string) => void;
   onOpenCard: (id: string) => void;
   onToggleFlag: (flag: "favourite" | "actionRequired") => void;
-  onToggleIdea: (asset?: AssetChoice) => void; // no argument: 💼 toggle · a category or null: 🗂 asset pick
+  onToggleIdea: (asset?: AssetChoice) => void; // no argument: 💼 toggle · category keys ([] takes back): 🗂 asset pick
   onMarkReviewed: () => void;
   onPin: () => void;
   onSummarize: () => void;

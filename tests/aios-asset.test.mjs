@@ -6,6 +6,7 @@ import { PGlite } from "@electric-sql/pglite";
 import {
   ASSET_CATEGORIES,
   ASSET_TAG_PREFIX,
+  assetCategoriesOf,
   assetCategoryOf,
   assetNotice,
   assetTagsSql,
@@ -32,7 +33,7 @@ test("nine categories with unique keys, a colour and a short hint each", () => {
   assert.equal(isAssetCategory(undefined), false);
 });
 
-test("one category per card: filing again moves it, null takes it back, other tags stay", () => {
+test("a single key still works: filing again replaces it, null takes it back, other tags stay", () => {
   assert.deepEqual(setAssetTag(["ai"], "skill"), ["ai", "aios-asset:skill"]);
   assert.deepEqual(setAssetTag(["ai", "aios-asset:skill", BUSINESS_IDEA_TAG], "website"), ["ai", BUSINESS_IDEA_TAG, "aios-asset:website"]);
   assert.deepEqual(setAssetTag(["ai", " AIOS-Asset:Skill "], null), ["ai"]);
@@ -92,18 +93,52 @@ test("web: 🗂 sits beside 💼 on every card layout, the table, board and card
   has(page, `fetch("/api/items/asset"`);
   has(page, "onPick={pickAsset}");
   const button = await read("components/brain/AssetSendButton.tsx");
-  has(button, `fetch("/api/items/asset"`);
-  has(button, "applyLocally({ tags: saved.tags, updatedAt: saved.updatedAt })");
+  const save = await read("components/brain/sendCardAsset.ts");
+  has(save, `fetch("/api/items/asset"`);
+  has(save, "applyLocally({ tags: saved.tags, updatedAt: saved.updatedAt })");
   has(button, "createPortal(", "the picker escapes clipped card footers");
   has(button, "overflow-y-auto", "a short window scrolls the picker instead of hiding tiles");
   has(button, "onKeyDown={e => e.stopPropagation()}", "Enter/Space on the button never toggle the card");
   has(button, "onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}", "the portal stops React bubbling");
-  has(button, "if (pending.has(item.id))", "one pick per card at a time");
+  has(save, "if (pending.has(item.id))", "one pick per card at a time");
   has(button, "focus({ preventScroll: true })");
   const route = await read("app/api/items/asset/route.ts");
   has(route, "checkApiKey(req)");
-  has(route, "!isAssetCategory(category)");
+  has(route, "body.categories.every(isAssetCategory)");
   assert.ok(!route.includes("[0-9a-f-]{36}"), "ids are checked as real UUIDs");
   assert.ok(!route.includes("body?.category ?? null"), "a missing category is a 400, never a silent take-back");
-  has(await read("lib/aios-asset-store.ts"), "sql.raw(assetTagsSql(`\"tags\"`, category))");
+  has(route, `return jsonError(400, "categories must be a list of known keys")`);
+  has(await read("lib/aios-asset-store.ts"), "sql.raw(assetTagsSql(`\"tags\"`, categories))");
+});
+
+test("several categories on one card: picker order, no repeats, one tag each", async () => {
+  assert.deepEqual(setAssetTag(["ai", "aios-asset:demo"], ["skill", "website", "skill", "bogus"]), ["ai", "aios-asset:website", "aios-asset:skill"]);
+  assert.deepEqual(setAssetTag(["ai", "aios-asset:demo", "aios-asset:3d"], []), ["ai"], "[] takes it back");
+  assert.deepEqual(assetCategoriesOf(["aios-asset:skill", "x", " AIOS-Asset:Website ", "aios-asset:skill", "aios-asset:nope"]), ["website", "skill"]);
+  assert.equal(setAssetTagText("ai", ["animation", "website"]), "ai, aios-asset:website, aios-asset:animation");
+  assert.equal(assetNotice(["skill", "demo"]), "Filed in the AI OS under 🎯 Sales demos and 🧠 Skills. It shows on Asset Library within a minute.");
+  assert.match(assetNotice([]), /Taken back/);
+  assert.throws(() => assetTagsSql(`"tags"`, ["skill", "x'--"]), /Unknown asset category/);
+
+  const pg = await PGlite.create();
+  await pg.exec(`CREATE TABLE items (id int PRIMARY KEY, tags jsonb)`);
+  await pg.query(`INSERT INTO items VALUES (1, '["ai", "aios-asset:demo"]')`);
+  const file = async (keys) => (await pg.query(`UPDATE items SET tags = ${assetTagsSql(`"tags"`, keys)} WHERE id = 1 RETURNING tags`)).rows[0].tags;
+  assert.deepEqual(await file(["animation", "website"]), ["ai", "aios-asset:website", "aios-asset:animation"]);
+  assert.deepEqual(await file(["website"]), ["ai", "aios-asset:website"], "one shelf taken off");
+  assert.deepEqual(await file([]), ["ai"]);
+  await pg.close();
+});
+
+test("the picker toggles tiles and suggestions, and files on Save", async () => {
+  const button = await read("components/brain/AssetSendButton.tsx");
+  has(button, "export type AssetChoice = string[];");
+  has(button, "onClick={() => toggle(key)}", "a suggestion toggles, it doesn't file at once");
+  has(button, "onClick={() => toggle(category.key)}");
+  has(button, "Pick both");
+  has(button, "data-save disabled={!changed}");
+  has(button, "commitRef.current();", "a tap outside saves what was picked");
+  has(button, "onClick={() => onPick([])}", "Take it back clears every category");
+  has(await read("components/brain/sendCardAsset.ts"), "JSON.stringify({ id: item.id, categories })");
+  has(await read("app/card/[id]/page.tsx"), "JSON.stringify({ id, categories })");
 });

@@ -515,8 +515,10 @@ export default function CardPopoutPage() {
 
   // 🗂 files the card in the AI OS Asset Library under one category (null takes it back).
   // Same shape as 💼: only the asset tag changes on the server (POST /api/items/asset).
+  const pickingRef = useRef(false); // one pick at a time, so answers can't land out of order
   const pickAsset = async (category: AssetChoice) => {
-    if (!id) return;
+    if (!id || pickingRef.current) return;
+    pickingRef.current = true;
     try {
       const res = await fetch("/api/items/asset", {
         method: "POST",
@@ -531,6 +533,8 @@ export default function CardPopoutPage() {
       showToast(assetNotice(category), "success");
     } catch {
       showToast("Couldn't update the card", "error");
+    } finally {
+      pickingRef.current = false;
     }
   };
 

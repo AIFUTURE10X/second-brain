@@ -64,6 +64,8 @@ export function AssetSendButton({ tags, onPick, variant, className }: {
       <button
         type="button"
         onClick={e => { e.stopPropagation(); const el = e.currentTarget; setAnchor(a => a ? null : el); }}
+        // Cards and rows toggle on Enter/Space; keep the keys for this button.
+        onKeyDown={e => e.stopPropagation()}
         className={className ?? VARIANT_CLASS[variant]}
         style={style}
         title={label}
@@ -75,7 +77,7 @@ export function AssetSendButton({ tags, onPick, variant, className }: {
         <AssetPicker
           anchor={anchor}
           currentKey={current?.key ?? null}
-          onClose={() => { anchor.focus(); setAnchor(null); }}
+          onClose={() => { anchor.focus({ preventScroll: true }); setAnchor(null); }}
           onPick={key => { setAnchor(null); onPick(key); }}
         />
       ) : null}
@@ -98,6 +100,15 @@ function AssetPicker({ anchor, currentKey, onClose, onPick }: {
     first?.focus({ preventScroll: true });
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") { e.preventDefault(); onClose(); return; }
+      if (e.key === "Tab") { // keep focus in the picker (the phone sheet covers the page)
+        const all = [...(panelRef.current?.querySelectorAll<HTMLButtonElement>("button") ?? [])];
+        const at = all.indexOf(document.activeElement as HTMLButtonElement);
+        if (all.length && (at < 0 || (e.shiftKey ? at === 0 : at === all.length - 1))) {
+          e.preventDefault();
+          all[e.shiftKey ? all.length - 1 : 0].focus();
+        }
+        return;
+      }
       if (!["ArrowRight", "ArrowLeft", "ArrowDown", "ArrowUp"].includes(e.key)) return;
       const tiles = [...(panelRef.current?.querySelectorAll<HTMLButtonElement>("[data-tile]") ?? [])];
       const at = tiles.indexOf(document.activeElement as HTMLButtonElement);
@@ -112,12 +123,12 @@ function AssetPicker({ anchor, currentKey, onClose, onPick }: {
     };
     // Scrolling the page or resizing closes it; scrolling inside the panel (short screens) doesn't.
     const onMove = (e: Event) => { if (!panelRef.current?.contains(e.target as Node)) onClose(); };
-    window.addEventListener("keydown", onKey);
+    window.addEventListener("keydown", onKey, true); // capture: the portal root stops bubbling
     window.addEventListener("pointerdown", onDown, true);
     window.addEventListener("resize", onMove);
     window.addEventListener("scroll", onMove, true);
     return () => {
-      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keydown", onKey, true);
       window.removeEventListener("pointerdown", onDown, true);
       window.removeEventListener("resize", onMove);
       window.removeEventListener("scroll", onMove, true);
@@ -130,7 +141,9 @@ function AssetPicker({ anchor, currentKey, onClose, onPick }: {
     : { top: place.top, left: place.left, width: PANEL_WIDTH, maxHeight: "calc(100dvh - 24px)", transformOrigin: place.up ? "bottom center" : "top center" };
 
   return createPortal(
-    <div className="fixed inset-0 z-[90]" onClick={e => e.stopPropagation()}>
+    // A portal still bubbles React events to the card: stop clicks and keys here, or a pick
+    // would also expand the card (and Enter on a tile would be swallowed by its key handler).
+    <div className="fixed inset-0 z-[90]" onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
       {sheet ? <div className="asset-scrim absolute inset-0 bg-black/55" onClick={onClose} /> : null}
       <div
         ref={panelRef}
@@ -193,12 +206,29 @@ function AssetPicker({ anchor, currentKey, onClose, onPick }: {
  * added elsewhere meanwhile survives; the reply's updatedAt is kept so the next edit of
  * this card isn't refused as a conflict. Offline, it queues a PUT like the 💼 toggle.
  */
+// Cards with a pick in flight: a second pick waits for the first, so two answers can never
+// land out of order and leave the earlier category on the card.
+const pending = new Set<string>();
+
 export async function sendCardAsset(item: Item, category: AssetChoice, deps: {
   setItems: Dispatch<SetStateAction<Item[]>>;
   broadcastSync: (msg: SyncPayload) => void;
   queueWriteOffline: (input: QueuedWriteInput) => Promise<boolean>;
 }) {
   if (isOfflineTempId(item.id)) return;
+  if (pending.has(item.id)) {
+    showToast("Still filing this card — try again in a moment", "error");
+    return;
+  }
+  pending.add(item.id);
+  try {
+    await fileCard(item, category, deps);
+  } finally {
+    pending.delete(item.id);
+  }
+}
+
+async function fileCard(item: Item, category: AssetChoice, deps: Parameters<typeof sendCardAsset>[2]) {
   const tags: string[] = setAssetTag(item.tags, category);
   const applyLocally = (patch: Partial<Item>) => deps.setItems(prev => prev.map(i => i.id === item.id ? { ...i, ...patch } : i));
   try {

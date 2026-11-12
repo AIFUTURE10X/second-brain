@@ -30,10 +30,11 @@ other users.
 - **Perfected assets → AI OS Asset Library** — the 🗂 button beside 💼 (every card
   layout, table, board and card page) opens a picker of nine categories: Website
   designs, Animations, 3D & interactive, UI components, Sales demos, Automations,
-  Skills, Prompts & templates, Playbooks & offers. A pick adds one
-  `aios-asset:<category>` tag (picking another moves it, "Take it back" removes it);
-  the AI OS reads it on the same `?since=` pull and shelves the card under that
-  category on Library → Assets. The AI taggers never set it (`lib/aios-asset.mjs`).
+  Skills, Prompts & templates, Playbooks & offers. Tap as many as fit (the one or
+  two suggested for the card sit on top, with "Pick both"), then Save: each adds an
+  `aios-asset:<category>` tag ("Take it back" removes them all). The AI OS reads them
+  on the same `?since=` pull and shelves the card under each category on
+  Library → Assets. The AI taggers never set it (`lib/aios-asset.mjs`).
 - **Find things later** — hybrid search: Postgres full-text search over a
   weighted, indexed `tsvector` column (title > tags/category > body/notes >
   link metadata) merged with pgvector semantic search (OpenAI

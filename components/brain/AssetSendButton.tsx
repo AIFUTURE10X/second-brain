@@ -1,22 +1,20 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { CSSProperties, Dispatch, SetStateAction } from "react";
+import type { CSSProperties } from "react";
 import { createPortal } from "react-dom";
-import { showToast } from "../Toast";
-import { ASSET_CATEGORIES, assetCategory, assetCategoryOf, assetNotice, setAssetTag } from "@/lib/aios-asset.mjs";
+import { ASSET_CATEGORIES, assetCategoriesOf, assetCategory, assetKeys } from "@/lib/aios-asset.mjs";
 import { suggestAssetCategories } from "@/lib/aios-asset-suggest.mjs";
-import { isOfflineTempId } from "@/lib/offline-replay.mjs";
 import type { Item } from "@/lib/brain-model";
-import type { SyncPayload } from "@/lib/sync";
-import type { QueuedWriteInput } from "@/lib/offline-queue";
 
 // The 🗂 button beside 💼: files a perfected card (a demo, a design, a skill…) in Phil's
-// AI OS Asset Library under one category (lib/aios-asset.mjs). It opens a picker of
-// category tiles; picking another moves the card, "Take it back" removes it.
+// AI OS Asset Library under one or more categories (lib/aios-asset.mjs). It opens a picker
+// of category tiles: tapping a tile or a suggestion toggles it, Save (or a tap outside)
+// files the card under every selected category, Escape cancels, "Take it back" removes it.
+// The save itself lives in sendCardAsset.ts.
 
-/** A category key, or null to take the card back. */
-export type AssetChoice = string | null;
+/** The category keys the card is filed under; [] takes it back. */
+export type AssetChoice = string[];
 /** The card's text, read only to suggest a category when the picker opens. */
 export type AssetCard = Partial<Pick<Item, "title" | "content" | "url" | "notes" | "noteEntries" | "tags" | "category" | "ogTitle" | "ogDescription" | "siteName">>;
 
@@ -27,7 +25,7 @@ const VARIANT_CLASS = {
 } as const;
 
 const PANEL_WIDTH = 344;
-const PANEL_HEIGHT = 340; // header + 3 rows of tiles + footer
+const PANEL_HEIGHT = 352; // header + 3 rows of tiles + footer
 const SUGGEST_HEIGHT = 62; // the "Suggested for this card" row
 const NEUTRAL = "#8B93A7";
 
@@ -53,10 +51,12 @@ export function AssetSendButton({ tags, card, onPick, variant, className }: {
   // The button the picker opened from (null: closed). Kept in state, not read from a ref
   // during render, so the picker re-renders when it opens.
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
-  const current = assetCategory(assetCategoryOf(tags));
+  const keys: string[] = assetCategoriesOf(tags);
+  const current = assetCategory(keys[0] ?? null);
+  const more = keys.length > 1 ? ` +${keys.length - 1}` : "";
   const label = current
-    ? `Filed in the AI OS under ${current.label}. Tap to move or take it back`
-    : "File in the AI OS Asset Library under a category";
+    ? `Filed in the AI OS under ${keys.map(key => assetCategory(key)!.label).join(", ")}. Tap to change or take it back`
+    : "File in the AI OS Asset Library under one or more categories";
   const style: CSSProperties = variant === "pill"
     ? current
       ? { border: `1px solid ${current.color}`, background: `${current.color}38`, color: "#F4F6FA" }
@@ -77,23 +77,23 @@ export function AssetSendButton({ tags, card, onPick, variant, className }: {
         aria-label={label}
         aria-haspopup="dialog"
         aria-expanded={anchor !== null}
-      >{variant === "pill" ? (current ? `✓ ${current.emoji} ${current.label}` : "🗂 File in AI OS") : (current?.emoji ?? "🗂")}</button>
+      >{variant === "pill" ? (current ? `✓ ${current.emoji} ${current.label}${more}` : "🗂 File in AI OS") : (current?.emoji ?? "🗂")}</button>
       {anchor ? (
         <AssetPicker
           anchor={anchor}
-          currentKey={current?.key ?? null}
+          currentKeys={keys}
           card={card}
           onClose={() => { anchor.focus({ preventScroll: true }); setAnchor(null); }}
-          onPick={key => { setAnchor(null); onPick(key); }}
+          onPick={picked => { setAnchor(null); onPick(picked); }}
         />
       ) : null}
     </>
   );
 }
 
-function AssetPicker({ anchor, currentKey, card, onClose, onPick }: {
+function AssetPicker({ anchor, currentKeys, card, onClose, onPick }: {
   anchor: HTMLElement;
-  currentKey: string | null;
+  currentKeys: string[];
   card?: AssetCard;
   onClose: () => void;
   onPick: (key: AssetChoice) => void;
@@ -103,6 +103,14 @@ function AssetPicker({ anchor, currentKey, card, onClose, onPick }: {
   const [suggested] = useState<string[]>(() => (card ? suggestAssetCategories(card) : []));
   // Placed once, when it opens; scrolling or resizing closes it instead of chasing the card.
   const [place] = useState<Place>(() => placeNear(anchor, PANEL_HEIGHT + (suggested.length ? SUGGEST_HEIGHT : 0)));
+  // The selection being edited; nothing is filed until Save (or a tap outside the picker).
+  const [picked, setPicked] = useState<string[]>(currentKeys);
+  const changed = picked.join(",") !== currentKeys.join(",");
+  const toggle = (key: string) => setPicked(prev => assetKeys(prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]));
+  const allSuggested = suggested.length > 1 && suggested.every(key => picked.includes(key));
+  // Read by the window listeners, which are bound once.
+  const commitRef = useRef(() => {});
+  useEffect(() => { commitRef.current = () => (changed ? onPick(picked) : onClose()); }, [changed, picked, onPick, onClose]);
 
   useEffect(() => {
     const first = panelRef.current?.querySelector<HTMLButtonElement>("[data-current='true']")
@@ -129,7 +137,7 @@ function AssetPicker({ anchor, currentKey, card, onClose, onPick }: {
     };
     const onDown = (e: PointerEvent) => {
       const target = e.target as Node;
-      if (!panelRef.current?.contains(target) && !anchor.contains(target)) onClose();
+      if (!panelRef.current?.contains(target) && !anchor.contains(target)) commitRef.current();
     };
     // Scrolling the page or resizing closes it; scrolling inside the panel (short screens) doesn't.
     const onMove = (e: Event) => { if (!panelRef.current?.contains(e.target as Node)) onClose(); };
@@ -164,22 +172,29 @@ function AssetPicker({ anchor, currentKey, card, onClose, onPick }: {
       >
         <div className="mb-2.5 flex items-baseline justify-between gap-2 px-0.5">
           <span className="font-['Space_Grotesk'] text-[13px] font-bold tracking-wide text-[#F4F6FA]">File in AI OS</span>
-          <span className="text-[10px] font-mono text-gray-500">Asset Library · pick one</span>
+          <span className="text-[10px] font-mono text-gray-500">Asset Library · pick one or more</span>
         </div>
         {suggested.length ? (
           <div className="mb-2.5">
-            <div className="mb-1 px-0.5 text-[9px] font-mono uppercase tracking-[0.14em] text-gray-500">✦ Suggested for this card</div>
+            <div className="mb-1 flex items-center justify-between px-0.5 text-[9px] font-mono uppercase tracking-[0.14em] text-gray-500">
+              <span>✦ Suggested for this card</span>
+              {suggested.length > 1 && !allSuggested ? (
+                <button type="button" onClick={() => setPicked(prev => assetKeys([...prev, ...suggested]))} className="rounded px-1 normal-case tracking-normal text-[#F4F6FA] hover:bg-white/5">
+                  Pick both
+                </button>
+              ) : null}
+            </div>
             <div className="flex gap-1.5">
               {suggested.map(key => {
                 const category = assetCategory(key)!;
-                const on = key === currentKey;
+                const on = picked.includes(key);
                 return (
-                  <button key={key} type="button" data-suggested onClick={() => onPick(key)} title={category.hint}
+                  <button key={key} type="button" data-suggested onClick={() => toggle(key)} title={category.hint} aria-pressed={on}
                     className="asset-suggest flex min-w-0 flex-1 items-center gap-1.5 rounded-lg border px-2 py-1.5 text-left text-[11px] font-medium outline-none hover:brightness-125"
-                    style={{ "--tile": category.color, borderColor: `${category.color}80`, background: `linear-gradient(135deg, ${category.color}30, ${category.color}10)`, color: "#F4F6FA" } as CSSProperties}>
+                    style={{ "--tile": category.color, borderColor: on ? category.color : `${category.color}50`, background: `linear-gradient(135deg, ${category.color}${on ? "48" : "22"}, ${category.color}10)`, color: "#F4F6FA" } as CSSProperties}>
                     <span className="text-[15px] leading-none">{category.emoji}</span>
                     <span className="truncate">{category.label}</span>
-                    {on ? <span className="ml-auto text-[10px]" style={{ color: category.color }}>✓ here</span> : null}
+                    <span className="ml-auto text-[10px]" style={{ color: category.color }}>{on ? "✓" : "+"}</span>
                   </button>
                 );
               })}
@@ -188,7 +203,7 @@ function AssetPicker({ anchor, currentKey, card, onClose, onPick }: {
         ) : null}
         <div className="grid grid-cols-3 gap-1.5">
           {ASSET_CATEGORIES.map((category, i) => {
-            const on = category.key === currentKey;
+            const on = picked.includes(category.key);
             const tip = suggested.includes(category.key);
             return (
               <button
@@ -196,7 +211,7 @@ function AssetPicker({ anchor, currentKey, card, onClose, onPick }: {
                 type="button"
                 data-tile
                 data-current={on ? "true" : undefined}
-                onClick={() => onPick(category.key)}
+                onClick={() => toggle(category.key)}
                 className="asset-tile group relative flex min-h-[78px] flex-col items-start justify-start overflow-hidden rounded-lg border p-2 text-left outline-none"
                 style={{
                   "--tile": category.color,
@@ -220,73 +235,18 @@ function AssetPicker({ anchor, currentKey, card, onClose, onPick }: {
           })}
         </div>
         <div className="mt-2.5 flex items-center justify-between gap-2 px-0.5 text-[10px] font-mono text-gray-500">
-          <span>{currentKey ? "Pick another to move it" : "Shows in the AI OS within a minute"}</span>
-          {currentKey ? (
-            <button type="button" onClick={() => onPick(null)} className="rounded px-1.5 py-0.5 text-[#EB5757] transition hover:bg-[#EB575715]">
+          {currentKeys.length ? (
+            <button type="button" onClick={() => onPick([])} className="rounded px-1.5 py-0.5 text-[#EB5757] transition hover:bg-[#EB575715]">
               Take it back
             </button>
-          ) : null}
+          ) : <span>{picked.length ? `${picked.length} selected` : "Tap one or more"}</span>}
+          <button type="button" data-save disabled={!changed} onClick={() => (changed ? onPick(picked) : onClose())}
+            className="rounded-md border border-[#F0A63C80] bg-[#F0A63C26] px-2.5 py-1 text-[11px] font-medium text-[#F4F6FA] transition hover:brightness-125 disabled:opacity-35">
+            {picked.length || !currentKeys.length ? "Save" : "Save · take back"}
+          </button>
         </div>
       </div>
     </div>,
     document.body,
   );
-}
-
-/**
- * Grid cards. POST /api/items/asset changes only the asset tag on the server, so a tag
- * added elsewhere meanwhile survives; the reply's updatedAt is kept so the next edit of
- * this card isn't refused as a conflict. Offline, it queues a PUT like the 💼 toggle.
- */
-// Cards with a pick in flight: a second pick waits for the first, so two answers can never
-// land out of order and leave the earlier category on the card.
-const pending = new Set<string>();
-
-export async function sendCardAsset(item: Item, category: AssetChoice, deps: {
-  setItems: Dispatch<SetStateAction<Item[]>>;
-  broadcastSync: (msg: SyncPayload) => void;
-  queueWriteOffline: (input: QueuedWriteInput) => Promise<boolean>;
-}) {
-  if (isOfflineTempId(item.id)) return;
-  if (pending.has(item.id)) {
-    showToast("Still filing this card — try again in a moment", "error");
-    return;
-  }
-  pending.add(item.id);
-  try {
-    await fileCard(item, category, deps);
-  } finally {
-    pending.delete(item.id);
-  }
-}
-
-async function fileCard(item: Item, category: AssetChoice, deps: Parameters<typeof sendCardAsset>[2]) {
-  const tags: string[] = setAssetTag(item.tags, category);
-  const applyLocally = (patch: Partial<Item>) => deps.setItems(prev => prev.map(i => i.id === item.id ? { ...i, ...patch } : i));
-  try {
-    const res = await fetch("/api/items/asset", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: item.id, category }),
-    });
-    if (!res.ok) {
-      showToast("Failed to update", "error");
-      return;
-    }
-    const saved = await res.json().catch(() => null) as Item | null;
-    if (saved?.id) {
-      deps.broadcastSync({ type: "item-updated", item: saved });
-      applyLocally({ tags: saved.tags, updatedAt: saved.updatedAt });
-    } else {
-      applyLocally({ tags });
-    }
-    showToast(assetNotice(category), "success");
-  } catch {
-    if (await deps.queueWriteOffline({ kind: "update", payload: { id: item.id, tags } })) {
-      applyLocally({ tags });
-      showToast("Offline — change queued for sync", "success");
-    } else {
-      showToast("Failed to update", "error");
-    }
-  }
 }

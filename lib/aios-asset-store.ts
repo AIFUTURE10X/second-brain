@@ -7,14 +7,14 @@ import { embeddingsEnabled } from "./embeddings.mjs";
 import { updateItemEmbedding } from "./embedding-store";
 
 /**
- * The 🗂 pick: file the card under one AI OS asset category (or take it back, null) in
+ * The 🗂 pick: file the card under these AI OS asset categories (or take it back, []) in
  * one statement, touching nothing else on the card. The updated_at bump is what the
  * AI OS ?since= pull sees. Null when the card is gone.
  */
-export async function setCardAsset(id: string, category: string | null) {
+export async function setCardAsset(id: string, categories: string[]) {
   const [row] = await db
     .update(items)
-    .set({ tags: sql.raw(assetTagsSql(`"tags"`, category)), updatedAt: new Date() })
+    .set({ tags: sql.raw(assetTagsSql(`"tags"`, categories)), updatedAt: new Date() })
     .where(eq(items.id, id))
     .returning();
   // Tags are part of the embedding input (lib/embeddings.mjs).

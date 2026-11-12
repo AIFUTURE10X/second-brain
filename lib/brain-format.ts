@@ -72,6 +72,7 @@ export function formatReminderDue(value: string): string {
 export function resolveContentType(file: File): string {
   if (/\.(md|markdown)$/i.test(file.name)) return "text/markdown";
   if (/\.zip$/i.test(file.name)) return "application/zip";
+  if (/\.html?$/i.test(file.name)) return "text/html";
   return file.type || "application/octet-stream";
 }
 
@@ -83,6 +84,7 @@ export function fileIcon(contentType: string, name?: string): string {
   if (contentType === "text/markdown" || contentType === "text/x-markdown" || (name && /\.(md|markdown)$/i.test(name))) return "Ⓜ";
   if (contentType === "text/plain") return "📃";
   if (contentType === "application/zip" || contentType === "application/x-zip-compressed" || (name && /\.zip$/i.test(name))) return "🗜";
+  if (contentType.startsWith("text/html") || (name && /\.html?$/i.test(name))) return "🎯";
   return "📎";
 }
 

@@ -13,6 +13,7 @@ const ALLOWED_CONTENT_TYPES = [
   "text/plain",
   "text/markdown",
   "text/x-markdown",
+  "text/html", // demo pages: shown through /demo/<path>, sandboxed (lib/demo-links.mjs)
   "image/png",
   "image/jpeg",
   "image/gif",

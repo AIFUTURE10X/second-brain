@@ -19,6 +19,7 @@ import { IdeaToggleButton } from "./IdeaToggle";
 import { AssetSendButton, type AssetChoice } from "./AssetSendButton";
 import { hasIdeaTag } from "@/lib/business-idea.mjs";
 import { localFileViewerHref, isLocalFileUrl } from "@/lib/local-file-links";
+import { demoViewerHref } from "@/lib/demo-links.mjs";
 import { TranscriptSection, isVideoUrl } from "./TranscriptSection";
 import { CardPreviewImage } from "./CardPreviewImage";
 
@@ -804,7 +805,7 @@ export function ItemCard({
                 {displayedAttachments.map(att => (
                   <a
                     key={att.url}
-                    href={att.url}
+                    href={demoViewerHref(att.url)}
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={e => e.stopPropagation()}

@@ -6,6 +6,7 @@ import { showToast } from "../Toast";
 import { filterCardsBySearch } from "@/lib/card-search";
 import { ensureWebsiteLinkUrl, formatCardLinkLabel } from "@/lib/card-links";
 import { isLocalFileUrl } from "@/lib/local-file-links";
+import { demoViewerHref } from "@/lib/demo-links.mjs";
 import { openLocalFileLink } from "@/lib/desktop";
 import { draftStorageKey, parseDraftPayload, serializeDraftPayload } from "@/lib/item-draft-autosave";
 import { mergeReminderDateTimeParts, splitReminderDateTime } from "@/lib/reminders.mjs";
@@ -15,12 +16,8 @@ import {
   TYPES,
   hasMeaningfulFormContent,
   newEntryId,
-  type Attachment,
-  type Category,
-  type Item,
-  type ItemType,
-  type NoteEntry,
-  type WebsiteLink,
+  type Attachment, type Category, type Item,
+  type ItemType, type NoteEntry, type WebsiteLink,
 } from "@/lib/brain-model";
 import { fileIcon, formatSize, formatStamp } from "@/lib/brain-format";
 import { TranscriptSection, isVideoUrl } from "./TranscriptSection";
@@ -897,7 +894,7 @@ export function ItemFormModal({
               ref={fileInputRef}
               type="file"
               multiple
-              accept=".pdf,.xls,.xlsx,.doc,.docx,.csv,.txt,.md,.markdown,.zip,image/*"
+              accept=".pdf,.xls,.xlsx,.doc,.docx,.csv,.txt,.md,.markdown,.zip,.html,.htm,image/*"
               onChange={e => handleFileUpload(e.target.files)}
               className="hidden"
               aria-label="Attach files"
@@ -941,7 +938,7 @@ export function ItemFormModal({
                     </div>
                     <span className="text-gray-600 font-mono text-[10px]">{formatSize(att.size)}</span>
                     <a
-                      href={att.url}
+                      href={demoViewerHref(att.url)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-gray-500 hover:text-white w-5 h-5 flex items-center justify-center"

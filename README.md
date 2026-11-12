@@ -141,6 +141,10 @@ Request bodies are validated with zod; invalid payloads return
   attachment. It goes straight to Vercel Blob via a `/api/upload` client
   token, up to 50 MB. Local `file://` PDFs need "Allow access to file URLs"
   switched on for the extension in `chrome://extensions`.
+- **Demo pages**: attach a single-file `.html` demo to a card (📎 in the card editor) and
+  its 🎯 chip opens it at `/demo/<blob path>`. Vercel Blob won't show HTML itself, so the
+  app serves the page from its own blob store with a `sandbox` CSP (scripts run, no access
+  to the app's cookies or API). The link works without the API key, like the blob URL.
 - **Telegram bot**: set `TELEGRAM_BOT_TOKEN` + `TELEGRAM_ALLOWED_USER_ID`, then
   register the webhook against `/api/telegram` (include
   `&secret_token=$TELEGRAM_WEBHOOK_SECRET` if set). Commands: send a URL/text

@@ -60,3 +60,13 @@ test("a second category named in the title is offered even when the first scores
   // Named only in the body, a weak second stays off.
   assert.deepEqual(suggestAssetCategories({ title: "GSAP parallax scroll animation", content: "on a landing page" }), ["animation"]);
 });
+
+test("saved note entries count, and an indented 🗂 tag does not", () => {
+  assert.deepEqual(suggestAssetCategories({ title: "New idea", noteEntries: [{ body: "Build a Telegram bot" }] }), ["automation"]);
+  assert.deepEqual(suggestAssetCategories({ title: "Grocery list", tags: [" AIOS-Asset:Skill "] }), []);
+});
+
+test("three weak body hits never pass as a title-named second", () => {
+  const card = { title: "GSAP parallax scroll animation animated", content: "prompt template brief" };
+  assert.deepEqual(suggestAssetCategories(card), ["animation"]);
+});

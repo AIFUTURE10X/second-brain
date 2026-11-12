@@ -18,7 +18,7 @@ import type { QueuedWriteInput } from "@/lib/offline-queue";
 /** A category key, or null to take the card back. */
 export type AssetChoice = string | null;
 /** The card's text, read only to suggest a category when the picker opens. */
-export type AssetCard = Partial<Pick<Item, "title" | "content" | "url" | "notes" | "tags" | "category" | "ogTitle" | "ogDescription" | "siteName">>;
+export type AssetCard = Partial<Pick<Item, "title" | "content" | "url" | "notes" | "noteEntries" | "tags" | "category" | "ogTitle" | "ogDescription" | "siteName">>;
 
 const VARIANT_CLASS = {
   row: "rounded px-0.5 text-[10px] leading-none hover:bg-white/5",

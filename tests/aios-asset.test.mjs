@@ -95,8 +95,10 @@ test("web: 🗂 sits beside 💼 on every card layout, the table, board and card
   has(button, `fetch("/api/items/asset"`);
   has(button, "applyLocally({ tags: saved.tags, updatedAt: saved.updatedAt })");
   has(button, "createPortal(", "the picker escapes clipped card footers");
+  has(button, "overflow-y-auto", "a short window scrolls the picker instead of hiding tiles");
   const route = await read("app/api/items/asset/route.ts");
   has(route, "checkApiKey(req)");
   has(route, "!isAssetCategory(category)");
+  assert.ok(!route.includes("body?.category ?? null"), "a missing category is a 400, never a silent take-back");
   has(await read("lib/aios-asset-store.ts"), "sql.raw(assetTagsSql(`\"tags\"`, category))");
 });

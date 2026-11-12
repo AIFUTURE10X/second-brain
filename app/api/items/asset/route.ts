@@ -17,8 +17,9 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => null);
     const id = typeof body?.id === "string" ? body.id.trim().toLowerCase() : "";
     if (!/^[0-9a-f-]{36}$/.test(id)) return jsonError(400, "Missing or invalid id");
-    const category = body?.category ?? null;
-    if (category !== null && !isAssetCategory(category)) return jsonError(400, "Unknown category");
+    // category must be sent: a key files the card, an explicit null takes it back.
+    const category = body?.category;
+    if (category !== null && !isAssetCategory(category)) return jsonError(400, "category must be a known key or null");
 
     const row = await setCardAsset(id, category);
     if (!row) return jsonError(404, "Not found");

@@ -34,7 +34,9 @@ function placeNear(anchor: HTMLElement, panelHeight = PANEL_HEIGHT): Place {
   const r = anchor.getBoundingClientRect();
   const left = Math.min(Math.max(12, r.left + r.width / 2 - PANEL_WIDTH / 2), window.innerWidth - PANEL_WIDTH - 12);
   const up = r.bottom + 8 + panelHeight > window.innerHeight - 12 && r.top - 8 - panelHeight > 12;
-  return { top: up ? r.top - 8 - panelHeight : r.bottom + 8, left, sheet: false, up };
+  // A window shorter than the panel: pin it inside the viewport (it scrolls, see maxHeight).
+  const top = up ? r.top - 8 - panelHeight : Math.max(12, Math.min(r.bottom + 8, window.innerHeight - 12 - panelHeight));
+  return { top, left, sheet: false, up };
 }
 
 export function AssetSendButton({ tags, onPick, variant, className }: {
@@ -108,7 +110,8 @@ function AssetPicker({ anchor, currentKey, onClose, onPick }: {
       const target = e.target as Node;
       if (!panelRef.current?.contains(target) && !anchor.contains(target)) onClose();
     };
-    const onMove = () => onClose();
+    // Scrolling the page or resizing closes it; scrolling inside the panel (short screens) doesn't.
+    const onMove = (e: Event) => { if (!panelRef.current?.contains(e.target as Node)) onClose(); };
     window.addEventListener("keydown", onKey);
     window.addEventListener("pointerdown", onDown, true);
     window.addEventListener("resize", onMove);
@@ -123,8 +126,8 @@ function AssetPicker({ anchor, currentKey, onClose, onPick }: {
 
   const sheet = place.sheet;
   const panelStyle: CSSProperties = sheet
-    ? { left: 0, right: 0, bottom: 0, paddingBottom: "calc(16px + env(safe-area-inset-bottom))" }
-    : { top: place.top, left: place.left, width: PANEL_WIDTH, transformOrigin: place.up ? "bottom center" : "top center" };
+    ? { left: 0, right: 0, bottom: 0, maxHeight: "calc(100dvh - 12px)", paddingBottom: "calc(16px + env(safe-area-inset-bottom))" }
+    : { top: place.top, left: place.left, width: PANEL_WIDTH, maxHeight: "calc(100dvh - 24px)", transformOrigin: place.up ? "bottom center" : "top center" };
 
   return createPortal(
     <div className="fixed inset-0 z-[90]" onClick={e => e.stopPropagation()}>
@@ -133,7 +136,7 @@ function AssetPicker({ anchor, currentKey, onClose, onPick }: {
         ref={panelRef}
         role="dialog"
         aria-label="File in the AI OS Asset Library"
-        className={`asset-panel absolute border border-brand-border bg-[#13161Bf2] p-3 shadow-[0_24px_60px_-12px_rgba(0,0,0,0.75)] backdrop-blur-xl ${sheet ? "rounded-t-2xl" : "rounded-xl"}`}
+        className={`asset-panel absolute overflow-y-auto overscroll-contain border border-brand-border bg-[#13161Bf2] p-3 shadow-[0_24px_60px_-12px_rgba(0,0,0,0.75)] backdrop-blur-xl ${sheet ? "rounded-t-2xl" : "rounded-xl"}`}
         style={panelStyle}
       >
         <div className="mb-2.5 flex items-baseline justify-between gap-2 px-0.5">

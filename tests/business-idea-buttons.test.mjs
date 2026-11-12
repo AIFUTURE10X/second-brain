@@ -143,7 +143,7 @@ test("web: 💼 on every card layout, table, board, card page and bulk bar; tag-
   }
   for (const source of [tableSource, boardSource]) has(source, "sent={hasIdeaTag(item.tags)} onToggle={() => onToggleIdea(item)}");
   assert.equal(count(brainSource, "onToggleIdea={toggleIdea}"), 2, "table and board");
-  has(brainSource, "onToggleIdea={() => toggleIdea(item)}");
+  has(brainSource, "onToggleIdea={(asset?: AssetChoice) => toggleIdea(item, asset)}");
   has(bulkSource, "onAddTag(BUSINESS_IDEA_TAG)");
   // Grid and card page send only { id, send }; the grid keeps the server updatedAt (no false 409).
   has(ideaToggleSource, `fetch("/api/items/idea"`);

@@ -147,6 +147,9 @@ export function parseAutoTagFlag(raw: string | null | undefined): boolean {
 // this file on its own (tests/business-idea.test.mjs keeps the two equal). It sends a card
 // to the AI OS, so a model must never set it.
 export const AI_RESERVED_TAG = "business-idea";
+// ASSET_TAG_PREFIX from lib/aios-asset.mjs (tests/aios-asset.test.mjs keeps them equal):
+// "aios-asset:<category>" files a card in the AI OS Asset Library, so a model never sets it.
+export const AI_RESERVED_TAG_PREFIX = "aios-asset:";
 
 /** Model output is untrusted: lowercase, trim, drop blanks/dupes/the reserved tag, cap at 5. */
 export function normalizeAiTags(raw: unknown): string[] {
@@ -155,7 +158,7 @@ export function normalizeAiTags(raw: unknown): string[] {
   for (const entry of raw) {
     if (typeof entry !== "string" && typeof entry !== "number") continue;
     const tag = String(entry).trim().toLowerCase().slice(0, 40);
-    if (tag && tag !== AI_RESERVED_TAG) seen.add(tag);
+    if (tag && tag !== AI_RESERVED_TAG && !tag.startsWith(AI_RESERVED_TAG_PREFIX)) seen.add(tag);
     if (seen.size >= 5) break;
   }
   return [...seen];

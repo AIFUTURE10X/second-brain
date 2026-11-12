@@ -62,7 +62,7 @@ import {
   toDateTimeLocal,
 } from "@/lib/brain-format";
 import { ItemCard } from "./brain/ItemCard";
-import { toggleCardIdea } from "./brain/IdeaToggle";
+import { sendCardAsset, toggleCardIdea, type AssetChoice } from "./brain/IdeaToggle";
 import { QuickCaptureBar } from "./brain/QuickCaptureBar";
 import { FilterBar } from "./brain/FilterBar";
 import { EmptyState } from "./brain/EmptyState";
@@ -1451,7 +1451,7 @@ export default function Brain() {
     }
   };
 
-  const toggleIdea = (item: Item) => toggleCardIdea(item, { setItems, broadcastSync, queueWriteOffline });
+  const toggleIdea = (item: Item, asset?: AssetChoice) => asset === undefined ? toggleCardIdea(item, { setItems, broadcastSync, queueWriteOffline }) : sendCardAsset(item, asset, { setItems, broadcastSync, queueWriteOffline });
 
   const handleCycleReadingStatus = async (id: string) => {
     const item = items.find(i => i.id === id);
@@ -2128,7 +2128,7 @@ export default function Brain() {
       onToggleChecklistRow={rowId => toggleChecklistItemOnCard(item, rowId)}
       onOpenCard={openCardInCurrentTab}
       onToggleFlag={flag => handleToggleFlag(item.id, flag)}
-      onToggleIdea={() => toggleIdea(item)}
+      onToggleIdea={(asset?: AssetChoice) => toggleIdea(item, asset)}
       onMarkReviewed={() => handleMarkReviewed(item.id)}
       onPin={() => handlePin(item.id)}
       onSummarize={() => handleSummarize(item.id)}

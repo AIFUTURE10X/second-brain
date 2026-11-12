@@ -15,6 +15,8 @@ import { TranscriptSection, isVideoUrl } from "@/components/brain/TranscriptSect
 import { CardSummary } from "@/components/brain/CardSummary";
 import { isAiSummaryEntry } from "@/lib/item-summary";
 import { IdeaToggleButton } from "@/components/brain/IdeaToggle";
+import { AssetSendButton, type AssetChoice } from "@/components/brain/AssetSendButton";
+import { assetNotice, setAssetTagText } from "@/lib/aios-asset.mjs";
 import { hasIdeaTag, ideaToggleNotice, setIdeaTagText } from "@/lib/business-idea.mjs";
 
 type ItemType = "note" | "link" | "clip" | "thought" | "task" | "memory" | "folder";
@@ -511,6 +513,27 @@ export default function CardPopoutPage() {
     }
   };
 
+  // 🗂 files the card in the AI OS Asset Library under one category (null takes it back).
+  // Same shape as 💼: only the asset tag changes on the server (POST /api/items/asset).
+  const pickAsset = async (category: AssetChoice) => {
+    if (!id) return;
+    try {
+      const res = await fetch("/api/items/asset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, category }),
+      });
+      if (!res.ok) throw new Error();
+      const saved: Item = await res.json();
+      if (dirtyRef.current) setForm(f => ({ ...f, tags: setAssetTagText(f.tags, category) }));
+      else applyItem(saved);
+      broadcast({ type: "item-updated", item: saved });
+      showToast(assetNotice(category), "success");
+    } catch {
+      showToast("Couldn't update the card", "error");
+    }
+  };
+
   // Writes an "AI Summary" note entry server-side. Unsaved edits are flushed
   // first — the route rebuilds noteEntries from the DB row, so summarizing over
   // a dirty form would drop whatever hadn't been saved yet.
@@ -688,6 +711,12 @@ export default function CardPopoutPage() {
           className="px-3 py-1.5 rounded-md text-[11px] font-mono transition active:scale-95"
           sent={hasIdeaTag(form.tags.split(","))}
           onToggle={toggleIdea}
+        />
+        <AssetSendButton
+          variant="pill"
+          className="px-3 py-1.5 rounded-md text-[11px] font-mono transition active:scale-95"
+          tags={form.tags.split(",").map(tag => tag.trim())}
+          onPick={pickAsset}
         />
       </div>
 

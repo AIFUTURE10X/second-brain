@@ -11,6 +11,9 @@ import type { QueuedWriteInput } from "@/lib/offline-queue";
 // The 💼 toggle: one tap sends a card to Phil's AI OS (Business Ideas) by adding
 // the business-idea tag, a second tap takes it back (lib/business-idea.mjs).
 
+// Brain routes both buttons through one handler: no asset → 💼, a 🗂 pick → its category.
+export { sendCardAsset, type AssetChoice } from "./AssetSendButton";
+
 const PILL_COLOR = "#BB6BD9";
 
 // Sent has to read at a glance, not as a slightly brighter emoji: the icon sits on a

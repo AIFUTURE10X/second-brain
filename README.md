@@ -27,6 +27,13 @@ other users.
   (`GET /api/items?since=` with the API key, read-only), pulls the transcript or
   page, and breaks it into scored ideas under Tasks → Business Ideas. The AI
   taggers never set this tag (`lib/business-idea.mjs`).
+- **Perfected assets → AI OS Asset Library** — the 🗂 button beside 💼 (every card
+  layout, table, board and card page) opens a picker of nine categories: Website
+  designs, Animations, 3D & interactive, UI components, Sales demos, Automations,
+  Skills, Prompts & templates, Playbooks & offers. A pick adds one
+  `aios-asset:<category>` tag (picking another moves it, "Take it back" removes it);
+  the AI OS reads it on the same `?since=` pull and shelves the card under that
+  category on Library → Assets. The AI taggers never set it (`lib/aios-asset.mjs`).
 - **Find things later** — hybrid search: Postgres full-text search over a
   weighted, indexed `tsvector` column (title > tags/category > body/notes >
   link metadata) merged with pgvector semantic search (OpenAI

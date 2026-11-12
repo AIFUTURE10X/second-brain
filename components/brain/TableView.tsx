@@ -3,6 +3,7 @@ import { TAG_COLORS, TYPES, WORKFLOW_STATUS_META, type Item } from "@/lib/brain-
 import { sourceFromUrl } from "@/lib/brain-format";
 import { CardDate } from "./CardDate";
 import { IdeaToggleButton } from "./IdeaToggle";
+import { AssetSendButton, type AssetChoice } from "./AssetSendButton";
 import { hasIdeaTag } from "@/lib/business-idea.mjs";
 import { localFileViewerHref } from "@/lib/local-file-links";
 import { showToast } from "../Toast";
@@ -17,7 +18,7 @@ interface TableViewProps {
   onToggleSelected: (id: string) => void;
   onOpenCard: (id: string) => void;
   onToggleFlag: (id: string, flag: "favourite" | "actionRequired") => void;
-  onToggleIdea: (item: Item) => void;
+  onToggleIdea: (item: Item, asset?: AssetChoice) => void;
   onMarkReviewed: (id: string) => void;
 }
 
@@ -197,6 +198,7 @@ export function TableView({
                       ⚡
                     </button>
                     <IdeaToggleButton variant="icon" className="rounded px-1 py-0.5 text-[12px] leading-none transition hover:bg-white/5" sent={hasIdeaTag(item.tags)} onToggle={() => onToggleIdea(item)} />
+                    <AssetSendButton variant="icon" className="rounded px-1 py-0.5 text-[12px] leading-none transition hover:bg-white/5" tags={item.tags} onPick={asset => onToggleIdea(item, asset)} />
                   </div>
                 </td>
                 <td className={cellClass}>

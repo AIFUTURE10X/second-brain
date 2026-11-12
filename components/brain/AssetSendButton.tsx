@@ -5,6 +5,7 @@ import type { CSSProperties, Dispatch, SetStateAction } from "react";
 import { createPortal } from "react-dom";
 import { showToast } from "../Toast";
 import { ASSET_CATEGORIES, assetCategory, assetCategoryOf, assetNotice, setAssetTag } from "@/lib/aios-asset.mjs";
+import { suggestAssetCategories } from "@/lib/aios-asset-suggest.mjs";
 import { isOfflineTempId } from "@/lib/offline-replay.mjs";
 import type { Item } from "@/lib/brain-model";
 import type { SyncPayload } from "@/lib/sync";
@@ -16,6 +17,8 @@ import type { QueuedWriteInput } from "@/lib/offline-queue";
 
 /** A category key, or null to take the card back. */
 export type AssetChoice = string | null;
+/** The card's text, read only to suggest a category when the picker opens. */
+export type AssetCard = Partial<Pick<Item, "title" | "content" | "url" | "notes" | "noteEntries" | "tags" | "category" | "ogTitle" | "ogDescription" | "siteName">>;
 
 const VARIANT_CLASS = {
   row: "rounded px-0.5 text-[10px] leading-none hover:bg-white/5",
@@ -25,6 +28,7 @@ const VARIANT_CLASS = {
 
 const PANEL_WIDTH = 344;
 const PANEL_HEIGHT = 340; // header + 3 rows of tiles + footer
+const SUGGEST_HEIGHT = 62; // the "Suggested for this card" row
 const NEUTRAL = "#8B93A7";
 
 type Place = { top: number; left: number; sheet: boolean; up: boolean };
@@ -39,8 +43,9 @@ function placeNear(anchor: HTMLElement, panelHeight = PANEL_HEIGHT): Place {
   return { top, left, sheet: false, up };
 }
 
-export function AssetSendButton({ tags, onPick, variant, className }: {
+export function AssetSendButton({ tags, card, onPick, variant, className }: {
   tags: string[] | null | undefined;
+  card?: AssetCard;
   onPick: (category: AssetChoice) => void;
   variant: keyof typeof VARIANT_CLASS;
   className?: string;
@@ -64,6 +69,8 @@ export function AssetSendButton({ tags, onPick, variant, className }: {
       <button
         type="button"
         onClick={e => { e.stopPropagation(); const el = e.currentTarget; setAnchor(a => a ? null : el); }}
+        // Cards and rows toggle on Enter/Space; keep the keys for this button.
+        onKeyDown={e => e.stopPropagation()}
         className={className ?? VARIANT_CLASS[variant]}
         style={style}
         title={label}
@@ -75,7 +82,8 @@ export function AssetSendButton({ tags, onPick, variant, className }: {
         <AssetPicker
           anchor={anchor}
           currentKey={current?.key ?? null}
-          onClose={() => { anchor.focus(); setAnchor(null); }}
+          card={card}
+          onClose={() => { anchor.focus({ preventScroll: true }); setAnchor(null); }}
           onPick={key => { setAnchor(null); onPick(key); }}
         />
       ) : null}
@@ -83,21 +91,34 @@ export function AssetSendButton({ tags, onPick, variant, className }: {
   );
 }
 
-function AssetPicker({ anchor, currentKey, onClose, onPick }: {
+function AssetPicker({ anchor, currentKey, card, onClose, onPick }: {
   anchor: HTMLElement;
   currentKey: string | null;
+  card?: AssetCard;
   onClose: () => void;
   onPick: (key: AssetChoice) => void;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
+  // Worked out once, when it opens: one or two likely categories from the card's own text.
+  const [suggested] = useState<string[]>(() => (card ? suggestAssetCategories(card) : []));
   // Placed once, when it opens; scrolling or resizing closes it instead of chasing the card.
-  const [place] = useState<Place>(() => placeNear(anchor));
+  const [place] = useState<Place>(() => placeNear(anchor, PANEL_HEIGHT + (suggested.length ? SUGGEST_HEIGHT : 0)));
 
   useEffect(() => {
-    const first = panelRef.current?.querySelector<HTMLButtonElement>("[data-current='true'], [data-tile]");
+    const first = panelRef.current?.querySelector<HTMLButtonElement>("[data-current='true']")
+      ?? panelRef.current?.querySelector<HTMLButtonElement>("[data-suggested], [data-tile]");
     first?.focus({ preventScroll: true });
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") { e.preventDefault(); onClose(); return; }
+      if (e.key === "Tab") { // keep focus in the picker (the phone sheet covers the page)
+        const all = [...(panelRef.current?.querySelectorAll<HTMLButtonElement>("button") ?? [])];
+        const at = all.indexOf(document.activeElement as HTMLButtonElement);
+        if (all.length && (at < 0 || (e.shiftKey ? at === 0 : at === all.length - 1))) {
+          e.preventDefault();
+          all[e.shiftKey ? all.length - 1 : 0].focus();
+        }
+        return;
+      }
       if (!["ArrowRight", "ArrowLeft", "ArrowDown", "ArrowUp"].includes(e.key)) return;
       const tiles = [...(panelRef.current?.querySelectorAll<HTMLButtonElement>("[data-tile]") ?? [])];
       const at = tiles.indexOf(document.activeElement as HTMLButtonElement);
@@ -112,12 +133,12 @@ function AssetPicker({ anchor, currentKey, onClose, onPick }: {
     };
     // Scrolling the page or resizing closes it; scrolling inside the panel (short screens) doesn't.
     const onMove = (e: Event) => { if (!panelRef.current?.contains(e.target as Node)) onClose(); };
-    window.addEventListener("keydown", onKey);
+    window.addEventListener("keydown", onKey, true); // capture: the portal root stops bubbling
     window.addEventListener("pointerdown", onDown, true);
     window.addEventListener("resize", onMove);
     window.addEventListener("scroll", onMove, true);
     return () => {
-      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keydown", onKey, true);
       window.removeEventListener("pointerdown", onDown, true);
       window.removeEventListener("resize", onMove);
       window.removeEventListener("scroll", onMove, true);
@@ -130,7 +151,9 @@ function AssetPicker({ anchor, currentKey, onClose, onPick }: {
     : { top: place.top, left: place.left, width: PANEL_WIDTH, maxHeight: "calc(100dvh - 24px)", transformOrigin: place.up ? "bottom center" : "top center" };
 
   return createPortal(
-    <div className="fixed inset-0 z-[90]" onClick={e => e.stopPropagation()}>
+    // A portal still bubbles React events to the card: stop clicks and keys here, or a pick
+    // would also expand the card (and Enter on a tile would be swallowed by its key handler).
+    <div className="fixed inset-0 z-[90]" onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
       {sheet ? <div className="asset-scrim absolute inset-0 bg-black/55" onClick={onClose} /> : null}
       <div
         ref={panelRef}
@@ -143,9 +166,30 @@ function AssetPicker({ anchor, currentKey, onClose, onPick }: {
           <span className="font-['Space_Grotesk'] text-[13px] font-bold tracking-wide text-[#F4F6FA]">File in AI OS</span>
           <span className="text-[10px] font-mono text-gray-500">Asset Library · pick one</span>
         </div>
+        {suggested.length ? (
+          <div className="mb-2.5">
+            <div className="mb-1 px-0.5 text-[9px] font-mono uppercase tracking-[0.14em] text-gray-500">✦ Suggested for this card</div>
+            <div className="flex gap-1.5">
+              {suggested.map(key => {
+                const category = assetCategory(key)!;
+                const on = key === currentKey;
+                return (
+                  <button key={key} type="button" data-suggested onClick={() => onPick(key)} title={category.hint}
+                    className="asset-suggest flex min-w-0 flex-1 items-center gap-1.5 rounded-lg border px-2 py-1.5 text-left text-[11px] font-medium outline-none hover:brightness-125"
+                    style={{ "--tile": category.color, borderColor: `${category.color}80`, background: `linear-gradient(135deg, ${category.color}30, ${category.color}10)`, color: "#F4F6FA" } as CSSProperties}>
+                    <span className="text-[15px] leading-none">{category.emoji}</span>
+                    <span className="truncate">{category.label}</span>
+                    {on ? <span className="ml-auto text-[10px]" style={{ color: category.color }}>✓ here</span> : null}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
         <div className="grid grid-cols-3 gap-1.5">
           {ASSET_CATEGORIES.map((category, i) => {
             const on = category.key === currentKey;
+            const tip = suggested.includes(category.key);
             return (
               <button
                 key={category.key}
@@ -169,7 +213,8 @@ function AssetPicker({ anchor, currentKey, onClose, onPick }: {
                   {category.label}
                 </span>
                 <span className="relative mt-0.5 line-clamp-2 text-[9px] leading-snug text-gray-500 group-hover:text-gray-400">{category.hint}</span>
-                {on ? <span className="absolute right-1.5 top-1.5 rounded-full px-1 text-[9px] font-bold" style={{ background: category.color, color: "#0D0F12" }}>✓</span> : null}
+                {on ? <span className="absolute right-1.5 top-1.5 rounded-full px-1 text-[9px] font-bold" style={{ background: category.color, color: "#0D0F12" }}>✓</span>
+                  : tip ? <span className="absolute right-1.5 top-1.5 text-[10px] leading-none" style={{ color: category.color }} title="Suggested for this card">✦</span> : null}
               </button>
             );
           })}
@@ -193,12 +238,29 @@ function AssetPicker({ anchor, currentKey, onClose, onPick }: {
  * added elsewhere meanwhile survives; the reply's updatedAt is kept so the next edit of
  * this card isn't refused as a conflict. Offline, it queues a PUT like the 💼 toggle.
  */
+// Cards with a pick in flight: a second pick waits for the first, so two answers can never
+// land out of order and leave the earlier category on the card.
+const pending = new Set<string>();
+
 export async function sendCardAsset(item: Item, category: AssetChoice, deps: {
   setItems: Dispatch<SetStateAction<Item[]>>;
   broadcastSync: (msg: SyncPayload) => void;
   queueWriteOffline: (input: QueuedWriteInput) => Promise<boolean>;
 }) {
   if (isOfflineTempId(item.id)) return;
+  if (pending.has(item.id)) {
+    showToast("Still filing this card — try again in a moment", "error");
+    return;
+  }
+  pending.add(item.id);
+  try {
+    await fileCard(item, category, deps);
+  } finally {
+    pending.delete(item.id);
+  }
+}
+
+async function fileCard(item: Item, category: AssetChoice, deps: Parameters<typeof sendCardAsset>[2]) {
   const tags: string[] = setAssetTag(item.tags, category);
   const applyLocally = (patch: Partial<Item>) => deps.setItems(prev => prev.map(i => i.id === item.id ? { ...i, ...patch } : i));
   try {

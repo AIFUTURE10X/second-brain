@@ -198,7 +198,7 @@ export function TableView({
                       ⚡
                     </button>
                     <IdeaToggleButton variant="icon" className="rounded px-1 py-0.5 text-[12px] leading-none transition hover:bg-white/5" sent={hasIdeaTag(item.tags)} onToggle={() => onToggleIdea(item)} />
-                    <AssetSendButton variant="icon" className="rounded px-1 py-0.5 text-[12px] leading-none transition hover:bg-white/5" tags={item.tags} onPick={asset => onToggleIdea(item, asset)} />
+                    <AssetSendButton variant="icon" className="rounded px-1 py-0.5 text-[12px] leading-none transition hover:bg-white/5" tags={item.tags} card={item} onPick={asset => onToggleIdea(item, asset)} />
                   </div>
                 </td>
                 <td className={cellClass}>

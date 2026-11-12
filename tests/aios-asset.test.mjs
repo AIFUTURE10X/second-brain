@@ -81,7 +81,7 @@ test("only a person files an asset: both AI tag paths drop the tag", async () =>
 
 test("web: 🗂 sits beside 💼 on every card layout, the table, board and card page", async () => {
   const card = await read("components/brain/ItemCard.tsx");
-  for (const variant of ["row", "icon", "pill"]) has(card, `<AssetSendButton variant="${variant}" tags={item.tags} onPick={onToggleIdea} />`);
+  for (const variant of ["row", "icon", "pill"]) has(card, `<AssetSendButton variant="${variant}" tags={item.tags} card={item} onPick={onToggleIdea} />`);
   for (const path of ["components/brain/TableView.tsx", "components/brain/BoardView.tsx"]) {
     has(await read(path), "onPick={asset => onToggleIdea(item, asset)}");
   }
@@ -96,9 +96,14 @@ test("web: 🗂 sits beside 💼 on every card layout, the table, board and card
   has(button, "applyLocally({ tags: saved.tags, updatedAt: saved.updatedAt })");
   has(button, "createPortal(", "the picker escapes clipped card footers");
   has(button, "overflow-y-auto", "a short window scrolls the picker instead of hiding tiles");
+  has(button, "onKeyDown={e => e.stopPropagation()}", "Enter/Space on the button never toggle the card");
+  has(button, "onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}", "the portal stops React bubbling");
+  has(button, "if (pending.has(item.id))", "one pick per card at a time");
+  has(button, "focus({ preventScroll: true })");
   const route = await read("app/api/items/asset/route.ts");
   has(route, "checkApiKey(req)");
   has(route, "!isAssetCategory(category)");
+  assert.ok(!route.includes("[0-9a-f-]{36}"), "ids are checked as real UUIDs");
   assert.ok(!route.includes("body?.category ?? null"), "a missing category is a 400, never a silent take-back");
   has(await read("lib/aios-asset-store.ts"), "sql.raw(assetTagsSql(`\"tags\"`, category))");
 });

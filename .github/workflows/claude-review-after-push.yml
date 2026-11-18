@@ -1,0 +1,119 @@
+# Reviews a pull request again after each push, but only while its last Claude
+# review found problems (the PR has the "claude-found-problems" label). The check
+# then turns green once those problems are fixed. A clean PR isn't re-reviewed on
+# later pushes, to save plan usage; its "review after push" check shows as skipped.
+# This is a separate file from claude-review.yml on purpose: GitHub shows only the
+# newest check of each name on a commit, so a skipped push check must never share
+# a name with a real review that lands on the same commit at the same moment.
+# The steps below are shared with claude-review.yml: change both together.
+name: Claude Review
+
+on:
+  pull_request:
+    types: [synchronize]
+
+jobs:
+  review-after-push:
+    name: review after push
+    # Skip drafts and PRs from forks, and clean PRs (no claude-found-problems label).
+    if: >-
+      !github.event.pull_request.draft
+      && github.event.pull_request.head.repo.full_name == github.repository
+      && contains(github.event.pull_request.labels.*.name, 'claude-found-problems')
+    # One review per PR at a time, shared with claude-review.yml.
+    concurrency:
+      group: claude-review-${{ github.event.pull_request.number || github.event.issue.number }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
+    steps:
+      # A "@claude review" comment can't tell from the event whether the PR comes
+      # from a fork, so look it up and skip fork PRs, as the pull_request path does.
+      - name: Skip pull requests from forks
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number || github.event.issue.number }}
+        run: |
+          fork=$(gh pr view "$PR" -R "$GITHUB_REPOSITORY" --json isCrossRepository --jq .isCrossRepository)
+          echo "fork=$fork" >> "$GITHUB_OUTPUT"
+          if [ "$fork" = "true" ]; then echo "::notice::Skipping the review: PR #$PR comes from a fork."; fi
+
+      - uses: actions/checkout@v6
+        if: steps.pr.outputs.fork == 'false'
+        with:
+          fetch-depth: 1
+          # On a comment, check out the PR's code rather than main.
+          ref: ${{ github.event_name == 'issue_comment' && format('refs/pull/{0}/head', github.event.issue.number) || '' }}
+
+      - uses: anthropics/claude-code-action@v1
+        id: claude
+        if: steps.pr.outputs.fork == 'false'
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+
+            Review this pull request. Read the diff with `gh pr diff`, then read the
+            surrounding code in the repository wherever you need context. If the PR
+            already has an earlier "Claude review:" comment (list them with `gh pr view --json comments`),
+            check whether the problems it listed are now fixed, and don't repeat
+            inline comments for problems that are already fixed.
+
+            Look for real problems only: bugs, broken behaviour, regressions, security
+            issues, data loss, and changes that will break on phones or in other parts
+            of the app. Skip style nitpicks and personal preferences.
+
+            A problem is "blocking" if it should be fixed before this PR is merged:
+            it breaks something, loses or exposes data, or opens a security hole.
+            Small risks, edge cases and suggestions are not blocking; mention them
+            as notes.
+
+            For each blocking problem, leave an inline comment on the exact line that
+            says what goes wrong, when it goes wrong, and how to fix it.
+
+            Then post one summary comment with `gh pr comment`. Its first line must be
+            either "Claude review: ❌ N problem(s) to fix before merging" or
+            "Claude review: ✅ nothing that should block merging". Then list the
+            blocking problems from most to least serious, followed by any notes.
+
+            Finally, return blocking_problems: the number of blocking problems you
+            found (0 if none). It decides whether the PR's Claude Review check is
+            red or green.
+
+            Do not approve, merge, push or edit anything.
+          claude_args: |
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Read,Grep,Glob"
+            --json-schema '{"type":"object","properties":{"blocking_problems":{"type":"integer","minimum":0}},"required":["blocking_problems"]}'
+
+      # Turns Claude's answer into the check's colour, and keeps the
+      # claude-found-problems label in step with it.
+      - name: Red if Claude found problems to fix
+        if: steps.pr.outputs.fork == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number || github.event.issue.number }}
+          RESULT: ${{ steps.claude.outputs.structured_output }}
+        run: |
+          blocking=$(jq -r '.blocking_problems // empty' <<<"$RESULT" 2>/dev/null || true)
+          if ! [[ "$blocking" =~ ^[0-9]+$ ]]; then
+            echo "::error::Claude didn't return a result, so this review can't be trusted. Re-run it or comment \"@claude review\"."
+            exit 1
+          fi
+          labels="repos/$GITHUB_REPOSITORY/issues/$PR/labels"
+          if [ "$blocking" -gt 0 ]; then
+            gh label create claude-found-problems -R "$GITHUB_REPOSITORY" --color D93F0B \
+              --description "Claude's last review found problems to fix before merging" 2>/dev/null || true
+            gh api "$labels" -f "labels[]=claude-found-problems" > /dev/null
+            echo "::error::Claude found $blocking problem(s) to fix before merging. See its comments on the PR."
+            exit 1
+          fi
+          gh api -X DELETE "$labels/claude-found-problems" > /dev/null 2>&1 || true
+          echo "Claude found nothing that should block merging."

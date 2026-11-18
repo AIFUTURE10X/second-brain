@@ -71,7 +71,7 @@ jobs:
 
             Review this pull request. Read the diff with `gh pr diff`, then read the
             surrounding code in the repository wherever you need context. If the PR
-            already has an earlier "Claude review:" comment (see `gh pr view --comments`),
+            already has an earlier "Claude review:" comment (list them with `gh pr view --json comments`),
             check whether the problems it listed are now fixed, and don't repeat
             inline comments for problems that are already fixed.
 

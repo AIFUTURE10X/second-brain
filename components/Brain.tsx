@@ -107,6 +107,17 @@ import {
   pickDueReminderNotifications,
 } from "@/lib/reminder-notifications.mjs";
 import { getRelationCountsByItemId } from "@/lib/relation-graph";
+import {
+  clearAppRuntimeCaches,
+  consumeJustSavedItem,
+  mergeJustSavedItem,
+  readCachedCategories,
+  readCachedItems,
+  upsertCachedItem,
+  writeCachedCategories,
+  writeCachedItems,
+} from "@/lib/client-cache";
+import { navigateToCard, popOutCardWindow } from "@/lib/popout";
 
 const CLIENT_APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "dev";
 
@@ -188,6 +199,9 @@ export default function Brain() {
   // fetch or delta poll. Null until the first full item list has loaded.
   const syncCursorRef = useRef<string | null>(null);
   const fetchSeqRef = useRef(0);
+  const deltaInFlightRef = useRef(false);
+  const lastVisibleSyncRef = useRef(0);
+  const enrichSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [failedPreviewUrls, setFailedPreviewUrls] = useState<Set<string>>(new Set());
   const [sortBy, setSortBy] = useState<"newest" | "oldest" | "updated">("newest");
@@ -212,41 +226,32 @@ export default function Brain() {
   const [relatedPickerSearch, setRelatedPickerSearch] = useState("");
   const restoredDraftKeyRef = useRef<string | null>(null);
 
-  // Persist density preference across reloads
+  // Persist density and task-layout preferences across reloads
   useEffect(() => {
-    const saved = typeof window !== "undefined" ? window.localStorage.getItem("sb_density") : null;
-    const parsed = parseViewMode(saved);
-    if (parsed) setDensity(parsed);
+    const parsedDensity = parseViewMode(window.localStorage.getItem("sb_density"));
+    if (parsedDensity) setDensity(parsedDensity);
+    const savedLayout = window.localStorage.getItem("sb_task_layout");
+    if (savedLayout === "board" || savedLayout === "list") setTaskLayout(savedLayout);
   }, []);
-  useEffect(() => {
-    if (typeof window !== "undefined") window.localStorage.setItem("sb_density", density);
-  }, [density]);
-  useEffect(() => {
-    const saved = typeof window !== "undefined" ? window.localStorage.getItem("sb_task_layout") : null;
-    if (saved === "board" || saved === "list") setTaskLayout(saved);
-  }, []);
-  useEffect(() => {
-    if (typeof window !== "undefined") window.localStorage.setItem("sb_task_layout", taskLayout);
-  }, [taskLayout]);
+  useEffect(() => { window.localStorage.setItem("sb_density", density); }, [density]);
+  useEffect(() => { window.localStorage.setItem("sb_task_layout", taskLayout); }, [taskLayout]);
 
+  // Load all user settings (custom saved views, saved searches, card templates)
+  // in a single request instead of three separate round-trips on mount.
   useEffect(() => {
-    fetch(`/api/settings?key=${CUSTOM_SAVED_VIEWS_KEY}`)
+    fetch("/api/settings")
       .then(r => r.ok ? r.json() : null)
       .then(data => {
-        setCustomSavedViews(normalizeCustomSavedViews(data?.[CUSTOM_SAVED_VIEWS_KEY]));
-      })
-      .catch(() => {});
-  }, []);
-
-  // Saved searches — synced via /api/settings under one JSON key.
-  useEffect(() => {
-    fetch(`/api/settings?key=${SAVED_SEARCHES_SETTINGS_KEY}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
-        setSavedSearches(normalizeSavedSearches(data?.[SAVED_SEARCHES_SETTINGS_KEY]) as { id: string; name: string; state: Record<string, unknown> }[]);
+        if (!data) return;
+        setCustomSavedViews(normalizeCustomSavedViews(data[CUSTOM_SAVED_VIEWS_KEY]));
+        setSavedSearches(normalizeSavedSearches(data[SAVED_SEARCHES_SETTINGS_KEY]) as { id: string; name: string; state: Record<string, unknown> }[]);
+        setCardTemplates(normalizeCardTemplates(data[CARD_TEMPLATES_SETTINGS_KEY]));
       })
       .catch(() => {})
-      .finally(() => { savedSearchesLoaded.current = true; });
+      .finally(() => {
+        savedSearchesLoaded.current = true;
+        cardTemplatesLoaded.current = true;
+      });
   }, []);
 
   const persistSavedSearches = useCallback((list: { id: string; name: string; state: Record<string, unknown> }[]) => {
@@ -316,17 +321,6 @@ export default function Brain() {
   const deleteSavedSearch = (id: string) => {
     persistSavedSearches(removeSavedSearch(savedSearches, id));
   };
-
-  // Card templates (roadmap 2.10) — synced via /api/settings like saved searches.
-  useEffect(() => {
-    fetch(`/api/settings?key=${CARD_TEMPLATES_SETTINGS_KEY}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
-        setCardTemplates(normalizeCardTemplates(data?.[CARD_TEMPLATES_SETTINGS_KEY]));
-      })
-      .catch(() => {})
-      .finally(() => { cardTemplatesLoaded.current = true; });
-  }, []);
 
   const persistCardTemplates = useCallback((list: CardTemplate[]) => {
     setCardTemplates(list);
@@ -401,6 +395,7 @@ export default function Brain() {
         setSearchFuzzy(res.headers.get("x-search-fuzzy") === "1");
         setItemsError(false);
         if (!query) {
+          if (!archivedOnly) writeCachedItems(rows as Item[]);
           // Anchor the polling-sync cursor to the server's clock (Date
           // header) so client clock skew can't make polls miss changes.
           const serverDate = new Date(res.headers.get("date") || Date.now());
@@ -436,8 +431,11 @@ export default function Brain() {
   const fetchCategories = useCallback(async () => {
     try {
       const res = await fetch("/api/categories", { cache: "no-store" });
-      if (res.ok) setCategories(await res.json());
-      else showToast("Failed to load categories", "error");
+      if (res.ok) {
+        const data = await res.json() as Category[];
+        setCategories(data);
+        writeCachedCategories(data);
+      } else showToast("Failed to load categories", "error");
     } catch {
       showToast("Failed to load categories", "error");
     }
@@ -481,20 +479,7 @@ export default function Brain() {
     refreshPendingOffline();
   }, [fetchItems, fetchCategories, fetchRelations, fetchReminders, refreshPendingOffline, search]);
 
-  const clearRuntimeCaches = useCallback(async () => {
-    if (typeof window === "undefined") return;
-
-    if ("caches" in window) {
-      const keys = await caches.keys();
-      await Promise.all(keys.filter(key => key.startsWith("sb-")).map(key => caches.delete(key)));
-    }
-
-    if ("serviceWorker" in navigator) {
-      const registrations = await navigator.serviceWorker.getRegistrations();
-      await Promise.all(registrations.map(registration => registration.update().catch(() => undefined)));
-      navigator.serviceWorker.controller?.postMessage({ type: "CLEAR_RUNTIME_CACHES" });
-    }
-  }, []);
+  const clearRuntimeCaches = useCallback(() => clearAppRuntimeCaches(), []);
 
   const reloadForAppUpdate = useCallback(async () => {
     try {
@@ -522,6 +507,23 @@ export default function Brain() {
       return next;
     });
   }, []);
+
+  // Hydrate immediately from local cache (+ any item just saved via /share) so
+  // opening the app renders without waiting on a cold server/DB round-trip.
+  useEffect(() => {
+    const cachedItems = readCachedItems();
+    const justSaved = consumeJustSavedItem();
+    const cachedCats = readCachedCategories();
+    if (cachedCats) setCategories(cachedCats);
+    if (cachedItems || justSaved) {
+      setItems(mergeJustSavedItem(cachedItems || [], justSaved));
+      setLoading(false);
+    }
+    if (justSaved) {
+      if (enrichSyncTimerRef.current) clearTimeout(enrichSyncTimerRef.current);
+      enrichSyncTimerRef.current = setTimeout(() => { fetchItems(); fetchCategories(); }, 4000);
+    }
+  }, [fetchItems, fetchCategories]);
 
   useEffect(() => { fetchItems(); fetchCategories(); fetchRelations(); fetchReminders(); }, [fetchItems, fetchCategories, fetchRelations, fetchReminders]);
 
@@ -562,43 +564,8 @@ export default function Brain() {
     ch.postMessage({ ...msg, source: syncClientIdRef.current } as SyncMessage);
   }, []);
 
-  const popOutCard = useCallback((id: string) => {
-    if (typeof window === "undefined") return;
-    const absoluteUrl = new URL(`/card/${id}`, window.location.origin).toString();
-
-    // Tauri desktop app: open the card in the user's default system browser via
-    // the opener plugin. WebView2 multi-window is too unreliable for our use
-    // case, and Chrome handles popups (and copy-paste between them) properly.
-    const tauriIpc = (window as unknown as { __TAURI_INTERNALS__?: { invoke?: (cmd: string, args?: unknown) => Promise<unknown> } }).__TAURI_INTERNALS__;
-    if (tauriIpc && typeof tauriIpc.invoke === "function") {
-      tauriIpc.invoke("plugin:opener|open_url", { url: absoluteUrl, with: null })
-        .catch((err: unknown) => {
-          console.error("[popOut] opener failed:", err);
-          showToast(`Pop-out failed: ${String(err)}`, "error");
-        });
-      return;
-    }
-
-    // Regular browser path — popup window
-    const w = 720;
-    const h = 900;
-    const left = window.screenX + Math.max(0, window.outerWidth - w - 40);
-    const top = window.screenY + 40;
-    let popup: Window | null = null;
-    try {
-      popup = window.open(absoluteUrl, `card-${id}`, `popup,width=${w},height=${h},left=${left},top=${top}`);
-    } catch {
-      popup = null;
-    }
-    if (popup === null) {
-      window.location.href = absoluteUrl;
-    }
-  }, []);
-
-  const openCardInCurrentTab = useCallback((id: string) => {
-    if (typeof window === "undefined") return;
-    window.location.href = new URL(`/card/${id}`, window.location.origin).toString();
-  }, []);
+  const popOutCard = useCallback((id: string) => popOutCardWindow(id, msg => showToast(msg, "error")), []);
+  const openCardInCurrentTab = useCallback((id: string) => navigateToCard(id), []);
 
   // Open the add form when launched via PWA shortcut (?new=1)
   useEffect(() => {
@@ -655,49 +622,64 @@ export default function Brain() {
     return () => window.removeEventListener("online", onOnline);
   }, [replayOfflineQueue]);
 
-  // Polling sync: while the tab is visible and no search is active (the items
-  // state holds server search results then), fetch ?since= deltas and merge
-  // them into local state. Deletes propagate via tombstones. Returning to a
-  // hidden tab is covered by the visibilitychange full refresh below.
+  // Lightweight delta sync: fetches only rows changed since syncCursorRef.
+  const pollDelta = useCallback(async () => {
+    if (deltaInFlightRef.current || document.visibilityState !== "visible") return;
+    const cursor = syncCursorRef.current;
+    if (!cursor) return;
+    deltaInFlightRef.current = true;
+    const seq = fetchSeqRef.current;
+    try {
+      const res = await fetch(`/api/items?since=${encodeURIComponent(cursor)}`, { cache: "no-store" });
+      if (!res.ok) return;
+      const delta = parseSyncDelta(await res.json());
+      if (!delta || seq !== fetchSeqRef.current) return;
+      if (delta.serverTime) syncCursorRef.current = delta.serverTime;
+      if (delta.items.length === 0 && delta.deletedIds.length === 0) return;
+      setItems(prev => {
+        const next = mergeSyncedItems(prev, delta.items, delta.deletedIds) as Item[];
+        if (next !== prev) writeCachedItems(next);
+        return next;
+      });
+      if (delta.items.length > 0) fetchCategories();
+      if (delta.deletedIds.length > 0) fetchRelations();
+    } catch {} finally {
+      deltaInFlightRef.current = false;
+    }
+  }, [fetchCategories, fetchRelations]);
+
+  const scheduleEnrichmentSync = useCallback(() => {
+    if (enrichSyncTimerRef.current) clearTimeout(enrichSyncTimerRef.current);
+    enrichSyncTimerRef.current = setTimeout(() => { pollDelta(); }, 4000);
+  }, [pollDelta]);
+
+  useEffect(() => () => {
+    if (enrichSyncTimerRef.current) clearTimeout(enrichSyncTimerRef.current);
+  }, []);
+
+  // Polling sync while visible and no search/archive filter is active.
   useEffect(() => {
     if (search.trim() || archivedOnly) return;
-    let inFlight = false;
-    const poll = async () => {
-      if (inFlight || document.visibilityState !== "visible") return;
-      const cursor = syncCursorRef.current;
-      if (!cursor) return;
-      inFlight = true;
-      const seq = fetchSeqRef.current;
-      try {
-        const res = await fetch(`/api/items?since=${encodeURIComponent(cursor)}`, { cache: "no-store" });
-        if (!res.ok) return;
-        const delta = parseSyncDelta(await res.json());
-        // A search (or full reload) started meanwhile owns the grid now.
-        if (!delta || seq !== fetchSeqRef.current) return;
-        if (delta.serverTime) syncCursorRef.current = delta.serverTime;
-        if (delta.items.length === 0 && delta.deletedIds.length === 0) return;
-        setItems(prev => mergeSyncedItems(prev, delta.items, delta.deletedIds) as Item[]);
-        if (delta.items.length > 0) fetchCategories();
-        if (delta.deletedIds.length > 0) fetchRelations();
-      } catch {
-        // Offline or transient failure — try again on the next tick.
-      } finally {
-        inFlight = false;
-      }
-    };
-    const interval = setInterval(poll, SYNC_POLL_INTERVAL_MS);
+    const interval = setInterval(pollDelta, SYNC_POLL_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [search, archivedOnly, fetchCategories, fetchRelations]);
+  }, [search, archivedOnly, pollDelta]);
 
-  // Auto-refresh when user returns to the tab (e.g. after clipping from extension)
+  // Auto-refresh when returning to the tab (throttled so visibilitychange +
+  // focus don't double-fire; uses delta sync when a cursor is already set).
   useEffect(() => {
     const onVisible = () => {
-      if (document.visibilityState === "visible") {
+      if (document.visibilityState !== "visible") return;
+      const now = Date.now();
+      if (now - lastVisibleSyncRef.current < 2000) return;
+      lastVisibleSyncRef.current = now;
+      if (!search.trim() && !archivedOnly && syncCursorRef.current) {
+        pollDelta();
+      } else {
         fetchItems(search.trim() || undefined);
         fetchCategories();
-        fetchRelations();
-        fetchReminders();
       }
+      fetchRelations();
+      fetchReminders();
     };
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", onVisible);
@@ -705,7 +687,7 @@ export default function Brain() {
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", onVisible);
     };
-  }, [fetchItems, fetchCategories, fetchRelations, fetchReminders, search]);
+  }, [fetchItems, fetchCategories, fetchRelations, fetchReminders, pollDelta, search, archivedOnly]);
 
   // Reset pagination when filters change
   useEffect(() => { setVisibleCount(50); }, [view, catFilter, search, sortBy, sourceFilter, tagFilter, withNotesOnly, favouritesOnly, actionOnly, remindersOnly, readLaterOnly, inboxOnly, reviewMode, archivedOnly, datePreset, dateFrom, dateTo]);
@@ -1090,26 +1072,25 @@ export default function Brain() {
         setSaving(false);
         return;
       }
-      try {
-        const saved = await res.clone().json();
-        if (saved && saved.id) {
-          await syncRelatedItems(saved.id, relatedItemIds, previousRelatedIds);
-          await syncReminder(saved.id);
-          broadcastSync({ type: editingId ? "item-updated" : "item-created", item: saved });
-          if (!editingId && saved.type === "task" && !andAddAnother) applySavedView("tasks");
+      const saved = (await res.json().catch(() => null)) as Item | null;
+      if (saved && saved.id) {
+        setItems(prev => upsertCachedItem(prev, saved, Boolean(editingId), !search.trim() && !archivedOnly));
+        broadcastSync({ type: editingId ? "item-updated" : "item-created", item: saved });
+        if (!editingId && saved.type === "task" && !andAddAnother) applySavedView("tasks");
+        Promise.all([
+          syncRelatedItems(saved.id, relatedItemIds, previousRelatedIds),
+          syncReminder(saved.id),
+        ]).then(() => { fetchReminders(); }).catch(() => {});
+        if (!editingId && (saved.url || (!saved.category && saved.tags.length === 0))) {
+          scheduleEnrichmentSync();
         }
-      } catch {}
-      showToast(editingId ? "Item updated" : "Item saved", "success");
-      await fetchItems();
-      await fetchReminders();
-      if (editingId) {
-        await fetchCategories();
-        if (andAddAnother) resetForm(true);
-        else closeForm();
       } else {
-        await fetchCategories();
-        resetForm(true);
+        fetchItems();
       }
+      fetchCategories();
+      showToast(editingId ? "Item updated" : "Item saved", "success");
+      if (editingId && !andAddAnother) closeForm();
+      else resetForm(true);
     } catch {
       // Network-level failure (offline) — queue the write and update the
       // local state optimistically; replay happens on reconnect.
@@ -1150,8 +1131,15 @@ export default function Brain() {
       if (!res.ok) {
         showToast("Failed to add task", "error");
       } else {
+        const row = (await res.json().catch(() => null)) as Item | null;
         setQuickTaskText("");
-        await fetchItems();
+        if (row && row.id) {
+          setItems(prev => upsertCachedItem(prev, row, false, !search.trim() && !archivedOnly));
+          broadcastSync({ type: "item-created", item: row });
+          scheduleEnrichmentSync();
+        } else {
+          await fetchItems();
+        }
       }
     } catch {
       const temp = buildOfflineTempItem(payload) as Item;
@@ -1180,8 +1168,15 @@ export default function Brain() {
       if (!res.ok) {
         showToast("Failed to save memory", "error");
       } else {
+        const row = (await res.json().catch(() => null)) as Item | null;
         setQuickMemoryText("");
-        await fetchItems();
+        if (row && row.id) {
+          setItems(prev => upsertCachedItem(prev, row, false, !search.trim() && !archivedOnly));
+          broadcastSync({ type: "item-created", item: row });
+          scheduleEnrichmentSync();
+        } else {
+          await fetchItems();
+        }
       }
     } catch {
       const temp = buildOfflineTempItem(payload) as Item;
@@ -1307,9 +1302,11 @@ export default function Brain() {
         return false;
       }
       const row: Item = await res.json();
-      setItems(prev => [row, ...prev]);
+      setItems(prev => upsertCachedItem(prev, row, false, !search.trim() && !archivedOnly));
+      broadcastSync({ type: "item-created", item: row });
       showToast(`${label} saved`, "success");
-      fetchItems(search.trim() || undefined); // reconcile order and any late enrichment in the background
+      if (search.trim()) fetchItems(search.trim());
+      else scheduleEnrichmentSync();
       return true;
     } catch {
       const temp = buildOfflineTempItem(fullPayload) as Item;

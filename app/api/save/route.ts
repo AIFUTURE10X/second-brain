@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { db } from "@/db";
 import { items, categories, type Attachment } from "@/db/schema";
+import { ITEM_PUBLIC_COLUMNS } from "@/db/item-columns";
 import { enrichUrl } from "@/lib/enrich";
 import { checkApiKey } from "@/lib/api-key";
 import { embeddingsEnabled } from "@/lib/embeddings.mjs";
@@ -87,41 +88,19 @@ export async function POST(req: NextRequest) {
     else type = "note";
   }
 
-  // Auto-enrich URL
-  let og = { ogTitle: "", ogDescription: "", ogImage: "", siteName: "", favicon: "" };
-  let descriptionLinks: YouTubeDescriptionLink[] = [];
-  if (url) {
-    og = await enrichUrl(url);
-    descriptionLinks = await fetchYouTubeDescriptionLinks(url);
-  }
   const fallbackTitle = fallbackTitleFromUrl(url);
   // A saved file's own name beats a title guessed from its URL path.
-  const resolvedTitle = title || og.ogTitle || attachments[0]?.name || fallbackTitle || "";
+  const initialTitle = title || attachments[0]?.name || fallbackTitle || "";
 
-  // AI auto-tag + auto-categorize when no tags/category provided. The business-idea tag
-  // alone doesn't count: a card the extension sends as an idea still gets its usual tags.
-  // It is stored lowercase whatever was sent: the AI OS finds cards with an exact ?tag=.
+  // Normalize the business-idea tag synchronously so it is stored lowercase
+  // whatever was sent (the AI OS finds cards with an exact ?tag= match).
   const sendsIdea = tags.some(isIdeaTag);
   if (sendsIdea) tags = withIdeaTag(tags);
-  if (withoutIdeaTag(tags).length === 0 && !category && process.env.ANTHROPIC_API_KEY) {
-    const existingCats = await db.select({ name: categories.name }).from(categories).orderBy(asc(categories.name));
-    const ai = await aiTagAndCategorize({
-      title: resolvedTitle,
-      content,
-      url,
-      ogTitle: og.ogTitle,
-      ogDescription: og.ogDescription,
-      siteName: og.siteName,
-      existingCategories: existingCats.map(c => c.name),
-    });
-    if (ai.tags.length > 0) tags = sendsIdea ? withIdeaTag(ai.tags) : ai.tags;
-    if (ai.category) category = ai.category.trim();
-  }
 
-  // Auto-create category if it doesn't exist
+  // Auto-create category if explicitly supplied and not yet present.
   if (category) {
-    const existingCats2 = await db.select({ name: categories.name }).from(categories);
-    const match = existingCats2.find(c => c.name.toLowerCase() === category.toLowerCase());
+    const existingCats = await db.select({ name: categories.name }).from(categories);
+    const match = existingCats.find(c => c.name.toLowerCase() === category.toLowerCase());
     if (match) {
       category = match.name; // preserve existing casing
     } else {
@@ -135,10 +114,10 @@ export async function POST(req: NextRequest) {
     .insert(items)
     .values({
       type,
-      title: resolvedTitle,
+      title: initialTitle,
       content: type === "thought" ? content : (body.content as string || ""),
       url,
-      notes: appendYouTubeDescriptionLinksToNotes(notes, descriptionLinks),
+      notes,
       tags,
       category,
       attachments,
@@ -146,18 +125,84 @@ export async function POST(req: NextRequest) {
       readingStatus: initialReadingStatus(type),
       reviewedAt: null,
       workflowStatus: "inbox",
-      ogTitle: og.ogTitle,
-      ogDescription: og.ogDescription,
-      ogImage: og.ogImage,
-      siteName: og.siteName,
-      favicon: og.favicon,
+      ogTitle: "",
+      ogDescription: "",
+      ogImage: "",
+      siteName: "",
+      favicon: "",
     })
-    .returning();
+    .returning(ITEM_PUBLIC_COLUMNS);
 
-  // Embed post-response so saves never block on (or fail because of) OpenAI.
-  if (embeddingsEnabled()) after(() => updateItemEmbedding(row.id));
-  // Resolve [[wiki links]] into item_relations (roadmap 2.2).
-  after(() => syncWikiRelations(row.id));
+  // Run slow network work (URL OG enrichment, YouTube description links,
+  // Claude auto-tagging, OpenAI embeddings, wiki links) post-response so
+  // extension/shortcut/automation saves return immediately.
+  const needsAiTag = Boolean(withoutIdeaTag(tags).length === 0 && !category && process.env.ANTHROPIC_API_KEY);
+  after(async () => {
+    try {
+      let og = { ogTitle: "", ogDescription: "", ogImage: "", siteName: "", favicon: "" };
+      let descriptionLinks: YouTubeDescriptionLink[] = [];
+      if (url) {
+        [og, descriptionLinks] = await Promise.all([
+          enrichUrl(url),
+          fetchYouTubeDescriptionLinks(url),
+        ]);
+      }
+      const resolvedTitle = title || og.ogTitle || attachments[0]?.name || fallbackTitle || "";
+
+      let nextTags = tags;
+      let nextCategory = category;
+      if (needsAiTag) {
+        const existingCats = await db.select({ name: categories.name }).from(categories).orderBy(asc(categories.name));
+        const ai = await aiTagAndCategorize({
+          title: resolvedTitle,
+          content,
+          url,
+          ogTitle: og.ogTitle,
+          ogDescription: og.ogDescription,
+          siteName: og.siteName,
+          existingCategories: existingCats.map(c => c.name),
+        });
+        if (ai.tags.length > 0) nextTags = sendsIdea ? withIdeaTag(ai.tags) : ai.tags;
+        if (ai.category) {
+          nextCategory = ai.category.trim();
+          const match = existingCats.find(c => c.name.toLowerCase() === nextCategory.toLowerCase());
+          if (match) {
+            nextCategory = match.name;
+          } else {
+            try {
+              await db.insert(categories).values({ name: nextCategory });
+            } catch {}
+          }
+        }
+      }
+
+      const patch: Partial<typeof items.$inferInsert> = {};
+      if (!title && og.ogTitle && resolvedTitle !== initialTitle) patch.title = resolvedTitle;
+      if (og.ogTitle || og.ogDescription || og.ogImage || og.siteName || og.favicon) {
+        patch.ogTitle = og.ogTitle;
+        patch.ogDescription = og.ogDescription;
+        patch.ogImage = og.ogImage;
+        patch.siteName = og.siteName;
+        patch.favicon = og.favicon;
+      }
+      if (descriptionLinks.length > 0) {
+        patch.notes = appendYouTubeDescriptionLinksToNotes(notes, descriptionLinks);
+      }
+      if (nextTags !== tags) patch.tags = nextTags;
+      if (nextCategory && nextCategory !== category) patch.category = nextCategory;
+
+      if (Object.keys(patch).length > 0) {
+        await db.update(items).set({ ...patch, updatedAt: new Date() }).where(eq(items.id, row.id));
+      }
+    } catch (error) {
+      console.error("Post-save enrichment failed:", error);
+    }
+
+    await Promise.all([
+      embeddingsEnabled() ? updateItemEmbedding(row.id) : Promise.resolve(),
+      syncWikiRelations(row.id),
+    ]);
+  });
 
   return NextResponse.json(row, { status: 201 });
   } catch (error) {

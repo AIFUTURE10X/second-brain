@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { db } from "@/db";
 import { items, categories, deletedItems } from "@/db/schema";
+import { ITEM_PUBLIC_COLUMNS } from "@/db/item-columns";
 import { eq, gt, desc, asc, and, isNull, isNotNull, sql as sqlExpr, type SQL } from "drizzle-orm";
 import { enrichUrl } from "@/lib/enrich";
 import { checkApiKey } from "@/lib/api-key";
@@ -86,7 +87,7 @@ export async function GET(req: NextRequest) {
   const archivedOnly = url.searchParams.get("archived") === "1";
 
   if (id) {
-    const [row] = await db.select().from(items).where(eq(items.id, id));
+    const [row] = await db.select(ITEM_PUBLIC_COLUMNS).from(items).where(eq(items.id, id));
     if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
     return NextResponse.json(row);
   }
@@ -100,15 +101,17 @@ export async function GET(req: NextRequest) {
     const sinceDate = new Date(since);
     if (Number.isNaN(sinceDate.getTime())) return jsonError(400, "Invalid since timestamp");
     const serverTime = new Date(Date.now() - SYNC_CURSOR_OVERLAP_MS).toISOString();
-    const changed = await db
-      .select()
-      .from(items)
-      .where(gt(items.updatedAt, sinceDate))
-      .orderBy(asc(items.updatedAt));
-    const tombstones = await db
-      .select({ id: deletedItems.id })
-      .from(deletedItems)
-      .where(gt(deletedItems.deletedAt, sinceDate));
+    const [changed, tombstones] = await Promise.all([
+      db
+        .select(ITEM_PUBLIC_COLUMNS)
+        .from(items)
+        .where(gt(items.updatedAt, sinceDate))
+        .orderBy(asc(items.updatedAt)),
+      db
+        .select({ id: deletedItems.id })
+        .from(deletedItems)
+        .where(gt(deletedItems.deletedAt, sinceDate)),
+    ]);
     return NextResponse.json({
       items: changed,
       deletedIds: tombstones.map(t => t.id),
@@ -148,7 +151,7 @@ export async function GET(req: NextRequest) {
   conditions.push(archivedOnly ? isNotNull(items.archivedAt) : isNull(items.archivedAt));
 
   const rows = await db
-    .select()
+    .select(ITEM_PUBLIC_COLUMNS)
     .from(items)
     .where(and(...conditions))
     .orderBy(desc(items.pinned), desc(items.createdAt));
@@ -172,16 +175,6 @@ export async function POST(req: NextRequest) {
   try {
   const url = body.url?.trim() || "";
 
-  // Auto-enrich if URL is provided and no og data was passed. Folder items hold
-  // a local path in `url`, not a web URL — never try to fetch it.
-  let og = { ogTitle: "", ogDescription: "", ogImage: "", siteName: "", favicon: "" };
-  let descriptionLinks: YouTubeDescriptionLink[] = [];
-  if (url && body.type !== "folder") {
-    if (!body.ogTitle) {
-      og = await enrichUrl(url);
-    }
-    descriptionLinks = await fetchYouTubeDescriptionLinks(url);
-  }
   // For folders, derive a readable title from the last path segment; otherwise
   // fall back to the web-URL heuristic.
   const fallbackTitle = body.type === "folder" ? formatLocalPathLabel(url) : fallbackTitleFromUrl(url);
@@ -189,34 +182,16 @@ export async function POST(req: NextRequest) {
   let itemTags: string[] = body.tags || [];
   let itemCategory: string = body.category || "";
 
-  // AI auto-tag + auto-categorize when no tags/category provided. The business-idea tag
-  // alone doesn't count, so a quick-capture "/idea" card still gets its usual tags. It is
-  // stored lowercase whatever was typed: the AI OS finds cards with an exact ?tag= match.
+  // Normalize the business-idea tag synchronously so it is stored lowercase
+  // whatever was sent (the AI OS finds cards with an exact ?tag= match).
   const sendsIdea = itemTags.some(isIdeaTag);
   if (sendsIdea) itemTags = withIdeaTag(itemTags);
-  if (withoutIdeaTag(itemTags).length === 0 && !itemCategory && process.env.ANTHROPIC_API_KEY) {
-    const existingCats = await db.select({ name: categories.name }).from(categories).orderBy(asc(categories.name));
-    const ai = await aiTagAndCategorize({
-      title: body.title || og.ogTitle || fallbackTitle || "",
-      // A link's own words ride in notes ("/idea <link> why"), so the tagger reads them too.
-      content: body.content || body.notes || "",
-      url,
-      ogTitle: og.ogTitle,
-      ogDescription: og.ogDescription,
-      siteName: og.siteName,
-      existingCategories: existingCats.map(c => c.name),
-    });
-    if (ai.tags.length > 0) itemTags = sendsIdea ? withIdeaTag(ai.tags) : ai.tags;
-    if (ai.category) {
-      itemCategory = ai.category.trim();
-    }
-  }
 
-  // Auto-create category if it doesn't exist (from AI or user input)
+  // Auto-create category if explicitly supplied by the user and not yet present.
   if (itemCategory) {
     itemCategory = itemCategory.trim();
-    const existingCats2 = await db.select({ name: categories.name }).from(categories);
-    const match = existingCats2.find(c => c.name.toLowerCase() === itemCategory.toLowerCase());
+    const existingCats = await db.select({ name: categories.name }).from(categories);
+    const match = existingCats.find(c => c.name.toLowerCase() === itemCategory.toLowerCase());
     if (match) {
       itemCategory = match.name; // preserve existing casing
     } else {
@@ -238,10 +213,10 @@ export async function POST(req: NextRequest) {
     .insert(items)
     .values({
       type: body.type || "note",
-      title: body.title || og.ogTitle || fallbackTitle || "",
+      title: body.title || body.ogTitle || fallbackTitle || "",
       content: body.content || "",
       url,
-      notes: appendYouTubeDescriptionLinksToNotes(body.notes || "", descriptionLinks),
+      notes: body.notes || "",
       tags: itemTags,
       category: itemCategory,
       pinned: body.pinned || false,
@@ -254,18 +229,100 @@ export async function POST(req: NextRequest) {
       reviewedAt: body.reviewedAt ? new Date(body.reviewedAt) : null,
       workflowStatus: body.workflowStatus || ((body.type || "note") === "task" || body.reviewedAt === null ? "inbox" : "active"),
       attachments: Array.isArray(body.attachments) ? body.attachments : [],
-      ogTitle: body.ogTitle || og.ogTitle || "",
-      ogDescription: body.ogDescription || og.ogDescription || "",
-      ogImage: body.ogImage || og.ogImage || "",
-      siteName: body.siteName || og.siteName || "",
-      favicon: body.favicon || og.favicon || "",
+      ogTitle: body.ogTitle || "",
+      ogDescription: body.ogDescription || "",
+      ogImage: body.ogImage || "",
+      siteName: body.siteName || "",
+      favicon: body.favicon || "",
     })
-    .returning();
+    .returning(ITEM_PUBLIC_COLUMNS);
 
-  // Embed post-response so saves never block on (or fail because of) OpenAI.
-  if (embeddingsEnabled()) after(() => updateItemEmbedding(row.id));
-  // Resolve [[wiki links]] into item_relations (roadmap 2.2).
-  after(() => syncWikiRelations(row.id));
+  // Run slow network work (URL OG enrichment, YouTube description links,
+  // Claude auto-tagging, OpenAI embeddings, wiki links) post-response so saves
+  // and shares complete in ~100ms instead of blocking for 3-15 seconds.
+  const needsUrlEnrich = Boolean(url && body.type !== "folder");
+  const needsAiTag = Boolean(withoutIdeaTag(itemTags).length === 0 && !itemCategory && process.env.ANTHROPIC_API_KEY);
+  if (needsUrlEnrich || needsAiTag) {
+    after(async () => {
+      try {
+        let og = {
+          ogTitle: body.ogTitle || "",
+          ogDescription: body.ogDescription || "",
+          ogImage: body.ogImage || "",
+          siteName: body.siteName || "",
+          favicon: body.favicon || "",
+        };
+        let descriptionLinks: YouTubeDescriptionLink[] = [];
+        if (needsUrlEnrich) {
+          const [enriched, ytLinks] = await Promise.all([
+            !body.ogTitle ? enrichUrl(url) : Promise.resolve(og),
+            fetchYouTubeDescriptionLinks(url),
+          ]);
+          if (!body.ogTitle) og = enriched;
+          descriptionLinks = ytLinks;
+        }
+
+        let nextTags = itemTags;
+        let nextCategory = itemCategory;
+        if (needsAiTag) {
+          const existingCats = await db.select({ name: categories.name }).from(categories).orderBy(asc(categories.name));
+          const ai = await aiTagAndCategorize({
+            title: body.title || og.ogTitle || fallbackTitle || "",
+            // A link's own words ride in notes ("/idea <link> why"), so the tagger reads them too.
+            content: body.content || body.notes || "",
+            url,
+            ogTitle: og.ogTitle,
+            ogDescription: og.ogDescription,
+            siteName: og.siteName,
+            existingCategories: existingCats.map(c => c.name),
+          });
+          if (ai.tags.length > 0) nextTags = sendsIdea ? withIdeaTag(ai.tags) : ai.tags;
+          if (ai.category) {
+            nextCategory = ai.category.trim();
+            const match = existingCats.find(c => c.name.toLowerCase() === nextCategory.toLowerCase());
+            if (match) {
+              nextCategory = match.name;
+            } else {
+              try {
+                await db.insert(categories).values({ name: nextCategory });
+              } catch {}
+            }
+          }
+        }
+
+        const patch: Partial<typeof items.$inferInsert> = {};
+        if (!body.title && !body.ogTitle && og.ogTitle) patch.title = og.ogTitle;
+        if (!body.ogTitle && (og.ogTitle || og.ogDescription || og.ogImage || og.siteName || og.favicon)) {
+          patch.ogTitle = og.ogTitle;
+          patch.ogDescription = og.ogDescription;
+          patch.ogImage = og.ogImage;
+          patch.siteName = og.siteName;
+          patch.favicon = og.favicon;
+        }
+        if (descriptionLinks.length > 0) {
+          patch.notes = appendYouTubeDescriptionLinksToNotes(body.notes || "", descriptionLinks);
+        }
+        if (nextTags !== itemTags) patch.tags = nextTags;
+        if (nextCategory && nextCategory !== itemCategory) patch.category = nextCategory;
+
+        if (Object.keys(patch).length > 0) {
+          await db.update(items).set({ ...patch, updatedAt: new Date() }).where(eq(items.id, row.id));
+        }
+      } catch (error) {
+        console.error("Post-save enrichment failed:", error);
+      }
+
+      await Promise.all([
+        embeddingsEnabled() ? updateItemEmbedding(row.id) : Promise.resolve(),
+        syncWikiRelations(row.id),
+      ]);
+    });
+  } else {
+    // Embed post-response so saves never block on (or fail because of) OpenAI.
+    if (embeddingsEnabled()) after(() => updateItemEmbedding(row.id));
+    // Resolve [[wiki links]] into item_relations (roadmap 2.2).
+    after(() => syncWikiRelations(row.id));
+  }
 
   return NextResponse.json(row);
   } catch (error) {
@@ -287,7 +344,7 @@ export async function PUT(req: NextRequest) {
   const { id, expectedUpdatedAt, ...updates } = parsed.data;
 
   try {
-  const [current] = await db.select().from(items).where(eq(items.id, id));
+  const [current] = await db.select(ITEM_PUBLIC_COLUMNS).from(items).where(eq(items.id, id));
   if (!current) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const nextType = updates.type || current.type;
 
@@ -364,12 +421,12 @@ export async function PUT(req: NextRequest) {
           )
         : eq(items.id, id)
     )
-    .returning();
+    .returning(ITEM_PUBLIC_COLUMNS);
 
   if (!row) {
     // Guarded update matched nothing: the item changed on another device
     // (or was deleted). Hand back the current row so the client can resolve.
-    const [latest] = await db.select().from(items).where(eq(items.id, id));
+    const [latest] = await db.select(ITEM_PUBLIC_COLUMNS).from(items).where(eq(items.id, id));
     if (latest) {
       return NextResponse.json(
         { error: "Conflict: item changed on another device", current: latest },

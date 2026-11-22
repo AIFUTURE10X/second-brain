@@ -4,6 +4,9 @@ import { upload } from "@vercel/blob/client";
 import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { compressImageForUpload } from "@/lib/image-compression";
+import { stashJustSavedItem } from "@/lib/client-cache";
+import { SYNC_CHANNEL, getSyncClientId } from "@/lib/sync";
+import type { Item } from "@/lib/brain-model";
 
 const SHARE_TARGET_CACHE = "sb-share-target";
 const SHARE_TARGET_METADATA_URL = "/__share-target/metadata.json";
@@ -81,17 +84,19 @@ async function readCachedShareTarget(): Promise<SharePayload | null> {
     return null;
   }
 
-  const files: File[] = [];
-  for (const [index, fileMeta] of (payload.files || []).entries()) {
-    if (!fileMeta.cacheUrl) continue;
-    const fileResponse = await cache.match(fileMeta.cacheUrl);
-    if (!fileResponse) continue;
+  const loadedFiles = await Promise.all(
+    (payload.files || []).map(async (fileMeta, index): Promise<File | null> => {
+      if (!fileMeta.cacheUrl) return null;
+      const fileResponse = await cache.match(fileMeta.cacheUrl);
+      if (!fileResponse) return null;
 
-    const blob = await fileResponse.blob();
-    const contentType = fileMeta.contentType || blob.type || "application/octet-stream";
-    const name = fileMeta.name || fallbackFileName(index, contentType);
-    files.push(new File([blob], name, { type: contentType }));
-  }
+      const blob = await fileResponse.blob();
+      const contentType = fileMeta.contentType || blob.type || "application/octet-stream";
+      const name = fileMeta.name || fallbackFileName(index, contentType);
+      return new File([blob], name, { type: contentType });
+    }),
+  );
+  const files = loadedFiles.filter((file): file is File => file !== null);
 
   await clearCachedShareTarget(cache);
 
@@ -124,33 +129,31 @@ function normalizeSharedText(payload: SharePayload): { finalUrl: string; finalTe
 }
 
 async function uploadSharedFiles(files: File[]): Promise<Attachment[]> {
-  const attachments: Attachment[] = [];
+  return Promise.all(
+    files.map(async (file, index): Promise<Attachment> => {
+      const uploadFile = await compressImageForUpload(file);
+      if (uploadFile.size > MAX_SHARE_FILE_SIZE) {
+        throw new Error(`${uploadFile.name || "Shared photo"} exceeds 50 MB`);
+      }
 
-  for (const [index, file] of files.entries()) {
-    const uploadFile = await compressImageForUpload(file);
-    if (uploadFile.size > MAX_SHARE_FILE_SIZE) {
-      throw new Error(`${uploadFile.name || "Shared photo"} exceeds 50 MB`);
-    }
+      const contentType = resolveContentType(uploadFile);
+      const name = uploadFile.name || fallbackFileName(index, contentType);
+      const body = uploadFile.type === contentType && uploadFile.name
+        ? uploadFile
+        : new File([uploadFile], name, { type: contentType });
+      const blob = await upload(name, body, {
+        access: "public",
+        handleUploadUrl: "/api/upload",
+      });
 
-    const contentType = resolveContentType(uploadFile);
-    const name = uploadFile.name || fallbackFileName(index, contentType);
-    const body = uploadFile.type === contentType && uploadFile.name
-      ? uploadFile
-      : new File([uploadFile], name, { type: contentType });
-    const blob = await upload(name, body, {
-      access: "public",
-      handleUploadUrl: "/api/upload",
-    });
-
-    attachments.push({
-      url: blob.url,
-      name,
-      contentType,
-      size: uploadFile.size,
-    });
-  }
-
-  return attachments;
+      return {
+        url: blob.url,
+        name,
+        contentType,
+        size: uploadFile.size,
+      };
+    }),
+  );
 }
 
 function titleForSharedItem(title: string, attachments: Attachment[]): string {
@@ -171,6 +174,7 @@ function ShareHandler() {
 
   useEffect(() => {
     let cancelled = false;
+    router.prefetch("/");
 
     async function saveShare() {
       try {
@@ -195,9 +199,18 @@ function ShareHandler() {
           }),
         });
         if (!res.ok) throw new Error();
+        const saved = (await res.json().catch(() => null)) as Item | null;
+        if (saved && saved.id) {
+          stashJustSavedItem(saved);
+          if (typeof BroadcastChannel !== "undefined") {
+            const ch = new BroadcastChannel(SYNC_CHANNEL);
+            ch.postMessage({ type: "item-created", item: saved, source: getSyncClientId() });
+            ch.close();
+          }
+        }
         if (cancelled) return;
         setStatus("saved");
-        setTimeout(() => router.replace("/"), 800);
+        setTimeout(() => router.replace("/"), 200);
       } catch {
         if (cancelled) return;
         setStatus("error");
